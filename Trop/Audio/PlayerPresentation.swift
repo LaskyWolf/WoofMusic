@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// One surface follows the finger, changes to the mini player's shape, and
-/// settles in place. Its size stops changing before the spring's final rebound.
+/// An opaque artwork card shrinks and fades over the native accessory.
+/// The accessory owns the only glass background throughout the transition.
 struct PlayerPresentation: View, Animatable {
     var expansion: CGFloat
     var dragOffset: CGFloat
@@ -28,7 +28,6 @@ struct PlayerPresentation: View, Animatable {
         let progress = min(1, max(0, expansion))
         let frame = reduceMotion ? geometry.expanded : geometry.frame(expansion: expansion, dragOffset: dragOffset)
         let radius = reduceMotion ? 0 : geometry.cornerRadius(expansion: expansion, dragOffset: dragOffset)
-        let compactOpacity = min(1, max(0, (1 - progress) * 3 + dragOffset / geometry.expanded.height))
 
         ZStack(alignment: .top) {
             LinearGradient(
@@ -36,7 +35,6 @@ struct PlayerPresentation: View, Animatable {
                 startPoint: .top,
                 endPoint: .bottom
             )
-            .opacity(progress)
 
             FullPlayerView(
                 onCollapse: onCollapse,
@@ -54,18 +52,9 @@ struct PlayerPresentation: View, Animatable {
             .opacity(reduceMotion ? 1 : min(1, progress * 2.5))
             .allowsHitTesting(progress >= 0.999)
             .accessibilityHidden(progress < 0.999)
-
-            if !reduceMotion {
-                MiniPlayerBarView(onExpand: {}, isTransitioning: true)
-                    .frame(width: frame.width, height: geometry.collapsed.height)
-                    .opacity(compactOpacity)
-                    .allowsHitTesting(false)
-                    .accessibilityHidden(true)
-            }
         }
         .frame(width: frame.width, height: frame.height, alignment: .top)
         .clipShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
-        .glassEffect(.regular, in: RoundedRectangle(cornerRadius: radius, style: .continuous))
         .opacity(reduceMotion ? progress : PlayerTransitionGeometry.presentationOpacity(
             expansion: expansion, expandedHeight: geometry.expanded.height, collapsedHeight: geometry.collapsed.height
         ))
