@@ -142,6 +142,8 @@ identifier = "com.laskywolf.Music.surfacecheck"
 device = run("xcrun", "simctl", "create", "Player Surface Check", device_type, runtime)
 recording = None
 recording_log = None
+app_process = None
+app_log = None
 try:
     with tempfile.TemporaryDirectory() as directory:
         work = Path(directory)
@@ -170,7 +172,10 @@ try:
         run("xcrun", "simctl", "boot", device)
         run("xcrun", "simctl", "bootstatus", device, "-b")
         run("xcrun", "simctl", "install", device, app)
-        run("xcrun", "simctl", "launch", device, identifier)
+        app_log = (output / "app-console.log").open("w")
+        app_process = subprocess.Popen([
+            "xcrun", "simctl", "launch", "--console", device, identifier,
+        ], stdout=app_log, stderr=subprocess.STDOUT)
         data = Path(run("xcrun", "simctl", "get_app_container", device, identifier, "data"))
         result_path = data / "Documents/surface-check.json"
         seen = set()
@@ -179,6 +184,7 @@ try:
         while time.monotonic() < deadline:
             if result_path.exists():
                 result = json.loads(result_path.read_text())
+                (output / "last-state.json").write_text(json.dumps(result))
                 phase = result["phase"]
                 assert result["mounts"] >= 1, result
                 mode = phase.split("-")[0]
@@ -192,6 +198,7 @@ try:
                     print("PASS: native accessory remains mounted across two open/close cycles in light and dark mode")
                     break
                 if phase not in seen:
+                    print("Simulator phase:", phase, flush=True)
                     run("xcrun", "simctl", "io", device, "screenshot", output / (phase + ".png"))
                     seen.add(phase)
                     if recording is None:
@@ -214,5 +221,10 @@ finally:
             recording.kill()
             recording.wait()
         recording_log.close()
+    if app_process is not None:
+        if app_process.poll() is None:
+            app_process.terminate()
+        app_process.wait(timeout=15)
+        app_log.close()
     run("xcrun", "simctl", "shutdown", device)
     run("xcrun", "simctl", "delete", device)

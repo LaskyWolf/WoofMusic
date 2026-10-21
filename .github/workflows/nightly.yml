@@ -53,6 +53,7 @@ jobs:
         run: python3 scripts/check_player_surface.py
 
       - name: Upload player surface screenshots
+        if: always()
         uses: actions/upload-artifact@v7.0.1
         with:
           name: Player-surface-check
