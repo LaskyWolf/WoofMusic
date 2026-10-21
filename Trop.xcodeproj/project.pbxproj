@@ -411,7 +411,6 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Trop/Resources/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Music;
-				INFOPLIST_KEY_CFBundleName = Music;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -442,7 +441,6 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Trop/Resources/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Music;
-				INFOPLIST_KEY_CFBundleName = Music;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
