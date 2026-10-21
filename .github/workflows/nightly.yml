@@ -43,6 +43,9 @@ jobs:
       - name: Check privacy regressions
         run: python3 scripts/check_privacy.py
 
+      - name: Check player transition regressions
+        run: python3 scripts/check_player_transition.py
+
       - name: Make build script executable
         run: chmod +x ./build_ipa.sh
 

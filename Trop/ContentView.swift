@@ -14,9 +14,12 @@ struct ContentView: View {
     @State private var nowPlaying = NowPlaying.shared
     @State private var selectedTab = SettingsStore.shared.defaultTab
     @State private var isExpanded = false
-    @State private var playerDismissalBounce = 0
+    @State private var playerExpansion: CGFloat = 0
+    @State private var playerDragOffset: CGFloat = 0
+    @State private var miniPlayerFrame: CGRect = .zero
+    @State private var isClosingPlayer = false
+    @State private var pendingPlayerExpansion = false
     @State private var scrollState = MiniPlayerScrollState()
-    @Namespace private var playerTransition
 
     var body: some View {
         TabView(selection: $selectedTab) {
@@ -38,36 +41,64 @@ struct ContentView: View {
         }
         .tabBarMinimizeBehavior(.onScrollDown)
             .tabViewBottomAccessory(isEnabled: nowPlaying.isBarPresented) {
-                MiniPlayerBarView(onExpand: {
-                    // Dismiss the keyboard before expanding the player so the reveal is visible on the first tap.
-                    UIApplication.shared.sendAction(
-                        #selector(UIResponder.resignFirstResponder),
-                        to: nil,
-                        from: nil,
-                        for: nil
-                    )
-                    isExpanded = true
-                })
-                .matchedTransitionSource(id: "nowPlaying", in: playerTransition) { source in
-                    source.clipShape(RoundedRectangle(cornerRadius: 24))
-                }
-                .phaseAnimator([CGFloat(1), 1.035, 1], trigger: playerDismissalBounce) { content, scale in
-                    content.scaleEffect(x: 1, y: reduceMotion ? 1 : scale)
-                } animation: { _ in
-                    .spring(duration: 0.2, bounce: 0.1)
-                }
+                MiniPlayerBarView(onExpand: expandPlayer)
+                    .onGeometryChange(for: CGRect.self) { proxy in
+                        proxy.frame(in: .global)
+                    } action: { frame in
+                        miniPlayerFrame = frame
+                        if pendingPlayerExpansion, !frame.isEmpty { expandPlayer() }
+                    }
+                    .opacity(isExpanded ? 0 : 1)
+                    .allowsHitTesting(!isExpanded)
             }
             .background {
                 backgroundLayer
             }
-            .fullScreenCover(isPresented: $isExpanded, onDismiss: {
-                if !reduceMotion { playerDismissalBounce += 1 }
-            }) {
-                FullPlayerView(onCollapse: { isExpanded = false })
-                    .navigationTransition(.zoom(sourceID: "nowPlaying", in: playerTransition))
-                    .environment(scrollState)
-            }
             .environment(scrollState)
+            .accessibilityHidden(isExpanded)
+            .overlay {
+                GeometryReader { proxy in
+                    if isExpanded {
+                        let insets = proxy.safeAreaInsets
+                        let bounds = CGRect(x: 0, y: 0, width: proxy.size.width,
+                                            height: proxy.size.height + insets.top + insets.bottom)
+                        let origin = proxy.frame(in: .global).origin
+                        let source = miniPlayerFrame.offsetBy(dx: -origin.x, dy: -origin.y + insets.top)
+                        ZStack {
+                            Color.clear
+                                .contentShape(Rectangle())
+                                .onTapGesture {}
+                                .accessibilityHidden(true)
+                            PlayerPresentation(
+                                expansion: playerExpansion,
+                                dragOffset: playerDragOffset,
+                                geometry: PlayerTransitionGeometry(expanded: bounds, collapsed: source),
+                                safeAreaInsets: insets,
+                                onCollapse: { collapsePlayer() },
+                                onDragChanged: { offset in
+                                    guard !isClosingPlayer else { return }
+                                    playerDragOffset = reduceMotion ? 0 : max(0, offset)
+                                },
+                                onDragEnded: { distance, predicted, velocity in
+                                    if PlayerTransitionGeometry.shouldDismiss(
+                                        distance: distance, predictedDistance: predicted, height: bounds.height
+                                    ) {
+                                        let remaining = max(1, source.minY - distance)
+                                        collapsePlayer(velocity: min(4, max(0, velocity / remaining)))
+                                    } else {
+                                        cancelPlayerDrag()
+                                    }
+                                },
+                                onDragCancelled: cancelPlayerDrag
+                            )
+                            .environment(scrollState)
+                            .onAppear {
+                                withAnimation(playerSpring()) { playerExpansion = 1 }
+                            }
+                        }
+                    }
+                }
+            }
         .onAppear { AppRouter.shared.selectedTabIndex = selectedTab }
         .onChange(of: selectedTab) { _, newValue in
             AppRouter.shared.selectedTabIndex = newValue
@@ -76,13 +107,53 @@ struct ContentView: View {
             // A detail page was opened from an overlay: collapse the player so
             // the pushed page is visible underneath.
             if route != nil {
-                isExpanded = false
+                collapsePlayer()
             }
         }
         .onReceive(AppRouter.shared.$playerExpandToken.dropFirst()) { _ in
-            isExpanded = true
+            expandPlayer()
+        }
+        .onChange(of: nowPlaying.isBarPresented) { _, presented in
+            if !presented { collapsePlayer() }
         }
         .simultaneousGesture(backSwipeGesture)
+    }
+
+    private func playerSpring(velocity: CGFloat = 0) -> Animation {
+        reduceMotion ? .easeOut(duration: 0.15)
+            : .interpolatingSpring(mass: 1, stiffness: 300, damping: 30, initialVelocity: Double(velocity))
+    }
+
+    private func expandPlayer() {
+        guard !isExpanded else { return }
+        guard !miniPlayerFrame.isEmpty else {
+            pendingPlayerExpansion = true
+            return
+        }
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        pendingPlayerExpansion = false
+        playerExpansion = 0
+        playerDragOffset = 0
+        isClosingPlayer = false
+        isExpanded = true
+    }
+
+    private func collapsePlayer(velocity: CGFloat = 0) {
+        pendingPlayerExpansion = false
+        guard isExpanded, !isClosingPlayer else { return }
+        isClosingPlayer = true
+        withAnimation(playerSpring(velocity: velocity), completionCriteria: .removed) {
+            playerExpansion = 0
+            playerDragOffset = 0
+        } completion: {
+            isExpanded = false
+            isClosingPlayer = false
+        }
+    }
+
+    private func cancelPlayerDrag() {
+        guard !isClosingPlayer, playerDragOffset > 0 else { return }
+        withAnimation(playerSpring()) { playerDragOffset = 0 }
     }
 
     private var backSwipeGesture: some Gesture {
