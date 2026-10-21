@@ -16,7 +16,6 @@ struct FullPlayerView: View {
     @Bindable private var np = NowPlaying.shared
     @State private var editingProgress: Float = 0
     @State private var isEditingSlider = false
-    @State private var collapseOffset: CGFloat = 0
 
     @ObservedObject private var likeStore = LikeStore.shared
     private var isLiked: Bool {
@@ -230,10 +229,7 @@ struct FullPlayerView: View {
                     .accessibilityAction(.escape) { showQueue = false }
                 }
             }
-            .offset(y: collapseOffset)
-            .animation(.spring(response: 0.35, dampingFraction: 0.85), value: collapseOffset)
             .animation(.easeInOut(duration: reduceMotion ? 0.15 : 0.25), value: showQueue)
-            .simultaneousGesture(collapseDrag)
             .interactiveDismissDisabled(showLyrics || showQueue)
             .onChange(of: np.videoId) { _, _ in
                 np.isVideoMode = false
@@ -294,24 +290,6 @@ struct FullPlayerView: View {
         withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
             artworkEntryOffset = 0
         }
-    }
-
-    /// Swipe down anywhere to collapse. Vertical-dominant drags only.
-    private var collapseDrag: some Gesture {
-        DragGesture(minimumDistance: 12)
-            .onChanged { value in
-                guard !showLyrics, !showQueue, value.translation.height > 0,
-                      value.translation.height > abs(value.translation.width) else { return }
-                collapseOffset = value.translation.height
-            }
-            .onEnded { value in
-                defer { collapseOffset = 0 }
-                guard !showLyrics, !showQueue else { return }
-                let isVertical = value.translation.height > abs(value.translation.width)
-                if isVertical, value.translation.height > 140 {
-                    onCollapse()
-                }
-            }
     }
 
     // MARK: - Player Content
