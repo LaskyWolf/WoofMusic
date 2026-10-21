@@ -43,9 +43,6 @@ jobs:
       - name: Check privacy regressions
         run: python3 scripts/check_privacy.py
 
-      - name: Check player transition regressions
-        run: python3 scripts/check_player_transition.py
-
       - name: Check Play Next ordering
         run: python3 scripts/check_play_next.py
 

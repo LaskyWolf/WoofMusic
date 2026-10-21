@@ -10,12 +10,6 @@ import SwiftUI
 struct FullPlayerView: View {
     let onCollapse: () -> Void
     let artworkTopInset: CGFloat
-    let onDragChanged: (CGFloat) -> Void
-    let onDragEnded: (CGFloat, CGFloat, CGFloat) -> Void
-    let onDragCancelled: () -> Void
-    private let collapseDragThreshold: CGFloat = 44
-    @State private var playerDragAxis: Axis?
-    @GestureState private var playerDragActive = false
 
     @Environment(SettingsStore.self) private var settings
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -164,12 +158,6 @@ struct FullPlayerView: View {
             }
             .animation(.easeInOut(duration: reduceMotion ? 0.15 : 0.25), value: showQueue)
             .animation(.easeInOut(duration: reduceMotion ? 0.15 : 0.25), value: showLyrics)
-            .onChange(of: playerDragActive) { _, active in
-                if !active {
-                    playerDragAxis = nil
-                    onDragCancelled()
-                }
-            }
             .onChange(of: np.videoId) { _, _ in
                 np.isVideoMode = false
                 showLyrics = false
@@ -203,6 +191,7 @@ struct FullPlayerView: View {
                     PlayerMenuSheet(song: song, onCollapseRequest: { onCollapse() })
                 }
             }
+            .interactiveDismissDisabled(showQueue || showLyrics)
             .background(
                 Color.clear
                     .detailRouteSheet(item: $pendingRoute)
@@ -231,7 +220,6 @@ struct FullPlayerView: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(showQueue ? "Close queue" : showLyrics ? "Close lyrics" : "Collapse player")
-        .simultaneousGesture(playerSwipe(allowTrackSkip: false))
     }
 
     @ViewBuilder
@@ -285,34 +273,12 @@ struct FullPlayerView: View {
 
     // MARK: - Gestures
 
-    /// Both the handle and artwork report the same vertical drag. Panels keep
-    /// their own scroll gestures; horizontal artwork swipes remain track skips.
-    private func playerSwipe(allowTrackSkip: Bool = true) -> some Gesture {
-        DragGesture(minimumDistance: 8, coordinateSpace: .global)
-            .updating($playerDragActive) { _, active, _ in active = true }
-            .onChanged { value in
-                guard !showQueue, !showLyrics else { return }
-                if playerDragAxis == nil {
-                    playerDragAxis = abs(value.translation.height) > abs(value.translation.width) ? .vertical : .horizontal
-                }
-                if playerDragAxis == .vertical {
-                    onDragChanged(max(0, value.translation.height))
-                }
-            }
+    // Vertical dismissal belongs to the native zoom transition. This gesture
+    // only changes tracks, so it never starts a second collapse animation.
+    private func playerSwipe() -> some Gesture {
+        DragGesture(minimumDistance: 8)
             .onEnded { value in
-                defer { playerDragAxis = nil }
-                if showQueue || showLyrics {
-                    if !allowTrackSkip, value.translation.height > collapseDragThreshold,
-                       value.translation.height > abs(value.translation.width) {
-                        closePanelOrPlayer()
-                    }
-                    return
-                }
-                if playerDragAxis == .vertical {
-                    onDragEnded(value.translation.height, value.predictedEndTranslation.height, value.velocity.height)
-                    return
-                }
-                guard allowTrackSkip, settings.artworkSwipeNavigation,
+                guard !showQueue, !showLyrics, settings.artworkSwipeNavigation,
                       abs(value.translation.width) > abs(value.translation.height) else { return }
                 if value.translation.width < -60, np.hasNext {
                     np.playNext()

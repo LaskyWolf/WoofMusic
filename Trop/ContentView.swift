@@ -10,16 +10,10 @@ import SwiftUI
 
 struct ContentView: View {
     @Environment(SettingsStore.self) private var settings
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var nowPlaying = NowPlaying.shared
     @State private var selectedTab = SettingsStore.shared.defaultTab
     @State private var isExpanded = false
-    @State private var playerExpansion: CGFloat = 0
-    @State private var playerDragOffset: CGFloat = 0
-    @State private var miniPlayerFrame: CGRect = .zero
-    @State private var transitionSourceFrame: CGRect = .zero
-    @State private var isClosingPlayer = false
-    @State private var pendingPlayerExpansion = false
+    @Namespace private var playerTransition
     @State private var scrollState = MiniPlayerScrollState()
 
     var body: some View {
@@ -43,12 +37,8 @@ struct ContentView: View {
         .tabBarMinimizeBehavior(.onScrollDown)
             .tabViewBottomAccessory(isEnabled: nowPlaying.isBarPresented) {
                 MiniPlayerBarView(onExpand: expandPlayer, isTransitioning: isExpanded)
-                    .onGeometryChange(for: CGRect.self) { proxy in
-                        proxy.frame(in: .global)
-                    } action: { frame in
-                        guard !frame.isEmpty else { return }
-                        miniPlayerFrame = frame
-                        if pendingPlayerExpansion, !frame.isEmpty { expandPlayer() }
+                    .matchedTransitionSource(id: "nowPlaying", in: playerTransition) { source in
+                        source.clipShape(RoundedRectangle(cornerRadius: 24))
                     }
                     .allowsHitTesting(!isExpanded)
             }
@@ -57,49 +47,17 @@ struct ContentView: View {
             }
             .environment(scrollState)
             .accessibilityHidden(isExpanded)
-            .overlay {
+            .fullScreenCover(isPresented: $isExpanded) {
                 GeometryReader { proxy in
-                    if isExpanded {
-                        let insets = proxy.safeAreaInsets
-                        let bounds = CGRect(x: 0, y: 0, width: proxy.size.width,
-                                            height: proxy.size.height + insets.top + insets.bottom)
-                        let origin = proxy.frame(in: .global).origin
-                        let source = transitionSourceFrame.offsetBy(dx: -origin.x, dy: -origin.y + insets.top)
-                        ZStack {
-                            Color.clear
-                                .contentShape(Rectangle())
-                                .onTapGesture {}
-                                .accessibilityHidden(true)
-                            PlayerPresentation(
-                                expansion: playerExpansion,
-                                dragOffset: playerDragOffset,
-                                geometry: PlayerTransitionGeometry(expanded: bounds, collapsed: source),
-                                safeAreaInsets: insets,
-                                onCollapse: { collapsePlayer() },
-                                onDragChanged: { offset in
-                                    guard !isClosingPlayer else { return }
-                                    playerDragOffset = reduceMotion ? 0 : max(0, offset)
-                                },
-                                onDragEnded: { distance, predicted, velocity in
-                                    if PlayerTransitionGeometry.shouldDismiss(
-                                        distance: distance, predictedDistance: predicted, height: bounds.height
-                                    ) {
-                                        let remaining = max(1, source.minY - distance)
-                                        collapsePlayer(velocity: min(4, max(0, velocity / remaining)))
-                                    } else {
-                                        cancelPlayerDrag()
-                                    }
-                                },
-                                onDragCancelled: cancelPlayerDrag
-                            )
-                            .environment(scrollState)
-                            .onAppear {
-                                withAnimation(playerSpring()) { playerExpansion = 1 }
-                            }
-                        }
-                    }
+                    FullPlayerView(
+                        onCollapse: collapsePlayer,
+                        artworkTopInset: proxy.safeAreaInsets.top
+                    )
                 }
-                .ignoresSafeArea(.keyboard)
+                .navigationTransition(.zoom(sourceID: "nowPlaying", in: playerTransition))
+                .presentationBackground(.clear)
+                .environment(scrollState)
+                .accessibilityAction(.escape, collapsePlayer)
             }
         .onAppear { AppRouter.shared.selectedTabIndex = selectedTab }
         .onChange(of: selectedTab) { _, newValue in
@@ -121,43 +79,14 @@ struct ContentView: View {
         .simultaneousGesture(backSwipeGesture)
     }
 
-    private func playerSpring(velocity: CGFloat = 0) -> Animation {
-        reduceMotion ? .easeOut(duration: 0.15)
-            : .interpolatingSpring(mass: 1, stiffness: 300, damping: 30, initialVelocity: Double(velocity))
-    }
-
     private func expandPlayer() {
         guard !isExpanded else { return }
-        guard !miniPlayerFrame.isEmpty else {
-            pendingPlayerExpansion = true
-            return
-        }
         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
-        pendingPlayerExpansion = false
-        transitionSourceFrame = miniPlayerFrame
-        playerExpansion = 0
-        playerDragOffset = 0
-        isClosingPlayer = false
         isExpanded = true
     }
 
-    private func collapsePlayer(velocity: CGFloat = 0) {
-        pendingPlayerExpansion = false
-        guard isExpanded, !isClosingPlayer else { return }
-        transitionSourceFrame = miniPlayerFrame
-        isClosingPlayer = true
-        withAnimation(playerSpring(velocity: velocity), completionCriteria: .removed) {
-            playerExpansion = 0
-            playerDragOffset = 0
-        } completion: {
-            isExpanded = false
-            isClosingPlayer = false
-        }
-    }
-
-    private func cancelPlayerDrag() {
-        guard !isClosingPlayer, playerDragOffset > 0 else { return }
-        withAnimation(playerSpring()) { playerDragOffset = 0 }
+    private func collapsePlayer() {
+        isExpanded = false
     }
 
     private var backSwipeGesture: some Gesture {

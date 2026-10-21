@@ -94,9 +94,6 @@ struct MiniPlayerBarView: View {
 struct FullPlayerView: View {
     let onCollapse: () -> Void
     let artworkTopInset: CGFloat
-    let onDragChanged: (CGFloat) -> Void
-    let onDragEnded: (CGFloat, CGFloat, CGFloat) -> Void
-    let onDragCancelled: () -> Void
     var body: some View {
         VStack(spacing: 32) {
             Capsule().fill(.secondary).frame(width: 40, height: 5)
@@ -171,7 +168,7 @@ try:
         (work / "Fixture.swift").write_text(fixture)
         sdk = run("xcrun", "--sdk", "iphonesimulator", "--show-sdk-path")
         sources = [work / "Fixture.swift", work / "ContentView.swift"] + [
-            root / "Trop/Audio" / name for name in ["PlayerPresentation.swift", "PlayerTransitionGeometry.swift", "MiniPlayerScrollState.swift"]
+            root / "Trop/Audio" / name for name in ["MiniPlayerScrollState.swift"]
         ]
         run("xcrun", "--sdk", "iphonesimulator", "swiftc", "-parse-as-library", "-sdk", sdk,
             "-target", f"{platform.machine()}-apple-ios26.2-simulator", *sources, "-o", app / "SurfaceCheck")
