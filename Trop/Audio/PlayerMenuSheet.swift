@@ -40,9 +40,6 @@ struct PlayerMenuSheet: View {
                     } label: {
                         actionLabel("Copy Link", icon: "link")
                     }
-                } header: {
-                    Text(song.title)
-                        .textCase(nil)
                 }
 
                 Section("Library") {

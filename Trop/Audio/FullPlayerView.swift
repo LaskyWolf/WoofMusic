@@ -220,12 +220,12 @@ struct FullPlayerView: View {
                         progressSlider: { progressSlider },
                         isOverlay: true
                     )
-                    .frame(maxWidth: 520)
-                    .frame(height: geometry.size.height * 0.42)
-                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 24))
+                    .frame(maxWidth: .infinity)
+                    .frame(height: geometry.size.height * 0.72)
+                    .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 24))
                     .environment(\.colorScheme, .dark)
                     .padding(.horizontal, 20)
-                    .padding(.top, geometry.size.height * 0.08)
+                    .padding(.top, geometry.size.height * 0.04)
                     .transition(reduceMotion ? .opacity : .scale(scale: 0.95).combined(with: .opacity))
                     .accessibilityAction(.escape) { showQueue = false }
                 }
@@ -339,8 +339,8 @@ struct FullPlayerView: View {
                 title: np.title,
                 artist: np.displayArtist,
                 spacing: 4,
-                titleFont: .title3.weight(.bold),
-                titleHeight: 28,
+                titleFont: .title2.weight(.bold),
+                titleHeight: 30,
                 onArtistTap: { openCurrentArtist() }
             )
             .disabled(isOpeningArtist)

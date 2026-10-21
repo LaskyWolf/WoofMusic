@@ -23,7 +23,6 @@ struct QueueView<ProgressSlider: View>: View {
     var isOverlay: Bool = false
 
     @State private var showSongMenu = false
-    @State private var editMode: EditMode = .inactive
 
     var body: some View {
         queueContent
@@ -57,11 +56,6 @@ struct QueueView<ProgressSlider: View>: View {
                     Text("Up Next")
                         .font(.title2.bold())
                     Spacer()
-                    Button(editMode == .active ? "Done" : "Edit") {
-                        editMode = editMode == .active ? .inactive : .active
-                    }
-                    .frame(minWidth: 44, minHeight: 44)
-                    .accessibilityLabel(editMode == .active ? "Finish reordering queue" : "Reorder queue")
                     Button { showQueue = false } label: {
                         Image(systemName: "xmark")
                             .font(.body.weight(.semibold))
@@ -97,7 +91,6 @@ struct QueueView<ProgressSlider: View>: View {
                     }
                 }
                 .listStyle(.plain)
-                .environment(\.editMode, $editMode)
                 .scrollContentBackground(.hidden)
                 .environment(\.colorScheme, .dark)
                 .scrollIndicators(.hidden)
@@ -278,9 +271,6 @@ struct QueueView<ProgressSlider: View>: View {
             }
         )
         .listRowSeparator(.hidden)
-        .onDrag {
-            NSItemProvider(object: song.videoId as NSString)
-        }
         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
             Button(role: .destructive) {
                 withAnimation(.spring(response: 0.3)) {
@@ -346,8 +336,8 @@ struct QueueSongRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 MarqueeText(
                     text: song.title,
-                    font: .subheadline.weight(isCurrent ? .semibold : .medium),
-                    frameHeight: 20,
+                    font: .body.weight(isCurrent ? .semibold : .medium),
+                    frameHeight: 24,
                     textColor: titleColor
                 )
 
