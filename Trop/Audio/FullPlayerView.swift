@@ -234,6 +234,7 @@ struct FullPlayerView: View {
             .animation(.spring(response: 0.35, dampingFraction: 0.85), value: collapseOffset)
             .animation(.easeInOut(duration: reduceMotion ? 0.15 : 0.25), value: showQueue)
             .simultaneousGesture(collapseDrag)
+            .interactiveDismissDisabled(showLyrics || showQueue)
             .onChange(of: np.videoId) { _, _ in
                 np.isVideoMode = false
                 showLyrics = false
@@ -299,13 +300,13 @@ struct FullPlayerView: View {
     private var collapseDrag: some Gesture {
         DragGesture(minimumDistance: 12)
             .onChanged { value in
-                guard !showQueue, value.translation.height > 0,
+                guard !showLyrics, !showQueue, value.translation.height > 0,
                       value.translation.height > abs(value.translation.width) else { return }
                 collapseOffset = value.translation.height
             }
             .onEnded { value in
                 defer { collapseOffset = 0 }
-                guard !showQueue else { return }
+                guard !showLyrics, !showQueue else { return }
                 let isVertical = value.translation.height > abs(value.translation.width)
                 if isVertical, value.translation.height > 140 {
                     onCollapse()
