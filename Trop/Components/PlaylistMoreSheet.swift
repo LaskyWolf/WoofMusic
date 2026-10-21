@@ -12,67 +12,77 @@ struct PlaylistMoreSheet: View {
     var onSync: (() -> Void)?
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.settingsStore) private var settings
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var showEditAlert = false
     @State private var editedName = ""
+    @State private var showRemoveDownloads = false
 
     var body: some View {
-        SheetChrome {
-            MenuCard {
-                MenuRow(
-                    icon: "pencil",
-                    title: "Edit",
-                    subtitle: "Edit playlist"
-                ) {
-                    editedName = playlist.title
-                    showEditAlert = true
+        NavigationStack {
+            List {
+                Section {
+                    MenuSongPreview(
+                        title: playlist.title,
+                        artist: playlist.authorName ?? "\(playlist.songs.count) songs",
+                        thumbnailURL: playlist.thumbnailUrl ?? playlist.songs.first?.thumbnailUrl
+                    )
                 }
-                Divider()
-                MenuRow(
-                    icon: "arrow.triangle.2.circlepath",
-                    title: "Sync",
-                    subtitle: "Sync this playlist with YouTube Music"
-                ) {
-                    onSync?()
-                    dismiss()
+
+                Section {
+                    shortcutRow
                 }
-                Divider()
-                MenuRow(
-                    icon: "list.bullet",
-                    title: "Add to Queue",
-                    subtitle: "Add to the end of the queue"
-                ) {
-                    addToQueue()
-                    dismiss()
+
+                Section("Queue") {
+                    Button {
+                        addToQueue()
+                        dismiss()
+                    } label: {
+                        actionLabel("Add to Queue", icon: "list.bullet")
+                    }
+                    .disabled(playlist.songs.isEmpty)
                 }
-                Divider()
-                MenuRow(
-                    icon: "square.and.arrow.down",
-                    title: "Download",
-                    subtitle: "Download all songs for offline playback"
-                ) {
-                    downloadAll()
-                    dismiss()
-                }
-                Divider()
-                MenuRow(
-                    icon: "square.and.arrow.up",
-                    title: "Share",
-                    subtitle: "Share this playlist with others"
-                ) {
-                    share()
-                    dismiss()
-                }
-                Divider()
-                MenuRow(
-                    icon: "trash",
-                    title: "Delete",
-                    subtitle: "Remove all downloads",
-                    destructive: true
-                ) {
-                    deleteAllDownloads()
-                    dismiss()
+
+                Section {
+                    Button {
+                        downloadAll()
+                        dismiss()
+                    } label: {
+                        actionLabel("Download", icon: "arrow.down.circle")
+                    }
+                    .disabled(playlist.songs.isEmpty)
+
+                    Button(role: .destructive) {
+                        showRemoveDownloads = true
+                    } label: {
+                        Label("Remove Downloads", systemImage: "trash")
+                    }
+                    .disabled(playlist.songs.isEmpty)
+                } header: {
+                    Text("Downloads")
+                } footer: {
+                    Text("Remove Downloads deletes this playlist’s offline copies. Your playlist stays in your library.")
                 }
             }
+            .listStyle(.insetGrouped)
+            .tint(settings.accentColor)
+            .navigationTitle("Playlist Options")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                }
+            }
+        }
+        .appSheetChrome()
+        .destructiveConfirm(
+            "Remove Downloads?",
+            isPresented: $showRemoveDownloads,
+            message: Text("Remove offline copies of this playlist’s songs from your device?"),
+            confirmTitle: "Remove Downloads"
+        ) {
+            deleteAllDownloads()
+            dismiss()
         }
         .textPrompt(
             "Rename Playlist",
@@ -82,6 +92,35 @@ struct PlaylistMoreSheet: View {
             okTitle: "Rename",
             onOK: renamePlaylist
         )
+    }
+
+    private var shortcutRow: some View {
+        let layout = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(spacing: 8))
+            : AnyLayout(HStackLayout(spacing: 0))
+        return layout {
+            MenuShortcutButton(title: "Edit", icon: "pencil") {
+                editedName = playlist.title
+                showEditAlert = true
+            }
+            .accessibilityLabel("Rename Playlist")
+            if !dynamicTypeSize.isAccessibilitySize { Divider().frame(height: 32) }
+            MenuShortcutButton(title: "Sync", icon: "arrow.triangle.2.circlepath") {
+                onSync?()
+                dismiss()
+            }
+            .disabled(onSync == nil)
+            if !dynamicTypeSize.isAccessibilitySize { Divider().frame(height: 32) }
+            MenuShortcutButton(title: "Share", icon: "square.and.arrow.up", action: share)
+        }
+    }
+
+    private func actionLabel(_ title: String, icon: String) -> some View {
+        Label {
+            Text(title).foregroundStyle(.primary)
+        } icon: {
+            Image(systemName: icon).foregroundStyle(settings.accentColor)
+        }
     }
 
     // MARK: - Actions
