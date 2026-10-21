@@ -43,6 +43,7 @@ struct PlayerPresentation: View, Animatable {
 
             FullPlayerView(
                 onCollapse: onCollapse,
+                artworkTopInset: safeAreaInsets.top,
                 onDragChanged: onDragChanged,
                 onDragEnded: onDragEnded,
                 onDragCancelled: onDragCancelled
@@ -58,7 +59,7 @@ struct PlayerPresentation: View, Animatable {
             .accessibilityHidden(progress < 0.999)
 
             if !reduceMotion {
-                MiniPlayerBarView(onExpand: {})
+                MiniPlayerBarView(onExpand: {}, isTransitioning: true)
                     .frame(width: frame.width, height: geometry.collapsed.height)
                     .opacity(compactOpacity)
                     .allowsHitTesting(false)

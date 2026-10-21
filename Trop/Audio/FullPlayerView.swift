@@ -9,6 +9,7 @@ import SwiftUI
 
 struct FullPlayerView: View {
     let onCollapse: () -> Void
+    let artworkTopInset: CGFloat
     let onDragChanged: (CGFloat) -> Void
     let onDragEnded: (CGFloat, CGFloat, CGFloat) -> Void
     let onDragCancelled: () -> Void
@@ -89,7 +90,7 @@ struct FullPlayerView: View {
                 if !np.isVideoMode {
                     artwork
                         .frame(maxWidth: .infinity)
-                        .frame(height: (geometry.size.height + geometry.safeAreaInsets.top) * 0.58)
+                        .frame(height: (geometry.size.height + artworkTopInset) * 0.58)
                         .compositingGroup()
                         .clipped()
                         .mask {
@@ -103,7 +104,7 @@ struct FullPlayerView: View {
                                 endPoint: .bottom
                             )
                         }
-                        .offset(y: -geometry.safeAreaInsets.top)
+                        .offset(y: -artworkTopInset)
                         .frame(maxHeight: .infinity, alignment: .top)
                 }
 
@@ -504,9 +505,8 @@ struct FullPlayerView: View {
     private var artworkImage: some View {
         ZStack {
             if let uiImage = np.thumbnailUIImage {
-                let cropped = uiImage.centerCroppedSquare()
                 GeometryReader { geo in
-                    Image(uiImage: cropped)
+                    Image(uiImage: uiImage)
                         .resizable()
                         .scaledToFill()
                         .frame(width: geo.size.width, height: geo.size.height)

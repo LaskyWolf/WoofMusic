@@ -16,6 +16,7 @@ import Nuke
 /// 48pt floating glass capsule with a bottom progress line.
 struct MiniPlayerBarView: View {
     let onExpand: () -> Void
+    var isTransitioning = false
 
     @Environment(MiniPlayerScrollState.self) private var scrollState
     @Environment(\.colorScheme) private var colorScheme
@@ -140,7 +141,8 @@ struct MiniPlayerBarView: View {
                         text: song.title,
                         font: .system(size: 13, weight: .semibold),
                         frameHeight: 16,
-                        textColor: titleColor
+                        textColor: titleColor,
+                        isPaused: isTransitioning
                     )
                 }
 

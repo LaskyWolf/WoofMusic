@@ -13,6 +13,7 @@ struct MarqueeText: View {
     var font: Font = .body
     var frameHeight: CGFloat = 24
     var textColor: Color = .white
+    var isPaused = false
 
     // MARK: - State
     @State private var offset: CGFloat = 0
@@ -79,6 +80,9 @@ struct MarqueeText: View {
         }
         .frame(height: frameHeight)
         .accessibilityLabel(text)
+        .onChange(of: isPaused) { _, paused in
+            if paused { stop() } else { ensureTask() }
+        }
         .onChange(of: text) { oldText, newText in
             guard oldText != newText else { return }
             restart()
@@ -109,14 +113,14 @@ struct MarqueeText: View {
         // Never spin the infinite loop for non-overflowing text — this was
         // the "always-animating" churn: a task per MarqueeText that slept
         // 2s then re-checked forever even when nothing would scroll.
-        guard shouldScroll, animationTask == nil else { return }
+        guard !isPaused, shouldScroll, animationTask == nil else { return }
         startTask()
     }
 
     private func startTask() {
         animationTask?.cancel()
         // Static text needs no task at all.
-        guard shouldScroll else {
+        guard !isPaused, shouldScroll else {
             animationTask = nil
             resetOffset()
             return

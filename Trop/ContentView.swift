@@ -17,6 +17,7 @@ struct ContentView: View {
     @State private var playerExpansion: CGFloat = 0
     @State private var playerDragOffset: CGFloat = 0
     @State private var miniPlayerFrame: CGRect = .zero
+    @State private var transitionSourceFrame: CGRect = .zero
     @State private var isClosingPlayer = false
     @State private var pendingPlayerExpansion = false
     @State private var scrollState = MiniPlayerScrollState()
@@ -41,7 +42,7 @@ struct ContentView: View {
         }
         .tabBarMinimizeBehavior(.onScrollDown)
             .tabViewBottomAccessory(isEnabled: nowPlaying.isBarPresented) {
-                MiniPlayerBarView(onExpand: expandPlayer)
+                MiniPlayerBarView(onExpand: expandPlayer, isTransitioning: isExpanded)
                     .onGeometryChange(for: CGRect.self) { proxy in
                         proxy.frame(in: .global)
                     } action: { frame in
@@ -64,7 +65,7 @@ struct ContentView: View {
                         let bounds = CGRect(x: 0, y: 0, width: proxy.size.width,
                                             height: proxy.size.height + insets.top + insets.bottom)
                         let origin = proxy.frame(in: .global).origin
-                        let source = miniPlayerFrame.offsetBy(dx: -origin.x, dy: -origin.y + insets.top)
+                        let source = transitionSourceFrame.offsetBy(dx: -origin.x, dy: -origin.y + insets.top)
                         ZStack {
                             Color.clear
                                 .contentShape(Rectangle())
@@ -134,6 +135,7 @@ struct ContentView: View {
         }
         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
         pendingPlayerExpansion = false
+        transitionSourceFrame = miniPlayerFrame
         playerExpansion = 0
         playerDragOffset = 0
         isClosingPlayer = false
@@ -143,6 +145,7 @@ struct ContentView: View {
     private func collapsePlayer(velocity: CGFloat = 0) {
         pendingPlayerExpansion = false
         guard isExpanded, !isClosingPlayer else { return }
+        transitionSourceFrame = miniPlayerFrame
         isClosingPlayer = true
         withAnimation(playerSpring(velocity: velocity), completionCriteria: .removed) {
             playerExpansion = 0
