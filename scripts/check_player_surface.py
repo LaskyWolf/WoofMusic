@@ -12,7 +12,7 @@ output.mkdir(parents=True, exist_ok=True)
 
 
 def run(*args):
-    return subprocess.check_output(["rtk", *map(str, args)], text=True).strip()
+    return subprocess.check_output(list(map(str, args)), text=True).strip()
 
 
 fixture = r'''import SwiftUI
