@@ -31,9 +31,6 @@ struct PlayerPresentation: View, Animatable {
         let compactOpacity = min(1, max(0, (1 - progress) * 3 + dragOffset / geometry.expanded.height))
 
         ZStack(alignment: .top) {
-            Color.clear
-                .glassEffect(.regular, in: RoundedRectangle(cornerRadius: radius, style: .continuous))
-
             LinearGradient(
                 colors: settings.playerBackgroundStyle == .solid ? [.black, .black] : np.dominantColors,
                 startPoint: .top,
@@ -68,6 +65,7 @@ struct PlayerPresentation: View, Animatable {
         }
         .frame(width: frame.width, height: frame.height, alignment: .top)
         .clipShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
+        .glassEffect(.regular, in: RoundedRectangle(cornerRadius: radius, style: .continuous))
         .opacity(reduceMotion ? progress : 1)
         .position(x: frame.midX, y: frame.midY - safeAreaInsets.top)
         .accessibilityAddTraits(.isModal)
