@@ -140,7 +140,7 @@ struct LastFMAuthWebView: View {
                 if await MainActor.run(body: { isExchanging }) { continue }
                 do {
                     let auth = try await LastFMService.shared.getSession(token: tok)
-                    LastFMTokenStore.shared.store(sessionKey: auth.session.key, username: auth.session.name)
+                    try LastFMTokenStore.shared.store(sessionKey: auth.session.key, username: auth.session.name)
                     LastFMService.shared.sessionKey = auth.session.key
                     await MainActor.run {
                         pollingTask?.cancel()
@@ -157,7 +157,10 @@ struct LastFMAuthWebView: View {
                     // Other API errors are not retried silently
                     continue
                 } catch {
-                    continue
+                    await MainActor.run {
+                        errorText = "Could not securely save your Last.fm session. Please try signing in again."
+                    }
+                    break
                 }
             }
         }
@@ -168,7 +171,7 @@ struct LastFMAuthWebView: View {
         // Silent probe — don't show overlay unless success
         do {
             let auth = try await LastFMService.shared.getSession(token: tok)
-            LastFMTokenStore.shared.store(sessionKey: auth.session.key, username: auth.session.name)
+            try LastFMTokenStore.shared.store(sessionKey: auth.session.key, username: auth.session.name)
             LastFMService.shared.sessionKey = auth.session.key
             await MainActor.run {
                 pollingTask?.cancel()
@@ -181,7 +184,7 @@ struct LastFMAuthWebView: View {
             if case .unauthorizedToken = e { return }
             // ignore other errors until next poll
         } catch {
-            return
+            errorText = "Could not securely save your Last.fm session. Please try signing in again."
         }
     }
 }

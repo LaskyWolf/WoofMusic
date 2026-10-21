@@ -20,8 +20,10 @@ struct QueueView<ProgressSlider: View>: View {
     let pendingRoute: Binding<DetailRoute?>
     @ViewBuilder var progressSlider: () -> ProgressSlider
     var isVideoMode: Bool = false
+    var isOverlay: Bool = false
 
     @State private var showSongMenu = false
+    @State private var editMode: EditMode = .inactive
 
     var body: some View {
         queueContent
@@ -50,13 +52,35 @@ struct QueueView<ProgressSlider: View>: View {
 
     private var queueContent: some View {
         VStack(spacing: 0) {
-            if !isVideoMode {
+            if isOverlay {
+                HStack {
+                    Text("Up Next")
+                        .font(.title2.bold())
+                    Spacer()
+                    Button(editMode == .active ? "Done" : "Edit") {
+                        editMode = editMode == .active ? .inactive : .active
+                    }
+                    .frame(minWidth: 44, minHeight: 44)
+                    .accessibilityLabel(editMode == .active ? "Finish reordering queue" : "Reorder queue")
+                    Button { showQueue = false } label: {
+                        Image(systemName: "xmark")
+                            .font(.body.weight(.semibold))
+                            .frame(width: 44, height: 44)
+                    }
+                    .accessibilityLabel("Close queue")
+                }
+                .foregroundStyle(.white)
+                .padding(.leading, 20)
+                .padding(.trailing, 8)
+                .padding(.top, 8)
+                playbackPillsRow
+            } else if !isVideoMode {
                 queueHeader
                     .padding(.horizontal, 20)
                 playbackPillsRow
             }
 
-            queueListHeaderRow
+            if !isOverlay { queueListHeaderRow }
 
             ScrollViewReader { proxy in
                 List {
@@ -73,6 +97,7 @@ struct QueueView<ProgressSlider: View>: View {
                     }
                 }
                 .listStyle(.plain)
+                .environment(\.editMode, $editMode)
                 .scrollContentBackground(.hidden)
                 .environment(\.colorScheme, .dark)
                 .scrollIndicators(.hidden)
@@ -94,7 +119,7 @@ struct QueueView<ProgressSlider: View>: View {
                     onPlayPause: { player.togglePlayPause() },
                     onNext: { np.playNext() }
                 )
-            } else {
+            } else if !isOverlay {
                 VStack(spacing: 16) {
                     progressSlider()
                         .padding(.top, 16)
@@ -117,6 +142,7 @@ struct QueueView<ProgressSlider: View>: View {
                 .padding(.bottom, 16)
             }
         }
+        .clipShape(RoundedRectangle(cornerRadius: isOverlay ? 24 : 0))
     }
 
     // MARK: - Queue Header
@@ -192,12 +218,14 @@ struct QueueView<ProgressSlider: View>: View {
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(.white)
                 .frame(maxWidth: .infinity)
-                .frame(height: 34)
+                .frame(height: 44)
                 .background(
                     Capsule()
                         .fill(isOn.wrappedValue ? .white.opacity(0.15) : .white.opacity(0.07))
                 )
         }
+        .accessibilityLabel(icon == "shuffle" ? "Shuffle" : "Repeat")
+        .accessibilityValue(isOn.wrappedValue ? "On" : "Off")
     }
 
     private var queueListHeaderRow: some View {

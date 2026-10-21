@@ -91,7 +91,6 @@ private final class LoginNavigationDelegate: NSObject, WKNavigationDelegate {
 
             for cookie in cookies where cookie.domain.contains("youtube.com") || cookie.domain.contains("google.com") {
                 cookieDict[cookie.name] = cookie.value
-                Log.login.debug("  Cookie: \(cookie.name) = \(cookie.value.prefix(20))... (domain: \(cookie.domain))")
 
                 if cookie.name == "__Secure-3PSAPISID" || cookie.name == "SAPISID" {
                     sapisid = cookie.value
@@ -118,7 +117,7 @@ private final class LoginNavigationDelegate: NSObject, WKNavigationDelegate {
             webView.evaluateJavaScript("window.yt?.config_?.DATASYNC_ID ?? ''") { result, error in
                 if let dataSyncId = result as? String, !dataSyncId.isEmpty {
                     self?.model.dataSyncId = dataSyncId
-                    Log.login.debug("  ✅ Found dataSyncId: \(dataSyncId.prefix(15))...")
+                    Log.login.debug("Account sync identifier found")
                 } else if let error = error {
                     Log.login.error("  ⚠️ JS eval for dataSyncId failed: \(error.localizedDescription)")
                 } else {

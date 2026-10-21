@@ -20,17 +20,22 @@ final class LastFMTokenStore: @unchecked Sendable {
     private var cachedSessionKey: String?
     private var cachedUsername: String?
 
-    private init() {}
+    private init() {
+        if let legacy = UserDefaults.standard.string(forKey: LastFMDefaults.sessionKeyKey), !legacy.isEmpty {
+            cachedSessionKey = legacy
+            do {
+                try saveString(legacy, for: sessionKeyAccount)
+            } catch {
+                Log.lastfm.error("Could not migrate Last.fm session to Keychain; reconnect after restarting")
+            }
+        }
+        UserDefaults.standard.removeObject(forKey: LastFMDefaults.sessionKeyKey)
+    }
 
-    // Mirror UserDefaults for quick reads (keep in sync)
+    // Credentials are read only from memory or Keychain.
     func retrieveSessionKey() -> String? {
         queue.sync {
             if let cached = cachedSessionKey { return cached.isEmpty ? nil : cached }
-            if let fromDefaults = UserDefaults.standard.string(forKey: LastFMDefaults.sessionKeyKey),
-               !fromDefaults.isEmpty {
-                cachedSessionKey = fromDefaults
-                return fromDefaults
-            }
             let val: String? = loadString(for: sessionKeyAccount)
             cachedSessionKey = val
             return val
@@ -51,13 +56,12 @@ final class LastFMTokenStore: @unchecked Sendable {
         }
     }
 
-    func store(sessionKey: String, username: String) {
-        queue.sync(flags: .barrier) {
-            saveString(sessionKey, for: sessionKeyAccount)
-            saveString(username, for: usernameAccount)
+    func store(sessionKey: String, username: String) throws {
+        try queue.sync(flags: .barrier) {
+            try saveString(sessionKey, for: sessionKeyAccount)
             self.cachedSessionKey = sessionKey
             self.cachedUsername = username
-            UserDefaults.standard.set(sessionKey, forKey: LastFMDefaults.sessionKeyKey)
+            UserDefaults.standard.removeObject(forKey: LastFMDefaults.sessionKeyKey)
             UserDefaults.standard.set(username, forKey: LastFMDefaults.usernameKey)
         }
     }
@@ -76,9 +80,8 @@ final class LastFMTokenStore: @unchecked Sendable {
 
     // MARK: - Keychain primitives
 
-    private func saveString(_ value: String, for key: String) {
-        guard let data = value.data(using: .utf8) else { return }
-        try? store.save(data, for: key)
+    private func saveString(_ value: String, for key: String) throws {
+        try store.save(Data(value.utf8), for: key)
     }
 
     private func loadString(for key: String) -> String? {

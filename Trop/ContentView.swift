@@ -14,6 +14,7 @@ struct ContentView: View {
     @State private var selectedTab = SettingsStore.shared.defaultTab
     @State private var isExpanded = false
     @State private var scrollState = MiniPlayerScrollState()
+    @Namespace private var playerTransition
 
     var body: some View {
         TabView(selection: $selectedTab) {
@@ -43,23 +44,17 @@ struct ContentView: View {
                         from: nil,
                         for: nil
                     )
-                    withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
-                        isExpanded = true
-                    }
+                    isExpanded = true
                 })
+                .matchedTransitionSource(id: "nowPlaying", in: playerTransition)
             }
             .background {
                 backgroundLayer
             }
-            .overlay {
-                if isExpanded {
-                    FullPlayerView(onCollapse: {
-                        withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
-                            isExpanded = false
-                        }
-                    })
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-                }
+            .fullScreenCover(isPresented: $isExpanded) {
+                FullPlayerView(onCollapse: { isExpanded = false })
+                    .navigationTransition(.zoom(sourceID: "nowPlaying", in: playerTransition))
+                    .environment(scrollState)
             }
             .environment(scrollState)
         .onAppear { AppRouter.shared.selectedTabIndex = selectedTab }
@@ -70,15 +65,11 @@ struct ContentView: View {
             // A detail page was opened from an overlay: collapse the player so
             // the pushed page is visible underneath.
             if route != nil {
-                withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
-                    isExpanded = false
-                }
+                isExpanded = false
             }
         }
         .onReceive(AppRouter.shared.$playerExpandToken.dropFirst()) { _ in
-            withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
-                isExpanded = true
-            }
+            isExpanded = true
         }
         .simultaneousGesture(backSwipeGesture)
     }

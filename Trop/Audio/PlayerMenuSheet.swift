@@ -7,7 +7,7 @@
 
 import SwiftUI
 
-/// library/download/details rows.
+/// Song actions presented with the same grouped list as Settings.
 struct PlayerMenuSheet: View {
     let song: SongItem
     /// Collapses the Big Player so the pushed page is visible underneath.
@@ -15,12 +15,6 @@ struct PlayerMenuSheet: View {
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.settingsStore) private var settings
-
-    enum Destination: Hashable {
-        case equalizer
-        case details
-        case similar
-    }
 
     // Loaded state
     @State private var pin = PinState()
@@ -31,64 +25,68 @@ struct PlayerMenuSheet: View {
     @Environment(\.downloadManager) private var downloadManager
 
     var body: some View {
-        SheetChrome {
-            Group {
-                eqVolumeCard
-                actionGrid
-                MenuCard {
+        NavigationStack {
+            List {
+                Section {
+                    Button(action: startRadio) {
+                        actionLabel("Start Radio", icon: "dot.radiowaves.left.and.right")
+                    }
+                    Button { showPlaylistPicker = true } label: {
+                        actionLabel("Add to Playlist", icon: "music.note.list")
+                    }
+                    Button {
+                        UIPasteboard.general.string = song.webUrl
+                        dismiss()
+                    } label: {
+                        actionLabel("Copy Link", icon: "link")
+                    }
+                } header: {
+                    Text(song.title)
+                        .textCase(nil)
+                }
+
+                Section("Library") {
                     viewArtistRow
                     if let albumId = song.firstAlbumBrowseId {
-                        Divider()
-                        MenuRow(icon: "record.circle", title: "View Album", subtitle: song.album) {
-                            navigate(.album(browseId: albumId))
+                        Button { navigate(.album(browseId: albumId)) } label: {
+                            actionLabel("View Album", icon: "record.circle")
                         }
                     }
-                    Divider()
                     pinRow
-                    Divider()
                     downloadRow
                 }
-                MenuCard {
-                    NavigationLink(value: Destination.details) {
-                        MenuRowLabel(icon: "info.circle", title: "Details", subtitle: "Metadata & stream information")
+
+                Section("More") {
+                    SettingsNavigationRow("Details", icon: "info.circle") {
+                        SongDetailsView(song: song)
                     }
-                    .buttonStyle(.plain)
-                    Divider()
-                    NavigationLink(value: Destination.similar) {
-                        MenuRowLabel(
-                            icon: "dot.radiowaves.left.and.right",
-                            title: "Similar to this song",
-                            subtitle: "More like “\(song.title)”"
+                    SettingsNavigationRow("Similar to this song", icon: "dot.radiowaves.left.and.right") {
+                        SimilarSongsView(
+                            song: song,
+                            onNavigate: { navigate($0) },
+                            onPlaySong: { similar, songs in
+                                dismiss()
+                                PlaybackQueue.play(similar, in: songs, log: Log.search, context: "SimilarTo tap")
+                                AppRouter.shared.expandPlayer()
+                            }
                         )
                     }
-                    .buttonStyle(.plain)
-                    Divider()
-                    MenuRow(
-                        icon: "slider.horizontal.3",
-                        title: "Customize Radio",
-                        subtitle: "Style, size & explicit filter"
-                    ) { showRadioOptions = true }
+                    Button { showRadioOptions = true } label: {
+                        actionLabel("Customize Radio", icon: "slider.horizontal.3")
+                    }
                 }
             }
-            .navigationDestination(for: Destination.self) { dest in
-                switch dest {
-                case .equalizer:
-                    EqualizerView()
-                case .details:
-                    SongDetailsView(song: song)
-                case .similar:
-                    SimilarSongsView(
-                        song: song,
-                        onNavigate: { navigate($0) },
-                        onPlaySong: { similar, songs in
-                            dismiss()
-                            PlaybackQueue.play(similar, in: songs, log: Log.search, context: "SimilarTo tap")
-                            AppRouter.shared.expandPlayer()
-                        }
-                    )
+            .listStyle(.insetGrouped)
+            .tint(settings.accentColor)
+            .navigationTitle("Song Options")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
                 }
             }
         }
+        .appSheetChrome()
         .confirmationDialog("View Artist", isPresented: $showArtistPicker, titleVisibility: .visible) {
             ForEach(song.artists.filter { !$0.name.isEmpty }, id: \.self) { artist in
                 Button(artist.name) {
@@ -105,95 +103,12 @@ struct PlayerMenuSheet: View {
         .task { await pin.load(videoId: song.videoId) }
     }
 
-    // MARK: - EQ + App Volume
-
-    private var cardBackground: some View {
-        RoundedRectangle(cornerRadius: 16, style: .continuous)
-            .fill(Color(.secondarySystemGroupedBackground))
-    }
-
-    private var eqVolumeCard: some View {
-        HStack(spacing: 12) {
-            NavigationLink(value: Destination.equalizer) {
-                Label("EQ", systemImage: "slider.horizontal.3")
-                    .font(.subheadline.weight(.semibold))
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 9)
-                    .background(Capsule().fill(settings.accentColor.opacity(0.15)))
-                    .foregroundStyle(settings.accentColor)
-            }
-
-            Image(systemName: volumeIconName)
-                .font(.callout)
-                .foregroundStyle(settings.accentColor)
-                .frame(width: 24)
-
-            VolumeSlider(
-                value: Binding(
-                    get: { settings.playerVolume },
-                    set: { newValue in
-                        settings.playerVolume = newValue.clamped01
-                        PlayerController.shared.applyPlayerVolume()
-                    }
-                ),
-                accentColor: settings.accentColor
-            )
-            .accessibilityLabel("App volume")
+    private func actionLabel(_ title: String, icon: String) -> some View {
+        Label {
+            Text(title).foregroundStyle(.primary)
+        } icon: {
+            Image(systemName: icon).foregroundStyle(settings.accentColor)
         }
-        .padding(16)
-        .background(cardBackground)
-    }
-
-    private var volumeIconName: String {
-        switch settings.playerVolume {
-        case ..<0.01: return "speaker.slash.fill"
-        case ..<0.34: return "speaker.wave.1.fill"
-        case ..<0.67: return "speaker.wave.2.fill"
-        default: return "speaker.wave.3.fill"
-        }
-    }
-
-    // MARK: - Quick Actions
-
-    private var actionGrid: some View {
-        HStack(spacing: 0) {
-            actionButton(icon: "dot.radiowaves.left.and.right", label: "Start Radio") {
-                startRadio()
-            }
-            separator
-            actionButton(icon: "music.note.list", label: "Playlist") {
-                showPlaylistPicker = true
-            }
-            separator
-            actionButton(icon: "link", label: "Copy Link") {
-                UIPasteboard.general.string = song.webUrl
-                dismiss()
-            }
-        }
-        .background(Color(.secondarySystemGroupedBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-    }
-
-    private var separator: some View {
-        Color(.separator)
-            .frame(width: 0.5, height: 28)
-    }
-
-    private func actionButton(icon: String, label: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            VStack(spacing: 6) {
-                Image(systemName: icon)
-                    .font(.system(size: 20, weight: .medium))
-                    .foregroundStyle(settings.accentColor)
-                Text(label)
-                    .font(.caption)
-                    .foregroundStyle(.primary)
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 14)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
     }
 
     // MARK: - Download Row
@@ -203,15 +118,19 @@ struct PlayerMenuSheet: View {
         return Group {
             switch state {
             case .completed:
-                MenuRow(icon: "checkmark.circle.fill", title: "Remove Download", destructive: true) {
+                Button(role: .destructive) {
                     Task { await downloadManager.delete(videoId: song.videoId) }
+                } label: {
+                    Label("Remove Download", systemImage: "trash")
                 }
             case .downloading:
-                MenuRow(icon: "arrow.down.circle", title: "Downloading…") {}
-                    .disabled(true)
+                Label("Downloading…", systemImage: "arrow.down.circle")
+                    .foregroundStyle(.secondary)
             case .notStarted, .failed:
-                MenuRow(icon: "arrow.down.circle", title: "Download") {
+                Button {
                     Task { await downloadManager.download(song: song) }
+                } label: {
+                    actionLabel("Download", icon: "arrow.down.circle")
                 }
             }
         }
@@ -220,44 +139,22 @@ struct PlayerMenuSheet: View {
     // MARK: - Library Rows
 
     private var viewArtistRow: some View {
-        Button {
-            handleViewArtist()
-        } label: {
-            HStack(spacing: 14) {
-                if isResolvingArtist {
-                    ProgressView()
-                        .frame(width: 26)
-                } else {
-                    Image(systemName: "music.mic")
-                        .font(.system(size: 18))
-                        .foregroundStyle(settings.accentColor)
-                        .frame(width: 26)
-                }
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("View Artist")
-                        .font(.body)
-                        .foregroundStyle(.primary)
-                    Text(song.artistNamesDisplay)
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
+        Button(action: handleViewArtist) {
+            HStack {
+                actionLabel("View Artist", icon: "music.mic")
                 Spacer()
+                if isResolvingArtist { ProgressView() }
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-            .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
         .disabled(song.artists.isEmpty || isResolvingArtist)
     }
 
     private var pinRow: some View {
-        MenuRow(
-            icon: pin.isPinned ? "pin.fill" : "pin",
-            title: pin.isPinned ? "Unpin from Quick Picks" : "Pin to Quick Picks"
-        ) {
+        Button {
             Task { await pin.toggle(song: song) }
+        } label: {
+            actionLabel(pin.isPinned ? "Unpin from Quick Picks" : "Pin to Quick Picks",
+                        icon: pin.isPinned ? "pin.fill" : "pin")
         }
     }
 
@@ -560,39 +457,5 @@ struct SongDetailsView: View {
         } else {
             viewCountText = "Unavailable"
         }
-    }
-}
-
-// MARK: - Volume Slider 
-
-/// Thick capsule slider with a round thumb
-private struct VolumeSlider: View {
-    @Binding var value: Double
-    let accentColor: Color
-
-    var body: some View {
-        GeometryReader { geo in
-            let width = max(0, geo.size.width)
-            ZStack(alignment: .leading) {
-                Capsule()
-                    .fill(Color(.tertiarySystemFill))
-                Capsule()
-                    .fill(accentColor)
-                    .frame(width: max(16, width * value))
-                Circle()
-                    .fill(Color.white)
-                    .frame(width: 15, height: 15)
-                    .shadow(color: .black.opacity(0.25), radius: 2.5, x: 0, y: 1)
-                    .offset(x: min(width - 15, max(0, width * value - 7.5)))
-            }
-            .contentShape(Rectangle())
-            .gesture(
-                DragGesture(minimumDistance: 0)
-                    .onChanged { gesture in
-                        value = (gesture.location.x / width).clamped01
-                    }
-            )
-        }
-        .frame(height: 28)
     }
 }

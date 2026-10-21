@@ -60,7 +60,11 @@ final class LastFMService: @unchecked Sendable {
             if let v = newValue, !v.isEmpty {
                 // keep username as-is
                 let username = LastFMTokenStore.shared.retrieveUsername() ?? ""
-                LastFMTokenStore.shared.store(sessionKey: v, username: username)
+                do {
+                    try LastFMTokenStore.shared.store(sessionKey: v, username: username)
+                } catch {
+                    Log.lastfm.error("Could not save Last.fm session to Keychain")
+                }
             }
         }
     }
@@ -133,8 +137,8 @@ final class LastFMService: @unchecked Sendable {
                 Log.lastfm.error("LastFM \(method) status=\(status) apiError=\(err.error) msg=\(err.message)")
                 throw LastFMError.api(err.error, err.message)
             }
-            Log.lastfm.error("LastFM \(method) http=\(status) body=\(bodyStr.prefix(300))")
-            throw LastFMError.http(status, bodyStr)
+            Log.lastfm.error("LastFM \(method) http=\(status)")
+            throw LastFMError.http(status, "Response body omitted")
         }
 
         do {
@@ -147,7 +151,7 @@ final class LastFMService: @unchecked Sendable {
                 Log.lastfm.error("LastFM \(method) apiError=\(err.error) msg=\(err.message)")
                 throw LastFMError.api(err.error, err.message)
             }
-            Log.lastfm.error("LastFM \(method) decode failed body=\(bodyStr.prefix(300))")
+            Log.lastfm.error("LastFM \(method) response could not be decoded")
             throw LastFMError.network(error)
         }
     }

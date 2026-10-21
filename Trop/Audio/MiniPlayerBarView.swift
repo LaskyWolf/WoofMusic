@@ -19,6 +19,7 @@ struct MiniPlayerBarView: View {
 
     @Environment(MiniPlayerScrollState.self) private var scrollState
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private let player = PlayerController.shared
     @Bindable private var np = NowPlaying.shared
@@ -68,7 +69,7 @@ struct MiniPlayerBarView: View {
         HStack(spacing: 0) {
             pagingArea
             playPauseButton
-                .padding(.trailing, 16)
+                .padding(.trailing, 8)
         }
         .frame(height: barHeight)
         .frame(maxWidth: .infinity)
@@ -128,7 +129,7 @@ struct MiniPlayerBarView: View {
             barArtwork(for: song.videoId)
 
             VStack(alignment: .leading, spacing: 0) {
-                if isInline {
+                if isInline || reduceMotion {
                     Text(song.title)
                         .font(.system(size: 13, weight: .semibold))
                         .lineLimit(1)
@@ -149,9 +150,13 @@ struct MiniPlayerBarView: View {
                     .lineLimit(1)
                     .truncationMode(.tail)
             }
+            .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
+            .clipped()
         }
-        .frame(width: width, alignment: .leading)
         .padding(.leading, 16)
+        .padding(.trailing, 8)
+        .frame(width: width, alignment: .leading)
+        .clipped()
         .contentShape(Rectangle())
     }
 
@@ -172,11 +177,13 @@ struct MiniPlayerBarView: View {
     }
 
     private var playPauseButton: some View {
-                Button(action: { player.togglePlayPause() }, label: {
+        Button(action: { player.togglePlayPause() }, label: {
             Image(systemName: np.isPlaying ? "pause.fill" : "play.fill")
                 .contentTransition(.symbolEffect(.replace))
                 .font(.system(size: 17))
                 .foregroundStyle(.tint)
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
         })
         .accessibilityLabel(np.isPlaying ? "Pause" : "Play")
     }

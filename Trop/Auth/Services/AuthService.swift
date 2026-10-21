@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import WebKit
 
 // Errors specific to session import and login verification
 enum AuthError: LocalizedError {
@@ -57,5 +58,24 @@ actor AuthService {
   func logout() async {
     await cookieStore.clear()
     await innerTube.loadState(from: cookieStore)
+    await Self.clearGoogleWebsiteData()
   }
+
+    @MainActor
+    private static func clearGoogleWebsiteData() async {
+        let store = WKWebsiteDataStore.default()
+        let roots = ["google.com", "youtube.com"]
+        for cookie in await store.httpCookieStore.allCookies() {
+            let domain = cookie.domain.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: "."))
+            if roots.contains(where: { domain == $0 || domain.hasSuffix("." + $0) }) {
+                await store.httpCookieStore.deleteCookie(cookie)
+            }
+        }
+        let types = WKWebsiteDataStore.allWebsiteDataTypes()
+        let records = await store.dataRecords(ofTypes: types).filter { record in
+            let domain = record.displayName.lowercased()
+            return roots.contains { domain == $0 || domain.hasSuffix("." + $0) }
+        }
+        await store.removeData(ofTypes: types, for: records)
+    }
 }

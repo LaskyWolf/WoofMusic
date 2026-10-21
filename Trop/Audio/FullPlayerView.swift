@@ -11,6 +11,7 @@ struct FullPlayerView: View {
     let onCollapse: () -> Void
 
     @Environment(SettingsStore.self) private var settings
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private let player = PlayerController.shared
     @Bindable private var np = NowPlaying.shared
     @State private var editingProgress: Float = 0
@@ -26,6 +27,8 @@ struct FullPlayerView: View {
     @State private var showQueue = false
     @State private var pendingRoute: DetailRoute?
     @State private var showSongMenu = false
+    @State private var isOpeningArtist = false
+    @State private var artistUnavailable = false
     @State private var artworkEntryOffset: CGFloat = 0
     @State private var currentLyrics: [LyricLine] = []
     @State private var canvasDominantColors: [Color]?
@@ -78,7 +81,7 @@ struct FullPlayerView: View {
                         .ignoresSafeArea()
                 }
 
-                if !showLyrics && !showQueue && !np.isVideoMode {
+                if !showLyrics && !np.isVideoMode {
                     artwork
                         .frame(maxWidth: .infinity)
                         .frame(height: (geometry.size.height + geometry.safeAreaInsets.top) * 0.58)
@@ -107,9 +110,14 @@ struct FullPlayerView: View {
                         .padding(.bottom, 16)
                         .contentShape(Rectangle().size(width: 60, height: 30))
                         .onTapGesture {
-                            guard showLyrics else { return }
-                            withAnimation(.easeInOut(duration: 0.3)) {
-                                showLyrics = false
+                            if showQueue {
+                                showQueue = false
+                            } else if showLyrics {
+                                withAnimation(.easeInOut(duration: 0.3)) {
+                                    showLyrics = false
+                                }
+                            } else {
+                                onCollapse()
                             }
                         }
                         .accessibilityLabel(showLyrics ? "Close lyrics" : "Collapse player")
@@ -122,16 +130,6 @@ struct FullPlayerView: View {
                         )
                     } else if np.isVideoMode && np.hasVideo {
                         musicVideoContent
-                    } else if showQueue {
-                        QueueView(
-                            showQueue: $showQueue,
-                            isShuffleOn: $np.isShuffleOn,
-                            isRepeatOn: $np.isRepeatOn,
-                            editingProgress: $editingProgress,
-                            isEditingSlider: $isEditingSlider,
-                            pendingRoute: $pendingRoute,
-                            progressSlider: { progressSlider }
-                        )
                     } else {
                         Color.clear.frame(height: 8)
 
@@ -210,14 +208,35 @@ struct FullPlayerView: View {
                     }
                 }
             }
+            .overlay(alignment: .top) {
+                if showQueue && !np.isVideoMode {
+                    QueueView(
+                        showQueue: $showQueue,
+                        isShuffleOn: $np.isShuffleOn,
+                        isRepeatOn: $np.isRepeatOn,
+                        editingProgress: $editingProgress,
+                        isEditingSlider: $isEditingSlider,
+                        pendingRoute: $pendingRoute,
+                        progressSlider: { progressSlider },
+                        isOverlay: true
+                    )
+                    .frame(maxWidth: 520)
+                    .frame(height: geometry.size.height * 0.42)
+                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 24))
+                    .environment(\.colorScheme, .dark)
+                    .padding(.horizontal, 20)
+                    .padding(.top, geometry.size.height * 0.08)
+                    .transition(reduceMotion ? .opacity : .scale(scale: 0.95).combined(with: .opacity))
+                    .accessibilityAction(.escape) { showQueue = false }
+                }
+            }
             .offset(y: collapseOffset)
             .animation(.spring(response: 0.35, dampingFraction: 0.85), value: collapseOffset)
-            .animation(.easeInOut(duration: 0.35), value: showQueue)
+            .animation(.easeInOut(duration: reduceMotion ? 0.15 : 0.25), value: showQueue)
             .simultaneousGesture(collapseDrag)
             .onChange(of: np.videoId) { _, _ in
                 np.isVideoMode = false
                 showLyrics = false
-                showQueue = false
                 preloadLyrics()
             }
             .onChange(of: np.queueSongs.count) { _, _ in
@@ -232,6 +251,11 @@ struct FullPlayerView: View {
             }
             .task { np.preloadNeighborArtwork() }
             .task(id: np.videoId) { await loadCurrentLyrics() }
+            .alert("Artist unavailable", isPresented: $artistUnavailable) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text("The artist page could not be found. Try again when connected.")
+            }
             .sheet(isPresented: $showSongMenu) {
                 if let song = np.queueSongs.indices.contains(np.queueIndex) ? np.queueSongs[np.queueIndex] : nil {
                     PlayerMenuSheet(song: song, onCollapseRequest: { onCollapse() })
@@ -275,12 +299,13 @@ struct FullPlayerView: View {
     private var collapseDrag: some Gesture {
         DragGesture(minimumDistance: 12)
             .onChanged { value in
-                guard value.translation.height > 0,
+                guard !showQueue, value.translation.height > 0,
                       value.translation.height > abs(value.translation.width) else { return }
                 collapseOffset = value.translation.height
             }
             .onEnded { value in
                 defer { collapseOffset = 0 }
+                guard !showQueue else { return }
                 let isVertical = value.translation.height > abs(value.translation.width)
                 if isVertical, value.translation.height > 140 {
                     onCollapse()
@@ -315,8 +340,10 @@ struct FullPlayerView: View {
                 artist: np.displayArtist,
                 spacing: 4,
                 titleFont: .title3.weight(.bold),
-                titleHeight: 28
+                titleHeight: 28,
+                onArtistTap: { openCurrentArtist() }
             )
+            .disabled(isOpeningArtist)
 
             Spacer()
 
@@ -332,6 +359,38 @@ struct FullPlayerView: View {
                     }
                 }
             }
+        }
+    }
+
+    private func openCurrentArtist() {
+        guard !isOpeningArtist else { return }
+        let artist = np.artists.first(where: { !$0.name.isEmpty }) ?? YTArtist(name: np.artist, id: nil)
+        guard !artist.name.isEmpty else {
+            artistUnavailable = true
+            return
+        }
+        isOpeningArtist = true
+        Task { @MainActor in
+            defer { isOpeningArtist = false }
+            var browseId = artist.id
+            if browseId == nil {
+                if let json = try? await SearchService.shared.search(query: artist.name) {
+                    browseId = SearchParser.parseSearchResults(from: json)
+                        .flatMap(\.items)
+                        .compactMap { item -> ArtistItem? in
+                            if case .artist(let result) = item { return result }
+                            return nil
+                        }
+                        .first(where: { $0.name.caseInsensitiveCompare(artist.name) == .orderedSame })?
+                        .browseId
+                }
+            }
+            guard let browseId else {
+                artistUnavailable = true
+                return
+            }
+            onCollapse()
+            AppRouter.shared.open(.artist(browseId: browseId))
         }
     }
 
@@ -417,11 +476,6 @@ struct FullPlayerView: View {
                         enabled: settings.canvasEnabled,
                         onDominantColorsChange: { canvasDominantColors = $0 }
                     )
-                }
-                .onTapGesture {
-                    guard np.hasVideo else { return }
-                    showQueue = true
-                    player.setVideoMode()
                 }
             }
         }

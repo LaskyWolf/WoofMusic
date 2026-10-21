@@ -5,6 +5,7 @@
 //  Created by 686udjie on 20/07/2026.
 //
 
+import Foundation
 import OSLog
 
 /// Appends log lines to Documents/log.txt (exposed as Trop/log.txt in the
@@ -23,7 +24,19 @@ final class FileLog {
             .appendingPathComponent("log.txt")
     }
 
-    private init() {}
+    private init() {
+        // Older versions wrote authentication values into this file.
+        let cleanupKey = "privacy.authLogCleanup.v1"
+        guard !UserDefaults.standard.bool(forKey: cleanupKey), let url = fileURL else { return }
+        if FileManager.default.fileExists(atPath: url.path) {
+            do {
+                try FileManager.default.removeItem(at: url)
+            } catch {
+                return
+            }
+        }
+        UserDefaults.standard.set(true, forKey: cleanupKey)
+    }
 
     func append(_ category: String, _ level: String, _ message: String) {
         queue.async { [weak self] in

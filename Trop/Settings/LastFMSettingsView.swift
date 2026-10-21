@@ -8,7 +8,7 @@
 import SwiftUI
 
 struct LastFMSettingsView: View {
-    @AppStorage(LastFMDefaults.sessionKeyKey) private var sessionKey = ""
+    @State private var isLoggedIn = false
     @AppStorage(LastFMDefaults.usernameKey) private var username = ""
     @AppStorage(LastFMDefaults.scrobblingEnabledKey) private var scrobblingEnabled = false
     @AppStorage(LastFMDefaults.useNowPlayingKey) private var useNowPlaying = false
@@ -27,8 +27,6 @@ struct LastFMSettingsView: View {
     @State private var avatarURL: URL?
     @State private var avatarLoading = false
 
-    private var isLoggedIn: Bool { !sessionKey.isEmpty }
-
     var body: some View {
         List {
             // Login / Profile — top cell handles both states (mirrors Discord)
@@ -45,7 +43,7 @@ struct LastFMSettingsView: View {
                         Spacer()
                         Button("Logout", role: .destructive) {
                             LastFMIntegration.shared.logout()
-                            sessionKey = ""
+                            isLoggedIn = false
                             username = ""
                             avatarURL = nil
                             lastError = nil
@@ -149,7 +147,7 @@ struct LastFMSettingsView: View {
             LastFMAuthWebView { success in
                 isBusy = false
                 if success {
-                    sessionKey = LastFMTokenStore.shared.retrieveSessionKey() ?? ""
+                    isLoggedIn = LastFMTokenStore.shared.retrieveSessionKey() != nil
                     username = LastFMTokenStore.shared.retrieveUsername() ?? ""
                     lastError = nil
                     Task { await fetchAvatar() }
@@ -192,11 +190,8 @@ struct LastFMSettingsView: View {
                 .keyboardType(.numberPad)
         })
         .onAppear {
-            if UserDefaults.standard.object(forKey: LastFMDefaults.sessionKeyKey) == nil,
-               let sk = LastFMTokenStore.shared.retrieveSessionKey() {
-                sessionKey = sk
-                username = LastFMTokenStore.shared.retrieveUsername() ?? ""
-            }
+            isLoggedIn = LastFMTokenStore.shared.retrieveSessionKey() != nil
+            username = LastFMTokenStore.shared.retrieveUsername() ?? ""
         }
         .task {
             await fetchAvatar()

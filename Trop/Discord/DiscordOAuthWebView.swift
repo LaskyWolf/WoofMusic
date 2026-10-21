@@ -88,7 +88,7 @@ struct DiscordOAuthWebView: View {
                 Text(errorText ?? "")
             }
             .onAppear {
-                Log.discord.info("OAuth WebView loading: \(authUrl)")
+                Log.discord.info("OAuth WebView loading")
             }
         }
     }
@@ -218,7 +218,7 @@ private struct WebViewContainer: UIViewRepresentable {
                         .addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? DiscordDefaults.redirectUri
                     // swiftlint:disable:next line_length
                     let retryUrlStr = "\(DiscordDefaults.oauthAuthorize)?client_id=\(DiscordDefaults.appId)&response_type=code&redirect_uri=\(redirectEnc)&scope=\(fallbackEncoded)&state=\(oauthState)&code_challenge_method=S256&code_challenge=\(pkceChallenge)"
-                    Log.discord.info("Retrying OAuth fallback: \(retryUrlStr)")
+                    Log.discord.info("Retrying OAuth fallback")
                     Task { @MainActor in
                         errorText = "Primary scope rejected, retrying with '\(DiscordDefaults.scopesFallback)'…"
                     }

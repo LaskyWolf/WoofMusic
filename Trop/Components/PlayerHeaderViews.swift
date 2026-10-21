@@ -15,6 +15,7 @@ struct PlayerTitleBlock: View {
     var spacing: CGFloat = 2
     var titleFont: Font = .body.weight(.semibold)
     var titleHeight: CGFloat = 24
+    var onArtistTap: (() -> Void)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: spacing) {
@@ -23,14 +24,29 @@ struct PlayerTitleBlock: View {
                 font: titleFont,
                 frameHeight: titleHeight
             )
+            .allowsHitTesting(false)
 
             if !artist.isEmpty {
-                Text(artist)
-                    .font(.subheadline)
-                    .foregroundStyle(.white.opacity(0.7))
-                    .lineLimit(1)
+                if let onArtistTap {
+                    Button(action: onArtistTap) {
+                        artistLabel
+                            .frame(minHeight: 44, alignment: .leading)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("View artist: \(artist)")
+                } else {
+                    artistLabel
+                }
             }
         }
+    }
+
+    private var artistLabel: some View {
+        Text(artist)
+            .font(.subheadline)
+            .foregroundStyle(.white.opacity(0.7))
+            .lineLimit(1)
     }
 }
 

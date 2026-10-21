@@ -463,8 +463,7 @@ extension DownloadManager {
                     } else if ReturnCode.isCancel(rc) {
                         finish(.failure(CancellationError()))
                     } else {
-                        let output = session?.getOutput() ?? "unknown"
-                        Log.downloadManager.debug("FFmpeg output: \(output)")
+                        Log.downloadManager.error("FFmpeg processing failed")
                         finish(.failure(NSError(
                             domain: "DownloadManager",
                             code: -1,

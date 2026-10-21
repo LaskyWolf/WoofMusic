@@ -142,7 +142,7 @@ final class HomeViewModel {
 
     func logout() {
         Task {
-            await cookieStore.clear()
+            await AuthService.shared.logout()
             isLoggedIn = false
             accountName = "Guest"
             accountImageUrl = nil

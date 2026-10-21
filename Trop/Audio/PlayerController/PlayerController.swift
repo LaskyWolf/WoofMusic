@@ -162,7 +162,7 @@ extension PlayerController {
     ) async {
         currentLoudnessDb = loudnessDb
         guard let url = URL(string: url) else {
-            Log.player.error("Invalid URL: \(url)")
+            Log.player.error("Invalid playback URL")
             return
         }
 
@@ -202,7 +202,7 @@ extension PlayerController {
 
         pendingVideoId = videoId
         Log.player.info(
-            "TRANSITION play videoId=\(videoId ?? "nil") isNewSong=\(isNewSong) muxedActive=\(muxedActive) url=\(url.absoluteString.prefix(80))"
+            "TRANSITION play videoId=\(videoId ?? "nil") isNewSong=\(isNewSong) muxedActive=\(muxedActive)"
         )
         let absoluteString = url.absoluteString
         let cmdResult = withMpv { mpv in
@@ -328,7 +328,7 @@ extension PlayerController {
                 self.applyPlaybackSettings()
                 if let url = self.pendingURL {
                     self.pendingURL = nil
-                    Log.player.info("mpv ready: loading deferred URL \(url.prefix(80))")
+                    Log.player.info("mpv ready: loading deferred stream")
                     _ = self.withMpv { mpv in
                         ["loadfile", url, "replace"].withUnsafeCArg { mpv_command(mpv, $0) }
                     }
@@ -419,12 +419,9 @@ extension PlayerController {
         if let prop = event.pointee.data?.load(as: mpv_event_log_message.self),
            let textPtr = prop.text {
             let text = String(cString: textPtr)
-            let prefix = prop.prefix.map { String(cString: $0) } ?? ""
-            let level = prop.level.map { String(cString: $0) } ?? ""
             let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
             if !trimmed.isEmpty {
                 if trimmed.range(of: "primitive restart", options: .caseInsensitive) != nil { return }
-                Log.mpv.debug("[\(prefix)] [\(level)] \(trimmed)")
                 if let crop = detectedCrop(from: trimmed) {
                     Task { @MainActor in self.applyDetectedCrop(crop) }
                 }
@@ -610,7 +607,7 @@ extension PlayerController {
                 }
                 guard NowPlaying.shared.videoId == videoId else { return }
                 setVideoTrack()
-                Log.player.debug("TRANSITION entering video mode videoId=\(videoId) url=\(url.prefix(80))")
+                Log.player.debug("TRANSITION entering video mode videoId=\(videoId)")
                 muxedVideoId = videoId
                 pendingVideoId = videoId
                 loadFileReplacing(url, startAt: resumeAt)
@@ -870,7 +867,7 @@ extension PlayerController {
 
     private func loadFileReplacing(_ url: String, startAt: TimeInterval = 0) {
         pendingResumeAt = startAt
-        Log.player.debug("TRANSITION loadFileReplacing startAt=\(startAt) url=\(url.prefix(80))")
+        Log.player.debug("TRANSITION loadFileReplacing startAt=\(startAt)")
         withMpv { mpv in
             let args = ["loadfile", url, "replace"]
             _ = args.withUnsafeCArg { mpv_command(mpv, $0) }
