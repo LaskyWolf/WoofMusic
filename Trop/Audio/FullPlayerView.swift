@@ -148,7 +148,8 @@ struct FullPlayerView: View {
 
                         SecondaryActionsRow(
                             showQueue: $showQueue,
-                            isRepeatOn: $np.isRepeatOn
+                            isRepeatOn: $np.isRepeatOn,
+                            showLyrics: $showLyrics
                         )
 
                         Color.clear.frame(height: 8)
@@ -259,33 +260,23 @@ struct FullPlayerView: View {
     private var lyricPreview: some View {
         Group {
             if let activeLyricText {
-                Button {
-                    showLyrics = true
-                } label: {
-                    HStack(spacing: 8) {
-                        Text(activeLyricText)
-                            .font(.subheadline.weight(.medium))
-                            .lineLimit(1)
-                            .truncationMode(.tail)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-
-                        Image(systemName: "chevron.right")
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(.white.opacity(0.55))
-                    }
+                Text(activeLyricText)
+                    .font(.subheadline.weight(.medium))
                     .foregroundStyle(.white.opacity(0.82))
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .padding(.horizontal, 32)
-                .padding(.bottom, 8)
-                .accessibilityLabel("Current lyric: \(activeLyricText). Open lyrics")
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.horizontal, 32)
+                    .padding(.bottom, 8)
+                    .accessibilityLabel("Current lyric: \(activeLyricText)")
             } else {
                 Color.clear
             }
         }
         .frame(maxWidth: .infinity)
         .frame(height: 33, alignment: .bottom)
+        .allowsHitTesting(false)
     }
 
     // MARK: - Gestures

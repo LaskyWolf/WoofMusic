@@ -139,9 +139,24 @@ struct PlayerTransportAirPlayFooter: View {
 struct SecondaryActionsRow: View {
     @Binding var showQueue: Bool
     @Binding var isRepeatOn: Bool
+    var showLyrics: Binding<Bool>? = nil
 
     var body: some View {
         HStack(spacing: 0) {
+            if let showLyrics {
+                Button {
+                    showLyrics.wrappedValue.toggle()
+                } label: {
+                    Image(systemName: "quote.bubble")
+                        .font(.title3)
+                        .foregroundStyle(showLyrics.wrappedValue ? .white : .white.opacity(0.7))
+                        .frame(width: 44, height: 44)
+                        .background(showLyrics.wrappedValue ? Circle().fill(.white.opacity(0.15)) : Circle().fill(.clear))
+                }
+                .accessibilityLabel(showLyrics.wrappedValue ? "Close lyrics" : "Open lyrics")
+                .frame(maxWidth: .infinity)
+            }
+
             PlayerAirPlayControl()
                 .frame(maxWidth: .infinity)
 
