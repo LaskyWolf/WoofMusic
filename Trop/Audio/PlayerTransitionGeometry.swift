@@ -1,3 +1,4 @@
+import CoreGraphics
 import Foundation
 
 /// Shared by the presentation and its executable geometry checks.
