@@ -38,7 +38,7 @@ Nightlies are published from each successful push to `main` as the floating [`ni
 
 ### Manual Installation
 
-The latest stable IPA is on the [releases page](../../releases). Nightly IPAs are also built on each commit via [Actions](../../actions). You can also build an unsigned IPA yourself with `./build_ipa.sh` (output at `build/Trop.ipa`).
+Run the **Private iPhone Test Build** workflow under [Actions](../../actions) to build an unsigned IPA. You can also build locally with `./build_ipa.sh`; the output is `build/Music.ipa`.
 
 ## Notable mentions
 
