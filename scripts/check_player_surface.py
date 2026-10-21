@@ -19,8 +19,30 @@ def run(*args):
 fixture = r'''import SwiftUI
 import Combine
 import Observation
+import UIKit
 
 @MainActor enum SurfaceProbe {
+    static func checkTrackGesture() {
+        final class TestPan: UIPanGestureRecognizer {
+            var testVelocity = CGPoint.zero
+            override func velocity(in view: UIView?) -> CGPoint { testVelocity }
+        }
+        let delegate = PlayerTrackSwipeGesture.Coordinator()
+        let pan = TestPan()
+        for (velocity, expected) in [
+            (CGPoint(x: 0, y: 200), false),
+            (CGPoint(x: 15, y: 200), false),
+            (CGPoint(x: -15, y: -200), false),
+            (CGPoint(x: 100, y: 100), false),
+            (.zero, false),
+            (CGPoint(x: 200, y: 15), true),
+            (CGPoint(x: -200, y: 15), true),
+        ] {
+            pan.testVelocity = velocity
+            precondition(delegate.gestureRecognizerShouldBegin(pan) == expected)
+        }
+        trace("PASS: track swipe rejects vertical, diagonal, and stationary input before recognition")
+    }
     static func trace(_ message: String) {
         FileHandle.standardOutput.write(Data((message + "\n").utf8))
     }
@@ -110,6 +132,7 @@ struct FullPlayerView: View {
                 .ignoresSafeArea()
         }
         .foregroundStyle(.white)
+        .gesture(PlayerTrackSwipeGesture(isEnabled: true, onEnded: { _ in }))
     }
 }
 @main struct SurfaceCheckApp: App {
@@ -122,6 +145,7 @@ struct CheckRoot: View {
             .environment(SettingsStore.shared)
             .preferredColorScheme(dark ? .dark : .light)
             .task {
+                SurfaceProbe.checkTrackGesture()
                 for mode in ["light", "dark"] {
                     dark = mode == "dark"
                     try? await Task.sleep(for: .seconds(3))
@@ -175,7 +199,7 @@ try:
         (work / "Fixture.swift").write_text(fixture)
         sdk = run("xcrun", "--sdk", "iphonesimulator", "--show-sdk-path")
         sources = [work / "Fixture.swift", work / "ContentView.swift"] + [
-            root / "Trop/Audio" / name for name in ["MiniPlayerScrollState.swift"]
+            root / "Trop/Audio" / name for name in ["MiniPlayerScrollState.swift", "PlayerTrackSwipeGesture.swift"]
         ]
         run("xcrun", "--sdk", "iphonesimulator", "swiftc", "-parse-as-library", "-sdk", sdk,
             "-target", f"{platform.machine()}-apple-ios26.2-simulator", *sources, "-o", app / "SurfaceCheck")

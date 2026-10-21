@@ -120,7 +120,7 @@ struct FullPlayerView: View {
                         }
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .contentShape(Rectangle())
-                        .simultaneousGesture(playerSwipe())
+                        .gesture(playerSwipe())
                         .overlay {
                             playerPanel
                                 .padding(.horizontal, 20)
@@ -273,21 +273,18 @@ struct FullPlayerView: View {
 
     // MARK: - Gestures
 
-    // Vertical dismissal belongs to the native zoom transition. This gesture
-    // only changes tracks, so it never starts a second collapse animation.
-    private func playerSwipe() -> some Gesture {
-        DragGesture(minimumDistance: 8)
-            .onEnded { value in
-                guard !showQueue, !showLyrics, settings.artworkSwipeNavigation,
-                      abs(value.translation.width) > abs(value.translation.height) else { return }
-                if value.translation.width < -60, np.hasNext {
-                    np.playNext()
-                    slideInArtwork(fromLeft: false)
-                } else if value.translation.width > 60, np.hasPrevious {
-                    np.playPrevious()
-                    slideInArtwork(fromLeft: true)
-                }
+    private func playerSwipe() -> PlayerTrackSwipeGesture {
+        PlayerTrackSwipeGesture(
+            isEnabled: !showQueue && !showLyrics && settings.artworkSwipeNavigation
+        ) { distance in
+            if distance < -60, np.hasNext {
+                np.playNext()
+                slideInArtwork(fromLeft: false)
+            } else if distance > 60, np.hasPrevious {
+                np.playPrevious()
+                slideInArtwork(fromLeft: true)
             }
+        }
     }
 
     private func slideInArtwork(fromLeft: Bool) {
@@ -418,7 +415,7 @@ struct FullPlayerView: View {
 
     private var musicVideoStage: some View {
         artwork
-            .simultaneousGesture(playerSwipe())
+            .gesture(playerSwipe())
             .aspectRatio(16 / 9, contentMode: .fit)
             .frame(maxWidth: .infinity)
             .clipped()
