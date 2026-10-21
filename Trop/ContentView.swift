@@ -10,9 +10,11 @@ import SwiftUI
 
 struct ContentView: View {
     @Environment(SettingsStore.self) private var settings
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var nowPlaying = NowPlaying.shared
     @State private var selectedTab = SettingsStore.shared.defaultTab
     @State private var isExpanded = false
+    @State private var playerDismissalBounce = 0
     @State private var scrollState = MiniPlayerScrollState()
     @Namespace private var playerTransition
 
@@ -46,12 +48,19 @@ struct ContentView: View {
                     )
                     isExpanded = true
                 })
+                .phaseAnimator([CGFloat(1), 1.05, 1], trigger: playerDismissalBounce) { content, scale in
+                    content.scaleEffect(x: 1, y: reduceMotion ? 1 : scale)
+                } animation: { _ in
+                    .spring(duration: 0.22, bounce: 0.35)
+                }
                 .matchedTransitionSource(id: "nowPlaying", in: playerTransition)
             }
             .background {
                 backgroundLayer
             }
-            .fullScreenCover(isPresented: $isExpanded) {
+            .fullScreenCover(isPresented: $isExpanded, onDismiss: {
+                if !reduceMotion { playerDismissalBounce += 1 }
+            }) {
                 FullPlayerView(onCollapse: { isExpanded = false })
                     .navigationTransition(.zoom(sourceID: "nowPlaying", in: playerTransition))
                     .environment(scrollState)
