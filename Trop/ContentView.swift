@@ -40,7 +40,6 @@ struct ContentView: View {
                     .matchedTransitionSource(id: "nowPlaying", in: playerTransition) { source in
                         source.clipShape(RoundedRectangle(cornerRadius: 24))
                     }
-                    .allowsHitTesting(!isExpanded)
             }
             .background {
                 backgroundLayer
@@ -80,7 +79,6 @@ struct ContentView: View {
     }
 
     private func expandPlayer() {
-        guard !isExpanded else { return }
         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
         isExpanded = true
     }

@@ -22,6 +22,7 @@ import Observation
 import UIKit
 
 @MainActor enum SurfaceProbe {
+    static var playerVisible = false
     static func checkTrackGesture() {
         final class TestPan: UIPanGestureRecognizer {
             var testVelocity = CGPoint.zero
@@ -145,6 +146,8 @@ struct FullPlayerView: View {
         }
         .foregroundStyle(.white)
         .gesture(PlayerTrackSwipeGesture(isEnabled: true, onEnded: { _ in }))
+        .onAppear { SurfaceProbe.playerVisible = true }
+        .onDisappear { SurfaceProbe.playerVisible = false }
     }
 }
 @main struct SurfaceCheckApp: App {
@@ -166,13 +169,29 @@ struct CheckRoot: View {
                     SurfaceProbe.trace("Request expansion")
                     AppRouter.shared.playerExpandToken += 1
                     SurfaceProbe.trace("Expansion requested")
+                    for _ in 0..<3 {
+                        try? await Task.sleep(for: .milliseconds(120))
+                        AppRouter.shared.activeRoute = "interrupt opening"
+                        try? await Task.sleep(for: .milliseconds(120))
+                        AppRouter.shared.activeRoute = nil
+                        AppRouter.shared.playerExpandToken += 1
+                    }
                     try? await Task.sleep(for: .seconds(3))
+                    precondition(SurfaceProbe.playerVisible, "Interrupted opening must settle expanded")
+                    SurfaceProbe.trace("PASS: interrupted opening settled expanded")
                     await SurfaceProbe.report(mode + "-expanded")
                     try? await Task.sleep(for: .seconds(2))
                     SurfaceProbe.trace("Request collapse")
                     AppRouter.shared.activeRoute = "close"
                     SurfaceProbe.trace("Collapse requested")
+                    try? await Task.sleep(for: .milliseconds(120))
+                    AppRouter.shared.activeRoute = nil
+                    AppRouter.shared.playerExpandToken += 1
+                    try? await Task.sleep(for: .milliseconds(120))
+                    AppRouter.shared.activeRoute = "interrupt closing"
                     try? await Task.sleep(for: .seconds(3))
+                    precondition(!SurfaceProbe.playerVisible, "Interrupted closing must settle collapsed")
+                    SurfaceProbe.trace("PASS: interrupted closing settled collapsed")
                     await SurfaceProbe.report(mode + "-after")
                     try? await Task.sleep(for: .seconds(2))
                     AppRouter.shared.activeRoute = nil
