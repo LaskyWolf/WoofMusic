@@ -11,6 +11,6 @@ struct SongMenuSheet: View {
     var onNavigate: ((DetailRoute) -> Void)?
 
     var body: some View {
-        PlayerMenuSheet(song: song, onNavigate: onNavigate)
+        PlayerMenuSheet(song: song, onNavigate: onNavigate, showsSongPreview: true)
     }
 }

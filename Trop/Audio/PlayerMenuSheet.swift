@@ -13,7 +13,9 @@ struct PlayerMenuSheet: View {
     /// Collapses the Big Player so the pushed page is visible underneath.
     var onCollapseRequest: (() -> Void)?
     var onNavigate: ((DetailRoute) -> Void)?
+    var showsSongPreview = false
 
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.dismiss) private var dismiss
     @Environment(\.settingsStore) private var settings
 
@@ -29,22 +31,15 @@ struct PlayerMenuSheet: View {
     var body: some View {
         NavigationStack {
             List {
+                if showsSongPreview {
+                    Section {
+                        MenuSongPreview(title: song.title, artist: song.artistNamesDisplay,
+                                        thumbnailURL: song.thumbnailUrl)
+                    }
+                }
+
                 Section {
-                    Button(action: startRadio) {
-                        actionLabel("Start Radio", icon: "dot.radiowaves.left.and.right")
-                    }
-                    Button { showPlaylistPicker = true } label: {
-                        actionLabel("Add to Playlist", icon: "music.note.list")
-                    }
-                    Button { share() } label: {
-                        actionLabel("Share", icon: "square.and.arrow.up")
-                    }
-                    Button {
-                        UIPasteboard.general.string = song.webUrl
-                        dismiss()
-                    } label: {
-                        actionLabel("Copy Link", icon: "link")
-                    }
+                    shortcutRow
                 }
 
                 Section("Queue") {
@@ -74,6 +69,12 @@ struct PlayerMenuSheet: View {
                 }
 
                 Section("More") {
+                    Button {
+                        UIPasteboard.general.string = song.webUrl
+                        dismiss()
+                    } label: {
+                        actionLabel("Copy Link", icon: "link")
+                    }
                     SettingsNavigationRow("Details", icon: "info.circle") {
                         SongDetailsView(song: song)
                     }
@@ -118,6 +119,23 @@ struct PlayerMenuSheet: View {
             RadioOptionsSheet(song: song)
         }
         .task { await pin.load(videoId: song.videoId) }
+    }
+
+    private var shortcutRow: some View {
+        let layout = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(spacing: 8))
+            : AnyLayout(HStackLayout(spacing: 0))
+        return layout {
+            MenuShortcutButton(title: "Start Radio", icon: "dot.radiowaves.left.and.right",
+                               action: startRadio)
+            if !dynamicTypeSize.isAccessibilitySize { Divider().frame(height: 32) }
+            MenuShortcutButton(title: "Playlist", icon: "music.note.list") {
+                showPlaylistPicker = true
+            }
+            .accessibilityLabel("Add to Playlist")
+            if !dynamicTypeSize.isAccessibilitySize { Divider().frame(height: 32) }
+            MenuShortcutButton(title: "Share", icon: "square.and.arrow.up", action: share)
+        }
     }
 
     private func actionLabel(_ title: String, icon: String) -> some View {

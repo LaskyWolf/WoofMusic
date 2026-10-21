@@ -9,6 +9,7 @@ import SwiftUI
 
 /// Shown from the lyrics page's ⋮ button.
 struct LyricsMenuSheet: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.dismiss) private var dismiss
     @Environment(\.settingsStore) private var settings
     private let np = NowPlaying.shared
@@ -20,53 +21,44 @@ struct LyricsMenuSheet: View {
     var body: some View {
         @Bindable var settings = settings
 
-        SheetChrome {
-            Group {
-                actionGrid
+        NavigationStack {
+            List {
+                Section {
+                    MenuSongPreview(title: np.title, artist: np.displayArtist,
+                                    thumbnailURL: np.videoId.map { NowPlaying.artworkURL(for: $0) })
+                }
 
-                MenuCard {
-                        offsetRow
-                        Divider()
-                        Toggle(isOn: $settings.showIntervalIndicator) {
-                            HStack(spacing: 14) {
-                                Image(systemName: "text.quote")
-                                    .font(.system(size: 18))
-                                    .foregroundStyle(settings.accentColor)
-                                    .frame(width: 26)
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text("Show Interval Indicator")
-                                        .font(.body)
-                                        .foregroundStyle(.primary)
-                                    Text("Shows a progress ring during long instrumental gaps")
-                                        .font(.footnote)
-                                        .foregroundStyle(.secondary)
-                                }
-                            }
-                        }
-                        .tint(settings.accentColor)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 12)
+                Section {
+                    actionGrid
+                        .disabled(np.videoId == nil)
+                }
 
-                        Divider()
+                Section("Timing") {
+                    offsetRow
+                }
 
-                        Toggle(isOn: $settings.romanizeCurrentTrack) {
-                            HStack(spacing: 14) {
-                                Image(systemName: "globe")
-                                    .font(.system(size: 18))
-                                    .foregroundStyle(settings.accentColor)
-                                    .frame(width: 26)
-                                Text("Romanize Current Track")
-                                    .font(.body)
-                                    .foregroundStyle(.primary)
-                            }
-                        }
-                        .tint(settings.accentColor)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 12)
+                Section {
+                    SettingsToggleRow("Show Interval Indicator", icon: "text.quote",
+                                      isOn: $settings.showIntervalIndicator)
+                    SettingsToggleRow("Romanize Current Track", icon: "globe",
+                                      isOn: $settings.romanizeCurrentTrack)
+                } header: {
+                    Text("Display")
+                } footer: {
+                    Text("The interval indicator shows a progress ring during long instrumental gaps.")
                 }
             }
-            .navigationTitle("Lyrics")
+            .listStyle(.insetGrouped)
+            .tint(settings.accentColor)
+            .navigationTitle("Lyrics Options")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                }
+            }
         }
+        .appSheetChrome()
         .sheet(isPresented: $showOffsetEditor) {
             LyricsOffsetSheet()
         }
@@ -86,39 +78,23 @@ struct LyricsMenuSheet: View {
     // MARK: - Actions (Edit / Refetch / Search / Copy)
 
     private var actionGrid: some View {
-        HStack(spacing: 1) {
-            actionButton(icon: "square.and.pencil", label: "Edit") {
+        let layout = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(spacing: 8))
+            : AnyLayout(HStackLayout(spacing: 0))
+        return layout {
+            MenuShortcutButton(title: "Edit", icon: "square.and.pencil") {
                 showEditSheet = true
             }
-            actionButton(icon: "arrow.triangle.2.circlepath", label: "Refetch") {
-                refetchLyrics()
-            }
-            actionButton(icon: "magnifyingglass", label: "Search") {
+            if !dynamicTypeSize.isAccessibilitySize { Divider().frame(height: 32) }
+            MenuShortcutButton(title: "Refetch", icon: "arrow.triangle.2.circlepath",
+                               action: refetchLyrics)
+            if !dynamicTypeSize.isAccessibilitySize { Divider().frame(height: 32) }
+            MenuShortcutButton(title: "Search", icon: "magnifyingglass") {
                 showSearchSheet = true
             }
-            actionButton(icon: "doc.on.doc", label: "Copy") {
-                copyLyrics()
-            }
+            if !dynamicTypeSize.isAccessibilitySize { Divider().frame(height: 32) }
+            MenuShortcutButton(title: "Copy", icon: "doc.on.doc", action: copyLyrics)
         }
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-    }
-
-    private func actionButton(icon: String, label: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            VStack(spacing: 8) {
-                Image(systemName: icon)
-                    .font(.system(size: 19, weight: .medium))
-                    .foregroundStyle(settings.accentColor)
-                Text(label)
-                    .font(.caption)
-                    .foregroundStyle(.primary)
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 14)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .background(Color(.secondarySystemGroupedBackground))
     }
 
     private func refetchLyrics() {
@@ -142,24 +118,22 @@ struct LyricsMenuSheet: View {
         Button {
             showOffsetEditor = true
         } label: {
-            HStack(spacing: 14) {
-                Image(systemName: "forward")
-                    .font(.system(size: 18))
-                    .foregroundStyle(settings.accentColor)
-                    .frame(width: 26)
-                Text("Lyric Offset")
-                    .font(.body)
-                    .foregroundStyle(.primary)
+            HStack {
+                Label {
+                    Text("Lyric Offset").foregroundStyle(.primary)
+                } icon: {
+                    Image(systemName: "forward").foregroundStyle(settings.accentColor)
+                }
                 Spacer()
                 offsetValueLabel
-                    .font(.footnote)
+                    .font(.subheadline)
                     .lineLimit(1)
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.tertiary)
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
     }
 
     /// Signed value like "+1.5s"; the decimal part is accent-colored when
