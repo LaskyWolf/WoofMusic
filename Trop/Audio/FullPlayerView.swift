@@ -89,8 +89,6 @@ struct FullPlayerView: View {
                     artwork
                         .frame(maxWidth: .infinity)
                         .frame(height: (geometry.size.height + artworkTopInset) * 0.58)
-                        .scaleEffect(reduceMotion || np.isPlaying ? 1 : 0.88, anchor: .top)
-                        .animation(reduceMotion ? nil : .smooth(duration: 0.4), value: np.isPlaying)
                         .compositingGroup()
                         .clipped()
                         .mask {

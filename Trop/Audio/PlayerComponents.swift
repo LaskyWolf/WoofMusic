@@ -54,7 +54,7 @@ struct ProgressBar: View {
             )
         }
         .frame(height: 32)
-        .animation(reduceMotion ? .easeOut(duration: 0.12) : (isScrubbing ? .easeInOut(duration: 0.4) : .smooth(duration: 0.3, extraBounce: 0.3)), value: isScrubbing)
+        .animation(.easeInOut(duration: reduceMotion ? 0.12 : (isScrubbing ? 0.4 : 0.3)), value: isScrubbing)
     }
 }
 
