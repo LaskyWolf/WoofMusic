@@ -24,11 +24,6 @@ struct LyricsMenuSheet: View {
         NavigationStack {
             List {
                 Section {
-                    MenuSongPreview(title: np.title, artist: np.displayArtist,
-                                    thumbnailURL: np.videoId.map { NowPlaying.artworkURL(for: $0) })
-                }
-
-                Section {
                     actionGrid
                         .disabled(np.videoId == nil)
                 }
