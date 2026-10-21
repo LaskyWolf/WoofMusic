@@ -38,7 +38,23 @@ assert(PlayerTransitionGeometry.shouldDismiss(distance: 30, predictedDistance: 4
 assert(!PlayerTransitionGeometry.shouldDismiss(distance: -30, predictedDistance: -400, height: 852))
 assert(!PlayerTransitionGeometry.shouldDismiss(distance: 0, predictedDistance: 400, height: 852))
 assert(!PlayerTransitionGeometry.shouldDismiss(distance: 100, predictedDistance: 400, height: 0))
-print("PASS: phone/tablet/landscape endpoints, drag tracking, capsule rebound, short drag and flick thresholds")
+for height in [568.0, 852.0, 1366.0] {
+    let capsule = 48.0
+    let handoff = capsule / (height - capsule)
+    assert(PlayerTransitionGeometry.presentationOpacity(expansion: 0, expandedHeight: height, collapsedHeight: capsule) == 0)
+    assert(PlayerTransitionGeometry.presentationOpacity(expansion: -0.02, expandedHeight: height, collapsedHeight: capsule) == 0)
+    assert(PlayerTransitionGeometry.presentationOpacity(expansion: 1, expandedHeight: height, collapsedHeight: capsule) == 1)
+    assert(abs(PlayerTransitionGeometry.presentationOpacity(expansion: handoff / 2, expandedHeight: height, collapsedHeight: capsule) - 0.5) < 0.000001)
+    var previous = 0.0
+    for step in 0...100 {
+        let opacity = PlayerTransitionGeometry.presentationOpacity(expansion: handoff * Double(step) / 100, expandedHeight: height, collapsedHeight: capsule)
+        assert(opacity >= previous && opacity <= 1)
+        assert(abs(opacity - previous) < 0.016)
+        previous = opacity
+    }
+}
+assert(PlayerTransitionGeometry.presentationOpacity(expansion: 1, expandedHeight: 0, collapsedHeight: 0) == 0)
+print("PASS: geometry, drag thresholds and continuous glass handoff with invisible overlay at rest")
 '''
 with tempfile.TemporaryDirectory() as directory:
     path = Path(directory) / "main.swift"

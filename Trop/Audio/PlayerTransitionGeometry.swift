@@ -26,6 +26,14 @@ struct PlayerTransitionGeometry {
         return capsuleRadius * (1 - progress + dragRounding * progress)
     }
 
+    /// Finish the visual handoff over the last capsule-height of size change.
+    /// At rest the overlay is fully transparent, so removing it cannot switch materials.
+    static func presentationOpacity(expansion: CGFloat, expandedHeight: CGFloat, collapsedHeight: CGFloat) -> CGFloat {
+        let remainingHeight = max(0, expansion) * max(0, expandedHeight - collapsedHeight)
+        let fraction = min(1, remainingHeight / max(1, collapsedHeight))
+        return fraction * fraction * (3 - 2 * fraction)
+    }
+
     static func shouldDismiss(distance: CGFloat, predictedDistance: CGFloat, height: CGFloat) -> Bool {
         guard height > 0, distance > 0 else { return false }
         let dismissDistanceFraction: CGFloat = 0.18

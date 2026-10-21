@@ -2,6 +2,7 @@
 from pathlib import Path
 import json
 import platform
+import signal
 import subprocess
 import tempfile
 import time
@@ -139,6 +140,8 @@ types = json.loads(run("xcrun", "simctl", "list", "devicetypes", "--json"))["dev
 device_type = next(d["identifier"] for d in types if d["name"] == "iPhone 17 Pro")
 identifier = "com.laskywolf.Music.surfacecheck"
 device = run("xcrun", "simctl", "create", "Player Surface Check", device_type, runtime)
+recording = None
+recording_log = None
 try:
     with tempfile.TemporaryDirectory() as directory:
         work = Path(directory)
@@ -152,8 +155,10 @@ try:
             "MinimumOSVersion": "26.2", "UILaunchScreen": {},
         }))
         host = (root / "Trop/ContentView.swift").read_text().split("#Preview")[0]
-        # Instrument only the test copy; the production view must stay mounted.
-        host = host.replace(".onAppear {\n                                if isExpanded", ".onAppear {\n                                SurfaceProbe.mounts += 1\n                                if isExpanded")
+        # The native accessory must survive both expanded presentations.
+        native = "MiniPlayerBarView(onExpand: expandPlayer, isTransitioning: isExpanded)"
+        assert host.count(native) == 1
+        host = host.replace(native, native + ".onAppear { SurfaceProbe.mounts += 1 }")
         (work / "ContentView.swift").write_text(host)
         (work / "Fixture.swift").write_text(fixture)
         sdk = run("xcrun", "--sdk", "iphonesimulator", "--show-sdk-path")
@@ -169,24 +174,45 @@ try:
         data = Path(run("xcrun", "simctl", "get_app_container", device, identifier, "data"))
         result_path = data / "Documents/surface-check.json"
         seen = set()
+        baseline_mounts = {}
         deadline = time.monotonic() + 180
         while time.monotonic() < deadline:
             if result_path.exists():
                 result = json.loads(result_path.read_text())
                 phase = result["phase"]
-                assert result["mounts"] == 1, result
+                assert result["mounts"] >= 1, result
+                mode = phase.split("-")[0]
+                if phase.endswith("-before"):
+                    baseline_mounts[mode] = result["mounts"]
+                elif phase.endswith("-after"):
+                    assert result["mounts"] == baseline_mounts[mode], result
                 if phase == "complete":
                     assert len(seen) == 6, seen
                     (output / "result.json").write_text(json.dumps(result))
-                    print("PASS: one player surface across two open/close cycles in light and dark mode")
+                    print("PASS: native accessory remains mounted across two open/close cycles in light and dark mode")
                     break
                 if phase not in seen:
                     run("xcrun", "simctl", "io", device, "screenshot", output / (phase + ".png"))
                     seen.add(phase)
+                    if recording is None:
+                        recording_log = (output / "recording.log").open("w")
+                        recording = subprocess.Popen([
+                            "xcrun", "simctl", "io", device, "recordVideo", "--codec=h264", "--force",
+                            str(output / "transition.mp4"),
+                        ], stdout=recording_log, stderr=subprocess.STDOUT)
+                        time.sleep(1)
                     (data / "Documents/surface-check-ack.txt").write_text(phase)
             time.sleep(0.25)
         else:
             raise SystemExit("Player surface simulator check timed out")
 finally:
+    if recording is not None:
+        recording.send_signal(signal.SIGINT)
+        try:
+            recording.wait(timeout=30)
+        except subprocess.TimeoutExpired:
+            recording.kill()
+            recording.wait()
+        recording_log.close()
     run("xcrun", "simctl", "shutdown", device)
     run("xcrun", "simctl", "delete", device)

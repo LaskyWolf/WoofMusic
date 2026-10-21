@@ -8,8 +8,12 @@
 import SwiftUI
 import Nuke
 
-/// Content for the persistent player surface, with horizontal queue paging
-/// and a bottom progress line. The glass background belongs to PlayerPresentation.
+/// The mini player bar, hosted as the TabView's native bottom accessory.
+/// Swiping left/right pages through the queue with the artwork and text sliding
+/// together, exactly tracking the drag state. When the tab bar minimizes on
+/// scroll the bar collapses into a compact inline form that merges with the
+/// tab bar, matching the Apple Music behavior; otherwise it renders as the
+/// 48pt floating glass capsule with a bottom progress line.
 struct MiniPlayerBarView: View {
     let onExpand: () -> Void
     var isTransitioning = false

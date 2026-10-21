@@ -16,7 +16,7 @@ struct ContentView: View {
     @State private var isExpanded = false
     @State private var playerExpansion: CGFloat = 0
     @State private var playerDragOffset: CGFloat = 0
-    @State private var miniPlayerFrames: [Int: CGRect] = [:]
+    @State private var playerHeight: CGFloat = 0
     @State private var miniPlayerFrame: CGRect = .zero
     @State private var transitionSourceFrame: CGRect = .zero
     @State private var isClosingPlayer = false
@@ -26,22 +26,38 @@ struct ContentView: View {
     var body: some View {
         TabView(selection: $selectedTab) {
             Tab("Home", systemImage: "music.note.house.fill", value: 0) {
-                playerContent(tab: 0) { HomeScreenView() }
+                HomeScreenView()
             }
 
             Tab("Library", systemImage: "music.note.square.stack", value: 1) {
-                playerContent(tab: 1) { LibraryView() }
+                LibraryView()
             }
 
             Tab("Explore", systemImage: "flame", value: 2) {
-                playerContent(tab: 2) { ExploreView() }
+                ExploreView()
             }
 
             Tab("Search", systemImage: "magnifyingglass", value: 3, role: .search) {
-                playerContent(tab: 3) { SearchView() }
+                SearchView()
             }
         }
         .tabBarMinimizeBehavior(.onScrollDown)
+            .tabViewBottomAccessory(isEnabled: nowPlaying.isBarPresented) {
+                MiniPlayerBarView(onExpand: expandPlayer, isTransitioning: isExpanded)
+                    .onGeometryChange(for: CGRect.self) { proxy in
+                        proxy.frame(in: .global)
+                    } action: { frame in
+                        guard !frame.isEmpty else { return }
+                        miniPlayerFrame = frame
+                        if pendingPlayerExpansion, !frame.isEmpty { expandPlayer() }
+                    }
+                    .modifier(PlayerAccessoryVisibility(
+                        expansion: playerExpansion,
+                        expandedHeight: playerHeight,
+                        collapsedHeight: miniPlayerFrame.height
+                    ))
+                    .allowsHitTesting(!isExpanded)
+            }
             .background {
                 backgroundLayer
             }
@@ -49,27 +65,22 @@ struct ContentView: View {
             .accessibilityHidden(isExpanded)
             .overlay {
                 GeometryReader { proxy in
-                    if nowPlaying.isBarPresented, !miniPlayerFrame.isEmpty {
+                    if isExpanded {
                         let insets = proxy.safeAreaInsets
                         let bounds = CGRect(x: 0, y: 0, width: proxy.size.width,
                                             height: proxy.size.height + insets.top + insets.bottom)
                         let origin = proxy.frame(in: .global).origin
-                        let sourceFrame = isExpanded ? transitionSourceFrame : miniPlayerFrame
-                        let source = sourceFrame.offsetBy(dx: -origin.x, dy: -origin.y + insets.top)
+                        let source = transitionSourceFrame.offsetBy(dx: -origin.x, dy: -origin.y + insets.top)
                         ZStack {
-                            if isExpanded {
-                                Color.clear
-                                    .contentShape(Rectangle())
-                                    .onTapGesture {}
-                                    .accessibilityHidden(true)
-                            }
+                            Color.clear
+                                .contentShape(Rectangle())
+                                .onTapGesture {}
+                                .accessibilityHidden(true)
                             PlayerPresentation(
                                 expansion: playerExpansion,
                                 dragOffset: playerDragOffset,
                                 geometry: PlayerTransitionGeometry(expanded: bounds, collapsed: source),
                                 safeAreaInsets: insets,
-                                isExpanded: isExpanded,
-                                onExpand: expandPlayer,
                                 onCollapse: { collapsePlayer() },
                                 onDragChanged: { offset in
                                     guard !isClosingPlayer else { return }
@@ -89,24 +100,19 @@ struct ContentView: View {
                             )
                             .environment(scrollState)
                             .onAppear {
-                                if isExpanded {
-                                    withAnimation(playerSpring()) { playerExpansion = 1 }
-                                }
-                            }
-                            .onChange(of: isExpanded) { _, expanded in
-                                if expanded {
-                                    withAnimation(playerSpring()) { playerExpansion = 1 }
-                                }
+                                withAnimation(playerSpring()) { playerExpansion = 1 }
                             }
                         }
                     }
                 }
+                .onGeometryChange(for: CGFloat.self) { proxy in
+                    proxy.size.height + proxy.safeAreaInsets.top + proxy.safeAreaInsets.bottom
+                } action: { playerHeight = $0 }
                 .ignoresSafeArea(.keyboard)
             }
         .onAppear { AppRouter.shared.selectedTabIndex = selectedTab }
         .onChange(of: selectedTab) { _, newValue in
             AppRouter.shared.selectedTabIndex = newValue
-            if let frame = miniPlayerFrames[newValue] { miniPlayerFrame = frame }
         }
         .onReceive(AppRouter.shared.$activeRoute) { route in
             // A detail page was opened from an overlay: collapse the player so
@@ -122,30 +128,6 @@ struct ContentView: View {
             if !presented { collapsePlayer() }
         }
         .simultaneousGesture(backSwipeGesture)
-    }
-
-    /// Reserves space above the native tab bar without creating another glass background.
-    private func playerContent<Content: View>(tab: Int, @ViewBuilder content: () -> Content) -> some View {
-        content()
-            .safeAreaInset(edge: .bottom, spacing: 0) {
-                if nowPlaying.isBarPresented {
-                    Color.clear
-                        .frame(height: 48)
-                        .onGeometryChange(for: CGRect.self) { proxy in
-                            proxy.frame(in: .global)
-                        } action: { frame in
-                            guard !frame.isEmpty else { return }
-                            miniPlayerFrames[tab] = frame
-                            guard selectedTab == tab else { return }
-                            miniPlayerFrame = frame
-                            if pendingPlayerExpansion { expandPlayer() }
-                        }
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 8)
-                        .allowsHitTesting(false)
-                        .accessibilityHidden(true)
-                }
-            }
     }
 
     private func playerSpring(velocity: CGFloat = 0) -> Animation {
@@ -216,6 +198,28 @@ struct ContentView: View {
                 .ignoresSafeArea()
                 .animation(.easeInOut(duration: 0.8), value: nowPlaying.accentColor)
         }
+    }
+}
+
+private struct PlayerAccessoryVisibility: AnimatableModifier {
+    var expansion: CGFloat
+    let expandedHeight: CGFloat
+    let collapsedHeight: CGFloat
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var animatableData: CGFloat {
+        get { expansion }
+        set { expansion = newValue }
+    }
+
+    func body(content: Content) -> some View {
+        let surfaceOpacity = reduceMotion ? min(1, max(0, expansion))
+            : PlayerTransitionGeometry.presentationOpacity(
+                expansion: expansion, expandedHeight: expandedHeight, collapsedHeight: collapsedHeight
+            )
+        content
+            .opacity(1 - surfaceOpacity)
+            .transaction { $0.animation = nil }
     }
 }
 
