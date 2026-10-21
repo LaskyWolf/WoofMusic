@@ -91,7 +91,7 @@ inject_plist_string() {
         || /usr/libexec/PlistBuddy -c "Set :$key string $value" "$plist" 2>/dev/null || true
 }
 
-APPLICATION_NAME=Trop
+APPLICATION_NAME=Music
 PROJECT_NAME=Trop
 # MPVKit and FFmpegKit both ship ffmpeg libraries whose framework names differ
 # only by case (Libavcodec.framework vs libavcodec.framework). On the default
@@ -246,7 +246,7 @@ fi
 # shellcheck disable=SC2086
 # Empty arrays + `set -u` explode on macOS bash 3.2; expand only when populated.
 xcodebuild -project "$WORKING_LOCATION/$PROJECT_NAME.xcodeproj" \
-    -scheme "$APPLICATION_NAME" \
+    -scheme "$PROJECT_NAME" \
     -configuration Release \
     -derivedDataPath "$DERIVED_DATA_PATH" \
     -destination 'generic/platform=iOS' \
