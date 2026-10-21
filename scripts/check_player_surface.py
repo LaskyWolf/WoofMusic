@@ -21,10 +21,17 @@ import Observation
 
 @MainActor enum SurfaceProbe {
     static var mounts = 0
-    static func report(_ phase: String) {
+    static func report(_ phase: String) async {
         let url = URL.documentsDirectory.appending(path: "surface-check.json")
         let data = try! JSONSerialization.data(withJSONObject: ["phase": phase, "mounts": mounts])
         try! data.write(to: url, options: .atomic)
+        guard phase != "complete" else { return }
+        let acknowledgment = URL.documentsDirectory.appending(path: "surface-check-ack.txt")
+        for _ in 0..<300 {
+            if (try? String(contentsOf: acknowledgment, encoding: .utf8)) == phase { return }
+            try? await Task.sleep(for: .milliseconds(100))
+        }
+        fatalError("Screenshot collection did not acknowledge " + phase)
     }
 }
 @Observable @MainActor final class SettingsStore {
@@ -107,19 +114,19 @@ struct CheckRoot: View {
                 for mode in ["light", "dark"] {
                     dark = mode == "dark"
                     try? await Task.sleep(for: .seconds(3))
-                    SurfaceProbe.report(mode + "-before")
+                    await SurfaceProbe.report(mode + "-before")
                     try? await Task.sleep(for: .seconds(2))
                     AppRouter.shared.playerExpandToken += 1
                     try? await Task.sleep(for: .seconds(3))
-                    SurfaceProbe.report(mode + "-expanded")
+                    await SurfaceProbe.report(mode + "-expanded")
                     try? await Task.sleep(for: .seconds(2))
                     AppRouter.shared.activeRoute = "close"
                     try? await Task.sleep(for: .seconds(3))
-                    SurfaceProbe.report(mode + "-after")
+                    await SurfaceProbe.report(mode + "-after")
                     try? await Task.sleep(for: .seconds(2))
                     AppRouter.shared.activeRoute = nil
                 }
-                SurfaceProbe.report("complete")
+                await SurfaceProbe.report("complete")
             }
     }
 }
@@ -162,7 +169,7 @@ try:
         data = Path(run("xcrun", "simctl", "get_app_container", device, identifier, "data"))
         result_path = data / "Documents/surface-check.json"
         seen = set()
-        deadline = time.monotonic() + 90
+        deadline = time.monotonic() + 180
         while time.monotonic() < deadline:
             if result_path.exists():
                 result = json.loads(result_path.read_text())
@@ -176,6 +183,7 @@ try:
                 if phase not in seen:
                     run("xcrun", "simctl", "io", device, "screenshot", output / (phase + ".png"))
                     seen.add(phase)
+                    (data / "Documents/surface-check-ack.txt").write_text(phase)
             time.sleep(0.25)
         else:
             raise SystemExit("Player surface simulator check timed out")
