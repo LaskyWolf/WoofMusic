@@ -102,7 +102,14 @@ struct FullPlayerView: View {
             Text("Offline simulator check")
             Button("Close", action: onCollapse)
             Spacer()
-        }.padding(24)
+        }
+        .padding(24)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background {
+            LinearGradient(colors: [.purple, .black], startPoint: .top, endPoint: .bottom)
+                .ignoresSafeArea()
+        }
+        .foregroundStyle(.white)
     }
 }
 @main struct SurfaceCheckApp: App {
