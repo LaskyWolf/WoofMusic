@@ -49,7 +49,7 @@ jobs:
       - name: Check Play Next ordering
         run: python3 scripts/check_play_next.py
 
-      - name: Check persistent player surface in Simulator
+      - name: Check player transition in Simulator
         run: python3 scripts/check_player_surface.py
 
       - name: Upload player surface screenshots

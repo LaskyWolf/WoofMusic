@@ -16,7 +16,6 @@ struct ContentView: View {
     @State private var isExpanded = false
     @State private var playerExpansion: CGFloat = 0
     @State private var playerDragOffset: CGFloat = 0
-    @State private var playerHeight: CGFloat = 0
     @State private var miniPlayerFrame: CGRect = .zero
     @State private var transitionSourceFrame: CGRect = .zero
     @State private var isClosingPlayer = false
@@ -51,11 +50,6 @@ struct ContentView: View {
                         miniPlayerFrame = frame
                         if pendingPlayerExpansion, !frame.isEmpty { expandPlayer() }
                     }
-                    .modifier(PlayerAccessoryVisibility(
-                        expansion: playerExpansion,
-                        expandedHeight: playerHeight,
-                        collapsedHeight: miniPlayerFrame.height
-                    ))
                     .allowsHitTesting(!isExpanded)
             }
             .background {
@@ -105,9 +99,6 @@ struct ContentView: View {
                         }
                     }
                 }
-                .onGeometryChange(for: CGFloat.self) { proxy in
-                    proxy.size.height + proxy.safeAreaInsets.top + proxy.safeAreaInsets.bottom
-                } action: { playerHeight = $0 }
                 .ignoresSafeArea(.keyboard)
             }
         .onAppear { AppRouter.shared.selectedTabIndex = selectedTab }
@@ -198,28 +189,6 @@ struct ContentView: View {
                 .ignoresSafeArea()
                 .animation(.easeInOut(duration: 0.8), value: nowPlaying.accentColor)
         }
-    }
-}
-
-private struct PlayerAccessoryVisibility: AnimatableModifier {
-    var expansion: CGFloat
-    let expandedHeight: CGFloat
-    let collapsedHeight: CGFloat
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    var animatableData: CGFloat {
-        get { expansion }
-        set { expansion = newValue }
-    }
-
-    func body(content: Content) -> some View {
-        let surfaceOpacity = reduceMotion ? min(1, max(0, expansion))
-            : PlayerTransitionGeometry.presentationOpacity(
-                expansion: expansion, expandedHeight: expandedHeight, collapsedHeight: collapsedHeight
-            )
-        content
-            .opacity(1 - surfaceOpacity)
-            .transaction { $0.animation = nil }
     }
 }
 
