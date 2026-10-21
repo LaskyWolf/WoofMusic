@@ -211,7 +211,7 @@ extension PlayerController {
         if cmdResult != 0 {
             Log.player.error("mpv_command loadfile failed result=\(cmdResult)")
         }
-        NowPlaying.shared.isPlaying = true
+        NowPlaying.shared.isPlaying = playState.value != .paused
         NowPlaying.shared.currentTime = 0
         NowPlaying.shared.duration = max(0, duration ?? 0)
         setNowPlayingMetadata()

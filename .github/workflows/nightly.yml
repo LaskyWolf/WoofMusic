@@ -43,6 +43,9 @@ jobs:
       - name: Check privacy regressions
         run: python3 scripts/check_privacy.py
 
+      - name: Check playback state during track changes
+        run: python3 scripts/check_playback_state.py
+
       - name: Check Play Next ordering
         run: python3 scripts/check_play_next.py
 

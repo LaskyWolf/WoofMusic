@@ -65,7 +65,8 @@ struct LyricsView: View {
                 .font(.title2.bold())
             Spacer()
             Button { showSongMenu = true } label: {
-                Image(systemName: "ellipsis")
+                Text("⋮")
+                    .font(.system(size: 20, weight: .black))
                     .frame(width: 44, height: 44)
             }
             .accessibilityLabel("Lyrics options")

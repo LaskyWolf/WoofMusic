@@ -30,6 +30,10 @@ struct FullPlayerView: View {
     @State private var isOpeningArtist = false
     @State private var artistUnavailable = false
     @State private var artworkEntryOffset: CGFloat = 0
+    @State private var titleChangeTrigger = 0
+    @State private var titleChangeDirection: CGFloat = 1
+    @State private var lastTitleQueueIndex = NowPlaying.shared.queueIndex
+    private let titleLineHeight: CGFloat = 30
     @State private var currentLyrics: [LyricLine] = []
     @State private var canvasDominantColors: [Color]?
 
@@ -85,6 +89,8 @@ struct FullPlayerView: View {
                     artwork
                         .frame(maxWidth: .infinity)
                         .frame(height: (geometry.size.height + artworkTopInset) * 0.58)
+                        .scaleEffect(reduceMotion || np.isPlaying ? 1 : 0.88, anchor: .top)
+                        .animation(reduceMotion ? nil : .smooth(duration: 0.4), value: np.isPlaying)
                         .compositingGroup()
                         .clipped()
                         .mask {
@@ -158,7 +164,12 @@ struct FullPlayerView: View {
             }
             .animation(.easeInOut(duration: reduceMotion ? 0.15 : 0.25), value: showQueue)
             .animation(.easeInOut(duration: reduceMotion ? 0.15 : 0.25), value: showLyrics)
-            .onChange(of: np.videoId) { _, _ in
+            .onChange(of: np.videoId) { oldValue, newValue in
+                if oldValue != nil, newValue != nil {
+                    titleChangeDirection = np.queueIndex < lastTitleQueueIndex ? -1 : 1
+                    titleChangeTrigger &+= 1
+                }
+                lastTitleQueueIndex = np.queueIndex
                 np.isVideoMode = false
                 showLyrics = false
                 preloadLyrics()
@@ -188,7 +199,7 @@ struct FullPlayerView: View {
             }
             .sheet(isPresented: $showSongMenu) {
                 if let song = np.queueSongs.indices.contains(np.queueIndex) ? np.queueSongs[np.queueIndex] : nil {
-                    PlayerMenuSheet(song: song, onCollapseRequest: { onCollapse() })
+                    PlayerMenuSheet(song: song, onCollapseRequest: { onCollapse() }, showsQueueActions: false)
                 }
             }
             .interactiveDismissDisabled(showQueue || showLyrics)
@@ -315,16 +326,22 @@ struct FullPlayerView: View {
     }
 
     private var titleAndActionsRow: some View {
-        HStack(alignment: .center) {
+        HStack(alignment: .top) {
             PlayerTitleBlock(
                 title: np.title,
                 artist: np.displayArtist,
                 spacing: 4,
                 titleFont: .title2.weight(.bold),
-                titleHeight: 30,
+                titleHeight: titleLineHeight,
                 onArtistTap: { openCurrentArtist() }
             )
             .disabled(isOpeningArtist)
+            .keyframeAnimator(initialValue: CGFloat.zero, trigger: titleChangeTrigger) { content, offset in
+                content.offset(x: reduceMotion ? 0 : offset * titleChangeDirection)
+            } keyframes: { _ in
+                MoveKeyframe(CGFloat(18))
+                SpringKeyframe(CGFloat.zero, duration: 0.45, spring: .bouncy)
+            }
 
             Spacer()
 
@@ -339,6 +356,9 @@ struct FullPlayerView: View {
                         showSongMenu = true
                     }
                 }
+            }
+            .alignmentGuide(.top) { dimensions in
+                dimensions.height / 2 - titleLineHeight / 2
             }
         }
     }

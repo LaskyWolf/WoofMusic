@@ -42,6 +42,14 @@ import UIKit
             precondition(delegate.gestureRecognizerShouldBegin(pan) == expected)
         }
         trace("PASS: track swipe rejects vertical, diagonal, and stationary input before recognition")
+        for step in 0...100 {
+            let glyph = RollingSkipGlyph(size: 28, progress: Double(step) / 100)
+            for dimension in [glyph.leftOffset, glyph.rightOffset, glyph.rightWidth] {
+                precondition(dimension.isFinite && dimension >= 0)
+            }
+            precondition(glyph.rightWidth <= 14)
+        }
+        trace("PASS: skip glyph geometry stays finite and within bounds throughout its animation")
     }
     static func trace(_ message: String) {
         FileHandle.standardOutput.write(Data((message + "\n").utf8))
@@ -203,7 +211,7 @@ try:
         (work / "Fixture.swift").write_text(fixture)
         sdk = run("xcrun", "--sdk", "iphonesimulator", "--show-sdk-path")
         sources = [work / "Fixture.swift", work / "ContentView.swift"] + [
-            root / "Trop/Audio" / name for name in ["MiniPlayerScrollState.swift", "PlayerTrackSwipeGesture.swift", "PlayerComponents.swift"]
+            root / "Trop/Audio" / name for name in ["MiniPlayerScrollState.swift", "PlayerTrackSwipeGesture.swift", "PlayerComponents.swift", "AnimatedSkipLabel.swift"]
         ]
         run("xcrun", "--sdk", "iphonesimulator", "swiftc", "-parse-as-library", "-sdk", sdk,
             "-target", f"{platform.machine()}-apple-ios26.2-simulator", *sources, "-o", app / "SurfaceCheck")

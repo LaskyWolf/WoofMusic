@@ -14,6 +14,7 @@ struct PlayerMenuSheet: View {
     var onCollapseRequest: (() -> Void)?
     var onNavigate: ((DetailRoute) -> Void)?
     var showsSongPreview = false
+    var showsQueueActions = true
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.dismiss) private var dismiss
@@ -42,12 +43,14 @@ struct PlayerMenuSheet: View {
                     shortcutRow
                 }
 
-                Section("Queue") {
-                    Button { playNext() } label: {
-                        actionLabel("Play Next", icon: "text.insert")
-                    }
-                    Button { addToQueue() } label: {
-                        actionLabel("Add to Queue", icon: "list.bullet")
+                if showsQueueActions {
+                    Section("Queue") {
+                        Button { playNext() } label: {
+                            actionLabel("Play Next", icon: "text.insert")
+                        }
+                        Button { addToQueue() } label: {
+                            actionLabel("Add to Queue", icon: "list.bullet")
+                        }
                     }
                 }
 

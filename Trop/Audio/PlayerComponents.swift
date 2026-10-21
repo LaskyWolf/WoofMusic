@@ -54,7 +54,7 @@ struct ProgressBar: View {
             )
         }
         .frame(height: 32)
-        .animation(reduceMotion ? .easeOut(duration: 0.12) : .smooth(duration: 0.3, extraBounce: 0.3), value: isScrubbing)
+        .animation(reduceMotion ? .easeOut(duration: 0.12) : (isScrubbing ? .easeInOut(duration: 0.4) : .smooth(duration: 0.3, extraBounce: 0.3)), value: isScrubbing)
     }
 }
 
@@ -83,12 +83,16 @@ struct PlaybackControlsRow: View {
     let onPrevious: () -> Void
     let onPlayPause: () -> Void
     let onNext: () -> Void
+    @State private var previousAnimation = 0
+    @State private var nextAnimation = 0
 
     var body: some View {
         HStack(spacing: 0) {
-            Button(action: onPrevious) {
-                Image(systemName: "backward.fill")
-                    .font(.title)
+            Button {
+                previousAnimation &+= 1
+                onPrevious()
+            } label: {
+                AnimatedSkipLabel(backwards: true, trigger: previousAnimation)
                     .foregroundStyle(.white)
             }
             .buttonStyle(PlayerSkipButtonStyle())
@@ -100,9 +104,11 @@ struct PlaybackControlsRow: View {
             PlayerPlayPauseButton(isPlaying: isPlaying, action: onPlayPause)
             .frame(maxWidth: .infinity)
 
-            Button(action: onNext) {
-                Image(systemName: "forward.fill")
-                    .font(.title)
+            Button {
+                nextAnimation &+= 1
+                onNext()
+            } label: {
+                AnimatedSkipLabel(backwards: false, trigger: nextAnimation)
                     .foregroundStyle(.white)
             }
             .buttonStyle(PlayerSkipButtonStyle())

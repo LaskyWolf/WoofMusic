@@ -290,7 +290,6 @@ final class NowPlaying {
     }
 
     func update(title: String, artist: String?, videoId: String, album: String? = nil, artists: [YTArtist] = [], thumbnailUrl: String? = nil) {
-        self.isPlaying = true
         self.title = title
         self.artists = artists
         self.artist = cleanArtist(artist ?? "")
