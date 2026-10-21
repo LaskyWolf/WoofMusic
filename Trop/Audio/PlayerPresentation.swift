@@ -31,7 +31,8 @@ struct PlayerPresentation: View, Animatable {
         let compactOpacity = min(1, max(0, (1 - progress) * 3 + dragOffset / geometry.expanded.height))
 
         ZStack(alignment: .top) {
-            Rectangle().fill(.ultraThinMaterial)
+            Color.clear
+                .glassEffect(.regular, in: RoundedRectangle(cornerRadius: radius, style: .continuous))
 
             LinearGradient(
                 colors: settings.playerBackgroundStyle == .solid ? [.black, .black] : np.dominantColors,

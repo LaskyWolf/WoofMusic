@@ -45,6 +45,7 @@ struct ContentView: View {
                     .onGeometryChange(for: CGRect.self) { proxy in
                         proxy.frame(in: .global)
                     } action: { frame in
+                        guard !frame.isEmpty else { return }
                         miniPlayerFrame = frame
                         if pendingPlayerExpansion, !frame.isEmpty { expandPlayer() }
                     }
@@ -98,6 +99,7 @@ struct ContentView: View {
                         }
                     }
                 }
+                .ignoresSafeArea(.keyboard)
             }
         .onAppear { AppRouter.shared.selectedTabIndex = selectedTab }
         .onChange(of: selectedTab) { _, newValue in
