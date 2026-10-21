@@ -292,7 +292,7 @@ struct QueueView<ProgressSlider: View>: View {
         guard np.queueSongs.indices.contains(index) else { return }
         let wasCurrent = index == np.queueIndex
         let removedVideoId = np.queueSongs[index].videoId
-        np.queueSongs.remove(at: index)
+        np.removeQueueSong(at: index)
         if wasCurrent {
             if np.queueSongs.isEmpty {
                 np.queueIndex = 0

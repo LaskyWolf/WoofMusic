@@ -46,6 +46,9 @@ jobs:
       - name: Check player transition regressions
         run: python3 scripts/check_player_transition.py
 
+      - name: Check Play Next ordering
+        run: python3 scripts/check_play_next.py
+
       - name: Make build script executable
         run: chmod +x ./build_ipa.sh
 

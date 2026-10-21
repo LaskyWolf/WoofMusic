@@ -202,10 +202,7 @@ struct PlayerMenuSheet: View {
 
     private func playNext() {
         let np = NowPlaying.shared
-        let insertIndex = min(np.queueIndex + 1, np.queueSongs.count)
-        np.queueSongs.insert(song, at: insertIndex)
-        np.repairQueueIndex()
-        np.persistQueueState()
+        np.enqueueNext(song)
         dismiss()
     }
 

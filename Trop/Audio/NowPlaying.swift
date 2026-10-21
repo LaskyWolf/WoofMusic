@@ -39,6 +39,7 @@ final class NowPlaying {
 
     var queueSongs: [SongItem] = []
     var queueIndex = 0
+    private var playNextEnd: Int?
 
     var isShuffleOn = false
     var isRepeatOn = false
@@ -71,6 +72,7 @@ final class NowPlaying {
 
     private static let queueKey = "nowPlaying.queue"
     private static let queueIndexKey = "nowPlaying.queueIndex"
+    private static let playNextEndKey = "nowPlaying.playNextEnd"
     private static let shuffleKey = "nowPlaying.shuffle"
     private static let repeatKey = "nowPlaying.repeat"
 
@@ -98,6 +100,10 @@ final class NowPlaying {
             storedIndex = 0
         }
         queueIndex = min(max(storedIndex, 0), songs.count - 1)
+        if let end = UserDefaults.standard.object(forKey: Self.playNextEndKey) as? Int,
+           end > queueIndex, songs.indices.contains(end) {
+            playNextEnd = end
+        }
         isShuffleOn = UserDefaults.standard.bool(forKey: Self.shuffleKey)
         isRepeatOn = UserDefaults.standard.bool(forKey: Self.repeatKey)
         queueIndex = max(0, queueIndex)
@@ -106,6 +112,7 @@ final class NowPlaying {
     func persistQueueState() {
         guard SettingsStore.shared.persistQueue else { return }
         if queueSongs.isEmpty {
+            UserDefaults.standard.removeObject(forKey: Self.playNextEndKey)
             UserDefaults.standard.removeObject(forKey: Self.queueKey)
             UserDefaults.standard.removeObject(forKey: Self.queueIndexKey)
             UserDefaults.standard.removeObject(forKey: Self.shuffleKey)
@@ -115,17 +122,49 @@ final class NowPlaying {
         if let data = try? JSONEncoder().encode(queueSongs) {
             UserDefaults.standard.set(data, forKey: Self.queueKey)
         }
+        UserDefaults.standard.set(playNextEnd, forKey: Self.playNextEndKey)
         UserDefaults.standard.set(queueIndex, forKey: Self.queueIndexKey)
         UserDefaults.standard.set(isShuffleOn, forKey: Self.shuffleKey)
         UserDefaults.standard.set(isRepeatOn, forKey: Self.repeatKey)
     }
 
     func setQueue(_ songs: [SongItem], startIndex: Int) {
+        playNextEnd = nil
         queueSongs = songs
         queueIndex = min(max(startIndex, 0), max(songs.count - 1, 0))
         originalQueue = nil
         isShuffleOn = false
         persistQueueState()
+    }
+
+    /// Appends to the manually requested next songs, ahead of the regular queue.
+    func enqueueNext(_ song: SongItem) {
+        let index = min(max(queueIndex + 1, (playNextEnd ?? queueIndex) + 1), queueSongs.count)
+        queueSongs.insert(song, at: index)
+        playNextEnd = index
+        persistQueueState()
+    }
+
+    /// Keeps manual additions when an in-flight radio request completes.
+    func replaceWithRadio(_ songs: [SongItem], currentIndex: Int) {
+        let pending: [SongItem]
+        if let end = playNextEnd, end > queueIndex, queueSongs.indices.contains(end) {
+            pending = Array(queueSongs[(queueIndex + 1)...end])
+        } else {
+            pending = []
+        }
+        setQueue(songs, startIndex: currentIndex)
+        queueSongs.insert(contentsOf: pending, at: min(queueIndex + 1, queueSongs.count))
+        playNextEnd = pending.isEmpty ? nil : queueIndex + pending.count
+        persistQueueState()
+    }
+
+    func removeQueueSong(at index: Int) {
+        guard queueSongs.indices.contains(index) else { return }
+        queueSongs.remove(at: index)
+        if let end = playNextEnd, index <= end {
+            playNextEnd = end - 1
+        }
     }
 
     /// Ensures `queueIndex` points at a valid entry
@@ -151,6 +190,7 @@ final class NowPlaying {
 
     /// Shuffles upcoming songs, keeping the current one; tapping again re-shuffles.
     func shuffleQueue() {
+        playNextEnd = nil
         guard queueSongs.count > 1 else {
             isShuffleOn = true
             return
@@ -171,6 +211,7 @@ final class NowPlaying {
 
     /// Restore the original (unshuffled) queue order.
     func disableShuffle() {
+        playNextEnd = nil
         guard queueSongs.indices.contains(queueIndex) else { return }
         if let orig = originalQueue {
             let currentVideoId = queueSongs[queueIndex].videoId
@@ -187,6 +228,7 @@ final class NowPlaying {
 
     func moveQueueSongs(from source: IndexSet, to destination: Int) {
         guard !source.isEmpty, queueSongs.indices.contains(source.first ?? -1) else { return }
+        playNextEnd = nil
         queueSongs.move(fromOffsets: source, toOffset: destination)
         repairQueueIndex()
         persistQueueState()
@@ -211,6 +253,7 @@ final class NowPlaying {
         guard hasPrevious else { return }
         guard !isResolvingNext else { return }
         lastManualSkipTime = Date()
+        playNextEnd = nil
         queueIndex -= 1
         playCurrentSong(logContext: "playPrevious")
     }
@@ -353,9 +396,7 @@ final class NowPlaying {
                     isPlaying = false
                     return
                 }
-                self.queueSongs = songs
-                self.queueIndex = 0
-                self.isShuffleOn = false
+                self.setQueue(songs, startIndex: 0)
                 let first = songs[0]
                 update(with: first)
                 try await PlaybackManager.shared.resolveAndPlay(videoId: first.videoId)
