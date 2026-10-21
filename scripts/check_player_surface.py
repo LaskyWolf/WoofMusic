@@ -116,12 +116,16 @@ struct MiniPlayerBarView: View {
 struct FullPlayerView: View {
     let onCollapse: () -> Void
     let artworkTopInset: CGFloat
+    @State private var progress: Float = 0.35
     var body: some View {
         VStack(spacing: 32) {
             Capsule().fill(.secondary).frame(width: 40, height: 5)
             Image(systemName: "music.note").resizable().scaledToFit().padding(70).background(.blue, in: RoundedRectangle(cornerRadius: 20))
             Text("Surface continuity").font(.title.bold())
             Text("Offline simulator check")
+            ProgressBar(progress: $progress, accentColor: .white, isPlaying: false, onEditingChanged: { _ in })
+            PlaybackControlsRow(isPlaying: false, hasPrevious: true, hasNext: true,
+                                onPrevious: {}, onPlayPause: {}, onNext: {})
             Button("Close", action: onCollapse)
             Spacer()
         }
@@ -199,7 +203,7 @@ try:
         (work / "Fixture.swift").write_text(fixture)
         sdk = run("xcrun", "--sdk", "iphonesimulator", "--show-sdk-path")
         sources = [work / "Fixture.swift", work / "ContentView.swift"] + [
-            root / "Trop/Audio" / name for name in ["MiniPlayerScrollState.swift", "PlayerTrackSwipeGesture.swift"]
+            root / "Trop/Audio" / name for name in ["MiniPlayerScrollState.swift", "PlayerTrackSwipeGesture.swift", "PlayerComponents.swift"]
         ]
         run("xcrun", "--sdk", "iphonesimulator", "swiftc", "-parse-as-library", "-sdk", sdk,
             "-target", f"{platform.machine()}-apple-ios26.2-simulator", *sources, "-o", app / "SurfaceCheck")

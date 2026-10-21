@@ -14,30 +14,38 @@ struct ProgressBar: View {
     let accentColor: Color
     let isPlaying: Bool
     let onEditingChanged: (Bool) -> Void
+    @GestureState private var isScrubbing = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         GeometryReader { geo in
             let width = geo.size.width
-            let elapsedWidth = max(0, min(width, width * CGFloat(progress)))
+            let trackInset: CGFloat = isScrubbing ? 0 : 9
+            let trackWidth = max(0, width - trackInset * 2)
+            let elapsedWidth = max(0, min(trackWidth, trackWidth * CGFloat(progress)))
+            let trackHeight: CGFloat = isScrubbing ? 17 : 7
 
             ZStack(alignment: .leading) {
                 // Remaining track (unwatched)
                 Capsule()
                     .fill(.white.opacity(0.15))
-                    .frame(height: 6)
+                    .frame(height: trackHeight)
 
                 // Elapsed track (watched, marked)
                 Capsule()
-                    .fill(.white.opacity(0.8))
-                    .frame(width: elapsedWidth, height: 6)
+                    .fill(.white.opacity(isScrubbing ? 1 : 0.8))
+                    .frame(width: elapsedWidth, height: trackHeight)
             }
+            .padding(.horizontal, trackInset)
+            .frame(maxHeight: .infinity)
             .contentShape(Rectangle())
             .gesture(
                 DragGesture(minimumDistance: 0)
+                    .updating($isScrubbing) { _, active, _ in active = true }
                     .onChanged { value in
                         onEditingChanged(true)
                         let loc = value.location.x
-                        let percent = max(0, min(1, loc / width))
+                        let percent = width > 0 ? max(0, min(1, loc / width)) : 0
                         progress = Float(percent)
                     }
                     .onEnded { _ in
@@ -45,7 +53,8 @@ struct ProgressBar: View {
                     }
             )
         }
-        .frame(height: 12)
+        .frame(height: 32)
+        .animation(reduceMotion ? .easeOut(duration: 0.12) : .smooth(duration: 0.3, extraBounce: 0.3), value: isScrubbing)
     }
 }
 
@@ -82,6 +91,7 @@ struct PlaybackControlsRow: View {
                     .font(.title)
                     .foregroundStyle(.white)
             }
+            .buttonStyle(PlayerSkipButtonStyle())
             .disabled(!hasPrevious)
             .opacity(hasPrevious ? 1 : 0.3)
             .frame(maxWidth: .infinity)
@@ -95,12 +105,27 @@ struct PlaybackControlsRow: View {
                     .font(.title)
                     .foregroundStyle(.white)
             }
+            .buttonStyle(PlayerSkipButtonStyle())
             .disabled(!hasNext)
             .opacity(hasNext ? 1 : 0.3)
             .frame(maxWidth: .infinity)
             .accessibilityLabel("Next")
         }
         .padding(.horizontal, 24)
+    }
+}
+
+private struct PlayerSkipButtonStyle: ButtonStyle {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(reduceMotion || !configuration.isPressed ? 1 : 0.9)
+            .frame(width: 68, height: 68)
+            .background(.white.opacity(configuration.isPressed ? 0.12 : 0), in: Circle())
+            .contentShape(Circle())
+            .scaleEffect(reduceMotion || !configuration.isPressed ? 1 : 0.85)
+            .animation(reduceMotion ? .easeOut(duration: 0.12) : .spring(response: 0.3, dampingFraction: 0.7), value: configuration.isPressed)
     }
 }
 
