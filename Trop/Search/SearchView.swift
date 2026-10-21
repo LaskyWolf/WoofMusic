@@ -21,6 +21,10 @@ struct SearchView: View {
                 searchTopBar
 
                 content
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .contentShape(Rectangle())
+                    .simultaneousGesture(TapGesture().onEnded { fieldFocused = false })
+                    .scrollDismissesKeyboard(.interactively)
             }
             .frame(maxHeight: .infinity, alignment: .top)
             .toolbar(.hidden, for: .navigationBar)

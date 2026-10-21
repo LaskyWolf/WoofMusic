@@ -30,7 +30,7 @@ struct PlayerTitleBlock: View {
                 if let onArtistTap {
                     Button(action: onArtistTap) {
                         artistLabel
-                            .frame(minHeight: 44, alignment: .leading)
+                            .frame(minHeight: 44, alignment: .topLeading)
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
@@ -40,6 +40,8 @@ struct PlayerTitleBlock: View {
                 }
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .fixedSize(horizontal: false, vertical: true)
     }
 
     private var artistLabel: some View {
@@ -47,6 +49,7 @@ struct PlayerTitleBlock: View {
             .font(.subheadline)
             .foregroundStyle(.white.opacity(0.7))
             .lineLimit(1)
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 

@@ -48,12 +48,14 @@ struct ContentView: View {
                     )
                     isExpanded = true
                 })
-                .phaseAnimator([CGFloat(1), 1.05, 1], trigger: playerDismissalBounce) { content, scale in
+                .matchedTransitionSource(id: "nowPlaying", in: playerTransition) { source in
+                    source.clipShape(RoundedRectangle(cornerRadius: 24))
+                }
+                .phaseAnimator([CGFloat(1), 1.035, 1], trigger: playerDismissalBounce) { content, scale in
                     content.scaleEffect(x: 1, y: reduceMotion ? 1 : scale)
                 } animation: { _ in
-                    .spring(duration: 0.22, bounce: 0.35)
+                    .spring(duration: 0.2, bounce: 0.1)
                 }
-                .matchedTransitionSource(id: "nowPlaying", in: playerTransition)
             }
             .background {
                 backgroundLayer

@@ -7,17 +7,15 @@
 
 import SwiftUI
 
-struct LyricsView<ProgressSlider: View>: View {
+struct LyricsView: View {
     private let np = NowPlaying.shared
     private let player = PlayerController.shared
     @Environment(SettingsStore.self) private var settings
 
     @Binding var showLyrics: Bool
-    let pendingRoute: Binding<DetailRoute?>
-    @ViewBuilder var progressSlider: () -> ProgressSlider
 
-    @ObservedObject private var likeStore = LikeStore.shared
     @State private var lines: [LyricLine] = []
+    @State private var isLoading = true
     @State private var activeIndex: Int = 0
     @State private var displayTime: TimeInterval = 0
     @State private var showSongMenu = false
@@ -37,23 +35,13 @@ struct LyricsView<ProgressSlider: View>: View {
     @State private var hasPositionedInitialLyrics = false
     @State private var scrollProxy: ScrollViewProxy?
 
-    private var isLiked: Bool {
-        guard let song = np.queueSongs.indices.contains(np.queueIndex) ? np.queueSongs[np.queueIndex] : nil else { return false }
-        return likeStore.isLiked(videoId: song.videoId)
-    }
-
     var body: some View {
         VStack(spacing: 0) {
             headerBar
-            songInfoRow
 
             lyricsBody
                 .layoutPriority(1)
-
-            playbackControls
         }
-        .ignoresSafeArea(edges: .bottom)
-        .simultaneousGesture(swipeBackGesture)
         .sheet(isPresented: $showSongMenu) {
             LyricsMenuSheet()
         }
@@ -72,30 +60,40 @@ struct LyricsView<ProgressSlider: View>: View {
     // MARK: - Header
 
     private var headerBar: some View {
-        Color.clear
-            .padding(.top, 16)
-    }
-
-    private var swipeBackGesture: some Gesture {
-        DragGesture(minimumDistance: 16)
-            .onEnded { value in
-                let isHorizontal = abs(value.translation.width) > abs(value.translation.height)
-                guard value.startLocation.x <= 28,
-                      isHorizontal,
-                      value.translation.width > 80 else { return }
-                withAnimation(.easeInOut(duration: 0.3)) {
-                    showLyrics = false
-                }
+        HStack {
+            Text("Lyrics")
+                .font(.title2.bold())
+            Spacer()
+            Button { showSongMenu = true } label: {
+                Image(systemName: "ellipsis")
+                    .frame(width: 44, height: 44)
             }
+            .accessibilityLabel("Lyrics options")
+            Button { showLyrics = false } label: {
+                Image(systemName: "xmark")
+                    .font(.body.weight(.semibold))
+                    .frame(width: 44, height: 44)
+            }
+            .accessibilityLabel("Close lyrics")
+        }
+        .foregroundStyle(.white)
+        .padding(.leading, 20)
+        .padding(.trailing, 8)
+        .padding(.top, 8)
     }
 
     // MARK: - Lyrics Body
 
     private var lyricsBody: some View {
         Group {
-            if lines.isEmpty {
-                EmptyView()
+            if isLoading {
+                ProgressView()
+                    .tint(.white)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if lines.isEmpty {
+                ContentUnavailableView("No Lyrics", systemImage: "text.alignleft",
+                                       description: Text("Lyrics are unavailable for this song."))
+                    .foregroundStyle(.white)
             } else {
                 lyricsContentView
             }
@@ -358,63 +356,11 @@ struct LyricsView<ProgressSlider: View>: View {
         }
     }
 
-    // MARK: - Shared Song Info Row
-
-    private var songInfoRow: some View {
-        HStack(spacing: 12) {
-            if let uiImage = np.thumbnailUIImage {
-                Image(uiImage: uiImage.centerCroppedSquare())
-                    .resizable()
-                    .scaledToFill()
-                    .frame(width: 64, height: 64)
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-            } else {
-                Image(systemName: "music.note")
-                    .font(.title2)
-                    .foregroundStyle(.white.opacity(0.4))
-                    .frame(width: 64, height: 64)
-            }
-
-            PlayerTitleBlock(title: np.title, artist: np.displayArtist)
-
-            Spacer()
-
-            PlayerLikeButton(
-                isLiked: isLiked,
-                fontSize: 18
-            ) {
-                guard let song = np.queueSongs.indices.contains(np.queueIndex) ? np.queueSongs[np.queueIndex] : nil else { return }
-                Task { await likeStore.toggle(song: song) }
-            }
-
-            if np.queueSongs.indices.contains(np.queueIndex) {
-                PlayerOptionsButton(color: .white.opacity(0.6)) {
-                    showSongMenu = true
-                }
-            }
-        }
-        .padding(.horizontal, 20)
-        .padding(.top, 12)
-        .padding(.bottom, 12)
-    }
-
-    private var playbackControls: some View {
-        VStack(spacing: 6) {
-            progressSlider()
-
-            PlayerPlayPauseButton(isPlaying: np.isPlaying) {
-                player.togglePlayPause()
-            }
-            .animation(.spring(response: 0.3, dampingFraction: 0.7), value: np.isPlaying)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.top, 12)
-        .padding(.bottom, 20)
-    }
-
     // MARK: - Data
 
     private func loadLyrics() async {
+        isLoading = true
+        defer { isLoading = false }
         guard let videoId = np.videoId else {
             lines = []
             return

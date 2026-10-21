@@ -12,11 +12,13 @@ struct PlayerMenuSheet: View {
     let song: SongItem
     /// Collapses the Big Player so the pushed page is visible underneath.
     var onCollapseRequest: (() -> Void)?
+    var onNavigate: ((DetailRoute) -> Void)?
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.settingsStore) private var settings
 
     // Loaded state
+    @ObservedObject private var likeStore = LikeStore.shared
     @State private var pin = PinState()
     @State private var showPlaylistPicker = false
     @State private var showArtistPicker = false
@@ -34,6 +36,9 @@ struct PlayerMenuSheet: View {
                     Button { showPlaylistPicker = true } label: {
                         actionLabel("Add to Playlist", icon: "music.note.list")
                     }
+                    Button { share() } label: {
+                        actionLabel("Share", icon: "square.and.arrow.up")
+                    }
                     Button {
                         UIPasteboard.general.string = song.webUrl
                         dismiss()
@@ -42,7 +47,22 @@ struct PlayerMenuSheet: View {
                     }
                 }
 
+                Section("Queue") {
+                    Button { playNext() } label: {
+                        actionLabel("Play Next", icon: "text.insert")
+                    }
+                    Button { addToQueue() } label: {
+                        actionLabel("Add to Queue", icon: "list.bullet")
+                    }
+                }
+
                 Section("Library") {
+                    Button {
+                        Task { await likeStore.toggle(song: song) }
+                    } label: {
+                        let liked = likeStore.isLiked(videoId: song.videoId)
+                        actionLabel(liked ? "Unlike" : "Like", icon: liked ? "heart.slash" : "heart")
+                    }
                     viewArtistRow
                     if let albumId = song.firstAlbumBrowseId {
                         Button { navigate(.album(browseId: albumId)) } label: {
@@ -162,12 +182,36 @@ struct PlayerMenuSheet: View {
         dismiss()
     }
 
+    private func playNext() {
+        let np = NowPlaying.shared
+        let insertIndex = min(np.queueIndex + 1, np.queueSongs.count)
+        np.queueSongs.insert(song, at: insertIndex)
+        np.repairQueueIndex()
+        np.persistQueueState()
+        dismiss()
+    }
+
+    private func addToQueue() {
+        let np = NowPlaying.shared
+        np.queueSongs.append(song)
+        np.persistQueueState()
+        dismiss()
+    }
+
+    private func share() {
+        presentShareSheet(items: [song.webUrl], afterDismiss: { dismiss() })
+    }
+
     private func navigate(_ route: DetailRoute) {
         dismiss()
         onCollapseRequest?()
         // Appends directly to the selected tab's NavigationPath — plain state
         // mutation, so it lands even while the player is tearing down.
-        AppRouter.shared.open(route)
+        if let onNavigate {
+            onNavigate(route)
+        } else {
+            AppRouter.shared.open(route)
+        }
     }
 
     private func handleViewArtist() {
@@ -197,13 +241,17 @@ struct PlayerMenuSheet: View {
             var browseId: String?
             do {
                 let json = try await SearchService.shared.search(query: name)
+                let wanted = name.trimmingCharacters(in: .whitespacesAndNewlines)
                 browseId = SearchParser.parseSearchResults(from: json)
                     .flatMap(\.items)
-                    .compactMap { item -> String? in
-                        if case .artist(let artist) = item { return artist.browseId }
+                    .compactMap { item -> ArtistItem? in
+                        if case .artist(let artist) = item { return artist }
                         return nil
                     }
-                    .first
+                    .first {
+                        $0.name.trimmingCharacters(in: .whitespacesAndNewlines)
+                            .caseInsensitiveCompare(wanted) == .orderedSame
+                    }?.browseId
             } catch {
                 browseId = nil
             }
@@ -344,15 +392,12 @@ struct SongDetailsView: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 16) {
-                trackSection
-                streamSection
-                statsSection
-            }
-            .padding(16)
+        List {
+            trackSection
+            streamSection
+            statsSection
         }
-        .background(Color(.systemGroupedBackground))
+        .listStyle(.insetGrouped)
         .navigationTitle("Details")
         .navigationBarTitleDisplayMode(.inline)
         .task { await loadMetadata() }
@@ -361,7 +406,7 @@ struct SongDetailsView: View {
     // MARK: Sections
 
     private var trackSection: some View {
-        section("Track") {
+        Section("Track") {
             row("Title", song.title)
             row("Artists", song.artistNamesDisplay)
             if let album = song.album {
@@ -374,7 +419,7 @@ struct SongDetailsView: View {
 
     @ViewBuilder
     private var streamSection: some View {
-        section("Stream") {
+        Section("Stream") {
             if let s = stream {
                 row("Client", s.clientName)
                 row("ITAG", "\(s.itag)", monospaced: true)
@@ -398,29 +443,12 @@ struct SongDetailsView: View {
     }
 
     private var statsSection: some View {
-        section("Stats") {
+        Section("Stats") {
             row("Views", viewCountText ?? "Loading…")
         }
     }
 
     // MARK: Building Blocks
-
-    private func section(_ title: String, @ViewBuilder content: () -> some View) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Text(title)
-                .font(.footnote.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 16)
-                .padding(.bottom, 6)
-            VStack(spacing: 0) {
-                content()
-            }
-            .background(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .fill(Color(.secondarySystemGroupedBackground))
-            )
-        }
-    }
 
     private func row(_ label: String, _ value: String, monospaced: Bool = false) -> some View {
         HStack(alignment: .top) {
@@ -433,8 +461,6 @@ struct SongDetailsView: View {
                 .multilineTextAlignment(.trailing)
                 .lineLimit(3)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 9)
     }
 
     // MARK: Helpers
