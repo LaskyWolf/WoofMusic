@@ -7,6 +7,8 @@ struct PlayerPresentation: View, Animatable {
     var dragOffset: CGFloat
     let geometry: PlayerTransitionGeometry
     let safeAreaInsets: EdgeInsets
+    let isExpanded: Bool
+    let onExpand: () -> Void
     let onCollapse: () -> Void
     let onDragChanged: (CGFloat) -> Void
     let onDragEnded: (CGFloat, CGFloat, CGFloat) -> Void
@@ -26,8 +28,8 @@ struct PlayerPresentation: View, Animatable {
 
     var body: some View {
         let progress = min(1, max(0, expansion))
-        let frame = reduceMotion ? geometry.expanded : geometry.frame(expansion: expansion, dragOffset: dragOffset)
-        let radius = reduceMotion ? 0 : geometry.cornerRadius(expansion: expansion, dragOffset: dragOffset)
+        let frame = reduceMotion && isExpanded ? geometry.expanded : geometry.frame(expansion: expansion, dragOffset: dragOffset)
+        let radius = reduceMotion && isExpanded ? 0 : geometry.cornerRadius(expansion: expansion, dragOffset: dragOffset)
         let compactOpacity = min(1, max(0, (1 - progress) * 3 + dragOffset / geometry.expanded.height))
 
         ZStack(alignment: .top) {
@@ -38,37 +40,39 @@ struct PlayerPresentation: View, Animatable {
             )
             .opacity(progress)
 
-            FullPlayerView(
-                onCollapse: onCollapse,
-                artworkTopInset: safeAreaInsets.top,
-                onDragChanged: onDragChanged,
-                onDragEnded: onDragEnded,
-                onDragCancelled: onDragCancelled
-            )
-            .frame(width: geometry.expanded.width,
-                   height: geometry.expanded.height - safeAreaInsets.top - safeAreaInsets.bottom)
-            .padding(.top, safeAreaInsets.top)
-            .padding(.bottom, safeAreaInsets.bottom)
-            .frame(width: geometry.expanded.width, height: geometry.expanded.height)
-            .scaleEffect(reduceMotion ? 1 : max(0.01, progress), anchor: .top)
-            .opacity(reduceMotion ? 1 : min(1, progress * 2.5))
-            .allowsHitTesting(progress >= 0.999)
-            .accessibilityHidden(progress < 0.999)
+            if isExpanded {
+                FullPlayerView(
+                    onCollapse: onCollapse,
+                    artworkTopInset: safeAreaInsets.top,
+                    onDragChanged: onDragChanged,
+                    onDragEnded: onDragEnded,
+                    onDragCancelled: onDragCancelled
+                )
+                .frame(width: geometry.expanded.width,
+                       height: geometry.expanded.height - safeAreaInsets.top - safeAreaInsets.bottom)
+                .padding(.top, safeAreaInsets.top)
+                .padding(.bottom, safeAreaInsets.bottom)
+                .frame(width: geometry.expanded.width, height: geometry.expanded.height)
+                .scaleEffect(reduceMotion ? 1 : max(0.01, progress), anchor: .top)
+                .opacity(reduceMotion ? 1 : min(1, progress * 2.5))
+                .allowsHitTesting(progress >= 0.999)
+                .accessibilityHidden(progress < 0.999)
+            }
 
-            if !reduceMotion {
-                MiniPlayerBarView(onExpand: {}, isTransitioning: true)
+            if !reduceMotion || !isExpanded {
+                MiniPlayerBarView(onExpand: onExpand, isTransitioning: isExpanded)
                     .frame(width: frame.width, height: geometry.collapsed.height)
                     .opacity(compactOpacity)
-                    .allowsHitTesting(false)
-                    .accessibilityHidden(true)
+                    .allowsHitTesting(!isExpanded)
+                    .accessibilityHidden(isExpanded)
             }
         }
         .frame(width: frame.width, height: frame.height, alignment: .top)
         .clipShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
         .glassEffect(.regular, in: RoundedRectangle(cornerRadius: radius, style: .continuous))
-        .opacity(reduceMotion ? progress : 1)
+        .opacity(reduceMotion && isExpanded ? progress : 1)
         .position(x: frame.midX, y: frame.midY - safeAreaInsets.top)
-        .accessibilityAddTraits(.isModal)
+        .accessibilityAddTraits(isExpanded ? .isModal : [])
         .accessibilityAction(.escape, onCollapse)
         .transaction { $0.animation = nil }
     }

@@ -49,6 +49,16 @@ jobs:
       - name: Check Play Next ordering
         run: python3 scripts/check_play_next.py
 
+      - name: Check persistent player surface in Simulator
+        run: python3 scripts/check_player_surface.py
+
+      - name: Upload player surface screenshots
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: Player-surface-check
+          path: build/player-surface-check
+          retention-days: 7
+
       - name: Make build script executable
         run: chmod +x ./build_ipa.sh
 
