@@ -35,6 +35,9 @@ struct PlayerPresentation: View, Animatable {
                 startPoint: .top,
                 endPoint: .bottom
             )
+            // Crop the lower background instead of compressing bright colors into the capsule.
+            .frame(width: geometry.expanded.width, height: geometry.expanded.height)
+            .frame(width: frame.width, height: frame.height, alignment: .bottom)
 
             FullPlayerView(
                 onCollapse: onCollapse,
