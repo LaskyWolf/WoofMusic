@@ -99,7 +99,7 @@ enum TrackAnalyzer {
         // onsets. Fine-tuning the period too matters: a tempo off by 0.5 BPM
         // drifts 70 ms over 40 beats.
         let basePeriod = 60 / bpm / frameSeconds
-        var best = (score: Float(-1), period: basePeriod, phase: 0.0)
+        var grid = (score: Float(-1), period: basePeriod, phase: 0.0)
         for step in -20...20 {
             let period = basePeriod * (1 + Double(step) * 0.001)
             var phase = 0.0
@@ -110,10 +110,10 @@ enum TrackAnalyzer {
                     sum += onset[Int(position)]
                     position += period
                 }
-                if sum > best.score { best = (sum, period, phase) }
+                if sum > grid.score { grid = (sum, period, phase) }
                 phase += 0.5
             }
         }
-        return (60 / (best.period * frameSeconds), best.phase * frameSeconds)
+        return (60 / (grid.period * frameSeconds), grid.phase * frameSeconds)
     }
 }
