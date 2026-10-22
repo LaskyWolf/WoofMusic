@@ -495,7 +495,7 @@ struct PlaylistDetailView: View {
 
     private func deletePlaylist() async {
         do {
-            try await SyncBridge.mutations.deletePlaylist(playlistId: playlistId)
+            try await PlaylistRemoval.remove(playlistId: playlistId, owned: isEditable)
             dismiss()
         } catch {
             Log.playlistDetail.error("Failed to delete playlist: \(error)")
@@ -599,7 +599,7 @@ struct PlaylistDetailView: View {
                         playlist: playlist,
                         onSync: { Task { await viewModel.load(); await fetchEntity() } },
                         isOwned: isEditable,
-                        onDelete: { Task { await deletePlaylist() } }
+                        onDelete: viewModel.autoRoute == nil ? { Task { await deletePlaylist() } } : nil
                     ) {
                         MoreCircleGlyph()
                     }

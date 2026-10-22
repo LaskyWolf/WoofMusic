@@ -14,7 +14,7 @@ struct PlaylistActionsMenu<MenuLabel: View>: View {
     var onSync: (() -> Void)?
     /// Only playlists you own can be edited.
     var isOwned = false
-    /// Shown as "Delete Playlist" for owned playlists.
+    /// Shown as "Delete Playlist" for owned playlists and "Remove from Library" for saved ones.
     var onDelete: (() -> Void)?
     @ViewBuilder var label: () -> MenuLabel
 
@@ -46,9 +46,9 @@ struct PlaylistActionsMenu<MenuLabel: View>: View {
             }
             .disabled(playlist.songs.isEmpty)
 
-            if isOwned, onDelete != nil {
+            if onDelete != nil {
                 Section {
-                    Button("Delete Playlist", systemImage: "trash", role: .destructive) {
+                    Button(isOwned ? "Delete Playlist" : "Remove from Library", systemImage: "trash", role: .destructive) {
                         showDelete = true
                     }
                 }
@@ -68,10 +68,12 @@ struct PlaylistActionsMenu<MenuLabel: View>: View {
             onConfirm: deleteAllDownloads
         )
         .destructiveConfirm(
-            "Delete Playlist?",
+            isOwned ? "Delete Playlist?" : "Remove from Library?",
             isPresented: $showDelete,
-            message: Text("Delete \"\(playlist.title)\"? This can't be undone."),
-            confirmTitle: "Delete",
+            message: Text(isOwned
+                ? "Delete \"\(playlist.title)\"? This can't be undone."
+                : "Remove \"\(playlist.title)\" from your library? The playlist itself stays on YouTube Music."),
+            confirmTitle: isOwned ? "Delete" : "Remove",
             onConfirm: { onDelete?() }
         )
     }
