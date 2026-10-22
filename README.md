@@ -31,7 +31,7 @@ The IPA is unsigned: sideload it with a tool that re-signs apps with your Apple 
 
 ### Build the IPA
 
-- **GitHub Actions:** fork this repo, then run the **Private iPhone Test Build** workflow from the Actions tab. The IPA is attached to the run as the `Music-iOS` artifact.
+- **GitHub Actions:** fork this repo, then run the **iPhone Build** workflow from the Actions tab. The IPA is attached to the run as the `Music-iOS` artifact.
 - **Locally (macOS with Xcode):** run `./build_ipa.sh`. The output is `build/Music.ipa`.
 
 ## Notable mentions

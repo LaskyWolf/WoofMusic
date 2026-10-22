@@ -1,4 +1,4 @@
-name: Private iPhone Test Build
+name: iPhone Build
 
 on:
   workflow_dispatch:
@@ -7,7 +7,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: private-iphone-test
+  group: iphone-build
   cancel-in-progress: false
 
 env:
