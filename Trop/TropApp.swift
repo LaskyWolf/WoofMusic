@@ -11,6 +11,8 @@ import WebKit
 
 @main
 struct TropApp: App {
+    @UIApplicationDelegateAdaptor(QuickActionAppDelegate.self) private var appDelegate
+    @Environment(\.scenePhase) private var scenePhase
     @State private var settings = SettingsStore.shared
 
     init() {
@@ -70,6 +72,9 @@ struct TropApp: App {
                 .tint(settings.accentColor)
                 .environment(settings)
                 .environment(\.downloadManager, DownloadManager.shared)
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .background { QuickAction.updateResumeItem() }
         }
     }
 

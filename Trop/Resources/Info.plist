@@ -11,6 +11,33 @@
 		<key>UIApplicationSupportsMultipleScenes</key>
 		<false/>
 	</dict>
+	<key>UIApplicationShortcutItems</key>
+	<array>
+		<dict>
+			<key>UIApplicationShortcutItemType</key>
+			<string>search</string>
+			<key>UIApplicationShortcutItemTitle</key>
+			<string>Search</string>
+			<key>UIApplicationShortcutItemIconSymbolName</key>
+			<string>magnifyingglass</string>
+		</dict>
+		<dict>
+			<key>UIApplicationShortcutItemType</key>
+			<string>shuffleLiked</string>
+			<key>UIApplicationShortcutItemTitle</key>
+			<string>Shuffle Liked Songs</string>
+			<key>UIApplicationShortcutItemIconSymbolName</key>
+			<string>shuffle</string>
+		</dict>
+		<dict>
+			<key>UIApplicationShortcutItemType</key>
+			<string>downloads</string>
+			<key>UIApplicationShortcutItemTitle</key>
+			<string>Downloads</string>
+			<key>UIApplicationShortcutItemIconSymbolName</key>
+			<string>arrow.down.circle</string>
+		</dict>
+	</array>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 	<key>UIBackgroundModes</key>

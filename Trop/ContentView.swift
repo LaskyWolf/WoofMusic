@@ -58,7 +58,14 @@ struct ContentView: View {
                 .environment(scrollState)
                 .accessibilityAction(.escape, collapsePlayer)
             }
-        .onAppear { AppRouter.shared.selectedTabIndex = selectedTab }
+        .onAppear {
+            AppRouter.shared.selectedTabIndex = selectedTab
+            QuickAction.performPending()
+        }
+        .onReceive(AppRouter.shared.$selectedTabIndex.dropFirst()) { index in
+            // Quick actions switch tabs through the router.
+            if selectedTab != index { selectedTab = index }
+        }
         .onChange(of: selectedTab) { _, newValue in
             AppRouter.shared.selectedTabIndex = newValue
         }

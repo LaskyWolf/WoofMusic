@@ -90,9 +90,12 @@ import UIKit
     static let shared = AppRouter()
     @Published var activeRoute: String?
     @Published var playerExpandToken = 0
-    var selectedTabIndex = 0
+    @Published var selectedTabIndex = 0
     var activePathDepth = 0
     func popActiveRoute() {}
+}
+@MainActor enum QuickAction {
+    static func performPending() {}
 }
 struct HomeScreenView: View {
     var body: some View {
