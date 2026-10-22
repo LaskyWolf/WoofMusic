@@ -54,7 +54,6 @@ struct TropApp: App {
                 _ = settings.equalizerGains
                 _ = settings.audioNormalization
                 _ = settings.gaplessPlayback
-                _ = settings.autoMixEnabled
             } onChange: {
                 Task { @MainActor in
                     PlayerController.shared.applyPlaybackSettings()

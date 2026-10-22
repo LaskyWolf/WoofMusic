@@ -326,13 +326,8 @@ struct FullPlayerView: View {
                 }
 
                 if np.queueSongs.indices.contains(np.queueIndex) {
-                    SongActionsMenu(
-                        song: np.queueSongs[np.queueIndex],
-                        showsQueueActions: false,
-                        onCollapseRequest: { onCollapse() }
-                    ) {
-                        PlayerOptionsGlyph()
-                    }
+                    PlayerSongMenu(song: np.queueSongs[np.queueIndex], onCollapse: { onCollapse() })
+                        .equatable()
                 }
             }
             .alignmentGuide(.top) { dimensions in
@@ -434,4 +429,22 @@ struct FullPlayerView: View {
         .padding(.horizontal, 32)
     }
 
+}
+
+/// The full player's "⋯" menu. The player redraws several times a second for
+/// the progress bar; `.equatable()` skips those redraws here, because a menu
+/// rebuilt while open flickers.
+private struct PlayerSongMenu: View, Equatable {
+    let song: SongItem
+    let onCollapse: () -> Void
+
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.song.videoId == rhs.song.videoId
+    }
+
+    var body: some View {
+        SongActionsMenu(song: song, showsQueueActions: false, onCollapseRequest: onCollapse) {
+            PlayerOptionsGlyph()
+        }
+    }
 }

@@ -8,23 +8,25 @@
 import SwiftUI
 
 /// A Spotify-style equalizer: a line graph across 10 band frequencies whose
-/// points can be dragged up/down (±12 dB), plus a horizontal preset strip.
+/// points can be dragged up/down (±12 dB), plus a list of presets, each with
+/// a small curve of what it does.
 struct EqualizerView: View {
     @Environment(\.settingsStore) private var settings
     @State private var dragIndex: Int?
 
     var body: some View {
-        @Bindable var settings = settings
-
-        ScrollView {
-            VStack(spacing: 24) {
+        List {
+            Section {
                 equalizerCard(settings: settings)
-                    .padding(.horizontal, 20)
-
-                presetStrip(settings: settings)
             }
-            .padding(.top, 20)
+            .listRowBackground(Color.clear)
+            .listRowInsets(EdgeInsets())
+
+            Section("Presets") {
+                presetRows(settings: settings)
+            }
         }
+        .listSectionSpacing(.compact)
         .navigationTitle("Equalizer")
         .navigationBarTitleDisplayMode(.inline)
     }
@@ -72,30 +74,81 @@ struct EqualizerView: View {
 
     // MARK: - Presets
 
-    private func presetStrip(settings: SettingsStore) -> some View {
-        @Bindable var settings = settings
-        return ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 10) {
-                ForEach(EqualizerPresets.all, id: \.id) { preset in
-                    let isSelected = settings.equalizerPresetID == preset.id
-                    Button {
-                        settings.equalizerGains = preset.gains
-                        settings.equalizerPresetID = preset.id
-                        PlayerController.shared.applyPlaybackSettings()
-                    } label: {
-                        Text(preset.name)
-                            .font(.subheadline.weight(isSelected ? .semibold : .regular))
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 8)
-                            .background(
-                                Capsule().fill(isSelected ? settings.accentColor : Color(.secondarySystemGroupedBackground))
-                            )
-                            .foregroundStyle(isSelected ? Color.white : Color.primary)
-                    }
-                }
-            }
-            .padding(.horizontal, 20)
+    @ViewBuilder
+    private func presetRows(settings: SettingsStore) -> some View {
+        if settings.equalizerPresetID == "custom" {
+            presetRow(name: "Custom", gains: settings.equalizerGains, isSelected: true, settings: settings)
         }
+        ForEach(EqualizerPresets.all, id: \.id) { preset in
+            Button {
+                settings.equalizerGains = preset.gains
+                settings.equalizerPresetID = preset.id
+                PlayerController.shared.applyPlaybackSettings()
+            } label: {
+                presetRow(
+                    name: preset.name,
+                    gains: preset.gains,
+                    isSelected: settings.equalizerPresetID == preset.id,
+                    settings: settings
+                )
+            }
+        }
+    }
+
+    private func presetRow(name: String, gains: [Double], isSelected: Bool, settings: SettingsStore) -> some View {
+        HStack(spacing: 14) {
+            EqualizerCurveThumbnail(gains: gains, color: isSelected ? settings.accentColor : .secondary)
+                .frame(width: 64, height: 30)
+            Text(name)
+                .foregroundStyle(.primary)
+            Spacer()
+            if isSelected {
+                Image(systemName: "checkmark")
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(settings.accentColor)
+            }
+        }
+        .contentShape(Rectangle())
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+}
+
+/// A preset's curve at a glance: the gains as a line around a dashed 0 dB
+/// line, with the area between them shaded.
+private struct EqualizerCurveThumbnail: View {
+    let gains: [Double]
+    let color: Color
+
+    var body: some View {
+        Canvas { context, size in
+            guard gains.count >= 2 else { return }
+            let range = equalizerMaxGain - equalizerMinGain
+            func y(_ gain: Double) -> CGFloat {
+                size.height * CGFloat(1 - (gain - equalizerMinGain) / range)
+            }
+            let points = gains.enumerated().map { index, gain in
+                CGPoint(x: size.width * CGFloat(index) / CGFloat(gains.count - 1), y: y(gain))
+            }
+            let zero = y(0)
+
+            var baseline = Path()
+            baseline.move(to: CGPoint(x: 0, y: zero))
+            baseline.addLine(to: CGPoint(x: size.width, y: zero))
+            context.stroke(baseline, with: .color(.secondary.opacity(0.35)),
+                           style: StrokeStyle(lineWidth: 1, dash: [2, 2]))
+
+            var line = Path()
+            line.addLines(points)
+            var area = line
+            area.addLine(to: CGPoint(x: size.width, y: zero))
+            area.addLine(to: CGPoint(x: 0, y: zero))
+            area.closeSubpath()
+            context.fill(area, with: .color(color.opacity(0.18)))
+            context.stroke(line, with: .color(color),
+                           style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
+        }
+        .accessibilityHidden(true)
     }
 }
 

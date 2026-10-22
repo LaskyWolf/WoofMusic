@@ -45,6 +45,9 @@ final class Crossfade {
     private var speedTask: Task<Void, Never>?
     /// Song whose transition failed, so the tick doesn't retry it every 0.25 s.
     private var failedFor: String?
+    /// Transition settings read when the playing song started, so changing
+    /// them takes effect from the next song.
+    private var songSettings: (songId: String, autoMix: Bool, crossfade: Bool, seconds: Double)?
 
     /// Seconds of audio analysed at the end of the outgoing song and the
     /// start of the incoming one.
@@ -65,7 +68,7 @@ final class Crossfade {
     private var player: PlayerController { .shared }
 
     private var isEnabled: Bool {
-        SettingsStore.shared.crossfadeEnabled || SettingsStore.shared.autoMixEnabled
+        songSettings.map { $0.autoMix || $0.crossfade } ?? false
     }
 
     // MARK: Driving
@@ -73,6 +76,10 @@ final class Crossfade {
     func tick() {
         let np = NowPlaying.shared
         if failedFor != nil, failedFor != np.videoId { failedFor = nil }
+        if let id = np.videoId, songSettings?.songId != id {
+            let settings = SettingsStore.shared
+            songSettings = (id, settings.autoMixEnabled, settings.crossfadeEnabled, settings.crossfadeSeconds)
+        }
         guard phase != .fading else { return }
         guard isEnabled, np.hasNext, !np.isRepeatOn,
               let current = np.videoId, np.duration > 30, np.duration < 600 else {
@@ -124,7 +131,7 @@ final class Crossfade {
         planToken = UUID()
         let active = player.activeDeck
         for deck in [incoming, outgoing].compactMap({ $0 }) where deck != active {
-            player.deck(deck, command: ["stop"])
+            player.deck(deck, set: "pause", "yes")
             player.deck(deck, set: "volume", "100")
             player.deck(deck, set: "speed", "1")
         }
@@ -183,14 +190,13 @@ final class Crossfade {
         let (outInfo, inInfo) = await (tail, head)
         guard token == planToken else { return }
 
-        let settings = SettingsStore.shared
         let tailStart = max(0, duration - Self.tailSeconds)
-        let autoMix = settings.autoMixEnabled
+        let autoMix = songSettings?.autoMix == true
             ? MixPlanner.autoMix(duration: duration, tail: outInfo, tailStart: tailStart, head: inInfo)
             : nil
         let mix = autoMix ?? MixPlanner.smart(
             duration: duration,
-            fadeLength: settings.crossfadeSeconds,
+            fadeLength: songSettings?.seconds ?? 6,
             tail: outInfo,
             tailStart: tailStart,
             head: inInfo
@@ -217,6 +223,9 @@ final class Crossfade {
         player.deck(deck, set: "pause", "yes")
         player.deck(deck, set: "volume", "0")
         player.deck(deck, set: "speed", Self.fmt(plan.mix.speed))
+        // Keep the audio output open between files: closing it deactivates
+        // the audio session (see `complete`).
+        player.deck(deck, set: "gapless-audio", "yes")
         player.deck(deck, set: "af", player.filterChain(loudness: plan.loudness, bassGain: bass))
         player.deck(deck, set: "start", Self.fmt(plan.mix.inStart))
         player.deck(deck, command: ["loadfile", plan.url, "replace"])
@@ -316,7 +325,9 @@ final class Crossfade {
 
     private func complete(speed: Double? = nil) {
         if let outgoing {
-            player.deck(outgoing, command: ["stop"])
+            // Pause, never stop: a stopped mpv goes idle and switches off the
+            // app's audio session, which silences the deck still playing.
+            player.deck(outgoing, set: "pause", "yes")
             player.deck(outgoing, set: "volume", "100")
             player.deck(outgoing, set: "speed", "1")
         }

@@ -25,6 +25,9 @@ final class PlayerController {
     /// While true, the outgoing song's end finishes the crossfade instead of
     /// advancing the queue.
     nonisolated(unsafe) var isCrossfading = false
+    /// True once the spare deck has opened its audio output. When such a
+    /// deck goes idle, mpv deactivates the shared audio session.
+    nonisolated(unsafe) private var spareHasAudio = false
     /// Serial queue for all mpv property read/write calls
     let mpvAccessQueue = DispatchQueue(label: "com.686udjie.PlayerController.mpvAccess")
 
@@ -209,20 +212,19 @@ extension PlayerController {
     static let bassFilterLabel = "automixbass"
 
     /// Equalizer and loudness-normalization filters for a song with
-    /// `loudness`. With AutoMix on (or a `bassGain`), a bass filter comes
-    /// first so a mix can change it live with `af-command`.
+    /// `loudness`, after a bass filter that a mix changes live with
+    /// `af-command` (flat unless `bassGain` is set).
     func filterChain(loudness: Double?, bassGain: Double? = nil) -> String {
         let settings = SettingsStore.shared
         let eqEnabled = settings.equalizerEnabled
         let eqGains = settings.equalizerGains
         let norm = settings.audioNormalization
-        let bass = bassGain ?? (settings.autoMixEnabled ? 0 : nil)
+        // Always present (flat at 0 dB) so turning AutoMix on or off never
+        // rebuilds the filters of the playing song.
+        let bass = bassGain ?? 0
 
         return {
-            var filters: [String] = []
-            if let bass {
-                filters.append("@\(Self.bassFilterLabel):bass=f=180:g=\(Self.fmt(bass))")
-            }
+            var filters = ["@\(Self.bassFilterLabel):bass=f=180:g=\(Self.fmt(bass))"]
             if eqEnabled {
                 let entries = zip(equalizerFrequencies, eqGains)
                     .map { "entry(\(Self.fmt($0.0)),\(Self.fmt($0.1)))" }
@@ -371,7 +373,12 @@ extension PlayerController {
     nonisolated private func handleDeckEvent(_ event: UnsafeMutablePointer<mpv_event>) {
         switch event.pointee.event_id {
         case MPV_EVENT_FILE_LOADED:
+            spareHasAudio = true
             Task { @MainActor in Crossfade.shared.deckLoaded() }
+        case MPV_EVENT_IDLE:
+            guard spareHasAudio else { return }
+            spareHasAudio = false
+            Task { @MainActor in self.restoreAudioOutput() }
         case MPV_EVENT_END_FILE:
             guard let data = event.pointee.data,
                   data.load(as: mpv_event_end_file.self).reason == MPV_END_FILE_REASON_ERROR else { return }
@@ -520,9 +527,10 @@ extension PlayerController {
     }
 
     /// Makes the spare deck the playing one. The old deck keeps fading out
-    /// as the new spare until `Crossfade` stops it.
+    /// as the new spare until `Crossfade` pauses it.
     func promoteSpare(videoId: String, loudness: Double?) {
         mpvAccessQueue.sync { swap(&_mpv, &_spare) }
+        spareHasAudio = true
         currentVideoId = videoId
         pendingVideoId = nil
         currentLoudnessDb = loudness
@@ -536,6 +544,19 @@ extension PlayerController {
 // MARK: - Audio session / interruption handling
 
 extension PlayerController {
+    /// An idle spare deck closed its audio output, and mpv's iOS output
+    /// deactivates the audio session when it closes, which stops the playing
+    /// deck's output too. Reactivate the session and restart that output.
+    func restoreAudioOutput() {
+        Log.player.notice("Spare deck went idle; restoring audio output")
+        assertAudioSession()
+        guard desiredPlaying else { return }
+        withMpv { mpv in
+            mpv_set_property_string(mpv, "pause", "yes")
+            mpv_set_property_string(mpv, "pause", "no")
+        }
+    }
+
     func assertAudioSession() {
         let session = AVAudioSession.sharedInstance()
         do {

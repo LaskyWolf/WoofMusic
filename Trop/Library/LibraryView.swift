@@ -450,7 +450,7 @@ struct NewPlaylistSheet: View {
         NavigationStack {
             Form {
                 Section {
-                    PlaylistCoverPicker(image: $coverImage)
+                    PlaylistCoverPicker(image: $coverImage, onRemove: coverImage == nil ? nil : { coverImage = nil })
                 }
                 .listRowBackground(Color.clear)
 

@@ -48,6 +48,17 @@ enum PlaylistCoverUploader {
         LocalPlaylistCover.delete(old)
     }
 
+    /// Removes the cover of a playlist that only lives on this iPhone.
+    static func removeLocalCover(from playlistId: String) async throws {
+        guard var entity = try? await DatabaseService.shared.fetchOne(PlaylistEntity.self, key: playlistId) else {
+            throw UploadError.rejected(step: "playlist not found")
+        }
+        let old = entity.thumbnailUrl
+        entity.thumbnailUrl = nil
+        try await DatabaseService.shared.save(entity)
+        LocalPlaylistCover.delete(old)
+    }
+
     /// Uploads `image` as the cover of `playlistId`, saves the new cover URL
     /// locally and returns it.
     @discardableResult
