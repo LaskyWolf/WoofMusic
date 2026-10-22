@@ -87,6 +87,11 @@ struct LibraryView: View {
                     await loadContent()
                 }
             }
+            .onAppear {
+                // Coming back from a playlist that was deleted there.
+                guard !isLoading else { return }
+                Task { await loadContent() }
+            }
             .task(id: isLoading) {
                 guard !isLoading else { return }
                 let urls = (playlists.map(\.thumbnailUrl) + albums.map(\.thumbnailUrl) + artists.map(\.thumbnailUrl) + podcasts.map(\.thumbnailUrl))

@@ -14,10 +14,13 @@ struct PlaylistActionsMenu<MenuLabel: View>: View {
     var onSync: (() -> Void)?
     /// Only playlists you own can be edited.
     var isOwned = false
+    /// Shown as "Delete Playlist" for owned playlists.
+    var onDelete: (() -> Void)?
     @ViewBuilder var label: () -> MenuLabel
 
     @State private var showEdit = false
     @State private var showRemoveDownloads = false
+    @State private var showDelete = false
 
     var body: some View {
         Menu {
@@ -42,6 +45,14 @@ struct PlaylistActionsMenu<MenuLabel: View>: View {
                 }
             }
             .disabled(playlist.songs.isEmpty)
+
+            if isOwned, onDelete != nil {
+                Section {
+                    Button("Delete Playlist", systemImage: "trash", role: .destructive) {
+                        showDelete = true
+                    }
+                }
+            }
         } label: {
             label()
         }
@@ -55,6 +66,13 @@ struct PlaylistActionsMenu<MenuLabel: View>: View {
             message: Text("Remove offline copies of this playlist’s songs from your device? The playlist stays in your library."),
             confirmTitle: "Remove Downloads",
             onConfirm: deleteAllDownloads
+        )
+        .destructiveConfirm(
+            "Delete Playlist?",
+            isPresented: $showDelete,
+            message: Text("Delete \"\(playlist.title)\"? This can't be undone."),
+            confirmTitle: "Delete",
+            onConfirm: { onDelete?() }
         )
     }
 

@@ -44,11 +44,17 @@ final class PlaylistDetailViewModel {
         if playlist == nil { isLoading = true }
         error = nil
 
+        let saved = try? await DatabaseService.shared.fetchOne(PlaylistEntity.self, key: playlistId)
         // Check if this is a local-only playlist
-        if let entity = try? await DatabaseService.shared.fetchOne(PlaylistEntity.self, key: playlistId),
-           entity.browseId == nil {
-            await loadLocalPlaylist(entity: entity)
+        if let saved, saved.browseId == nil {
+            await loadLocalPlaylist(entity: saved)
             return
+        }
+
+        // Show the copy saved by the last visit while the network request runs.
+        if playlist == nil, let saved, let info = try? await localInfo(entity: saved), !info.songs.isEmpty {
+            playlist = info
+            isLoading = false
         }
 
         do {
@@ -56,11 +62,25 @@ final class PlaylistDetailViewModel {
             let (firstPage, rows) = try await SyncBridge.playlistDetail.fetchPlaylistRows(playlistId: playlistId)
             let parsed = Self.parsePlaylistDetail(firstPage: firstPage, rows: rows, playlistId: playlistId)
 
-            // Persist songs to the song table so they become searchable in the library
-            let pid = playlistId
-            let songs = parsed.songs
-            let setVideoIds = Self.setVideoIds(rows)
-            let title = parsed.title
+            // Show the playlist first, then save it: 200+ rows take a while to write.
+            playlist = parsed
+            isLoading = false
+            await persist(parsed, rows: rows, browseId: browseId)
+        } catch {
+            // A saved copy stays on screen when the refresh fails.
+            if playlist == nil { self.error = error }
+            isLoading = false
+        }
+    }
+
+    /// Saves songs to the song table so they become searchable in the library
+    /// and the playlist opens instantly next time.
+    private func persist(_ parsed: PlaylistDetailInfo, rows: [[String: Any]], browseId: String) async {
+        let pid = playlistId
+        let songs = parsed.songs
+        let setVideoIds = Self.setVideoIds(rows)
+        let title = parsed.title
+        do {
             try await DatabaseService.shared.write { db in
                 let existing = try PlaylistEntity.fetchOne(db, key: pid)
                 var entity = PlaylistEntity.merging(
@@ -99,8 +119,14 @@ final class PlaylistDetailViewModel {
                     try map.insert(db, onConflict: .ignore)
                 }
             }
+        } catch {
+            Log.playlistDetail.error("Failed to save playlist \(pid): \(error)")
+        }
+    }
 
-            playlist = parsed
+    private func loadLocalPlaylist(entity: PlaylistEntity) async {
+        do {
+            playlist = try await localInfo(entity: entity)
             isLoading = false
         } catch {
             self.error = error
@@ -108,38 +134,32 @@ final class PlaylistDetailViewModel {
         }
     }
 
-    private func loadLocalPlaylist(entity: PlaylistEntity) async {
-        do {
-            // Fetch songs from playlist_song_map joined with song table
-            let songs = try await DatabaseService.shared.fetchAll(
-                SongEntity.self,
-                sql: """
-                    SELECT s.* FROM song s
-                    INNER JOIN playlist_song_map m ON m.song_id = s.id
-                    WHERE m.playlist_id = ?
-                    ORDER BY m.position, m.id
-                    """,
-                arguments: [playlistId]
-            )
-            let songItems = songs.toSongItems()
-            let totalDuration = songItems.reduce(0) { $0 + $1.duration }
-            playlist = PlaylistDetailInfo(
-                title: entity.name,
-                authorName: nil,
-                authorBrowseId: nil,
-                authorAvatarUrl: nil,
-                descriptionText: nil,
-                songCount: songItems.count,
-                duration: totalDuration,
-                thumbnailUrl: entity.thumbnailUrl,
-                playlistId: playlistId,
-                songs: songItems
-            )
-            isLoading = false
-        } catch {
-            self.error = error
-            isLoading = false
-        }
+    /// The playlist as saved in the database: header from the playlist row,
+    /// songs from playlist_song_map joined with the song table.
+    private func localInfo(entity: PlaylistEntity) async throws -> PlaylistDetailInfo {
+        let songs = try await DatabaseService.shared.fetchAll(
+            SongEntity.self,
+            sql: """
+                SELECT s.* FROM song s
+                INNER JOIN playlist_song_map m ON m.song_id = s.id
+                WHERE m.playlist_id = ?
+                ORDER BY m.position, m.id
+                """,
+            arguments: [playlistId]
+        )
+        let songItems = songs.toSongItems()
+        return PlaylistDetailInfo(
+            title: entity.name,
+            authorName: nil,
+            authorBrowseId: nil,
+            authorAvatarUrl: nil,
+            descriptionText: nil,
+            songCount: songItems.count,
+            duration: songItems.reduce(0) { $0 + $1.duration },
+            thumbnailUrl: entity.thumbnailUrl,
+            playlistId: playlistId,
+            songs: songItems
+        )
     }
 
     private func loadAutoPlaylist(route: AutoPlaylistRoute) async {
@@ -403,6 +423,7 @@ struct PlaylistDetailView: View {
     @State private var playlistEntity: PlaylistEntity?
     @State private var showAddSongs = false
     @State private var pendingRoute: DetailRoute?
+    @State private var deleteError: String?
 
     @Environment(\.dismiss) private var dismiss
 
@@ -452,15 +473,34 @@ struct PlaylistDetailView: View {
         }
         .task {
             guard viewModel.isLoading else { return }
+            await fetchEntity()
             await viewModel.load()
             await fetchEntity()
         }
         .detailRouteSheet(item: $pendingRoute)
+        .alert("Couldn't delete playlist", isPresented: Binding(
+            get: { deleteError != nil },
+            set: { if !$0 { deleteError = nil } }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(deleteError ?? "")
+        }
     }
 
     private func fetchEntity() async {
         guard !playlistId.isEmpty else { return }
         playlistEntity = try? await DatabaseService.shared.fetchOne(PlaylistEntity.self, key: playlistId)
+    }
+
+    private func deletePlaylist() async {
+        do {
+            try await SyncBridge.mutations.deletePlaylist(playlistId: playlistId)
+            dismiss()
+        } catch {
+            Log.playlistDetail.error("Failed to delete playlist: \(error)")
+            deleteError = error.localizedDescription
+        }
     }
 
     @ViewBuilder
@@ -558,7 +598,8 @@ struct PlaylistDetailView: View {
                     PlaylistActionsMenu(
                         playlist: playlist,
                         onSync: { Task { await viewModel.load(); await fetchEntity() } },
-                        isOwned: isEditable
+                        isOwned: isEditable,
+                        onDelete: { Task { await deletePlaylist() } }
                     ) {
                         MoreCircleGlyph()
                     }
@@ -628,7 +669,9 @@ struct PlaylistDetailView: View {
 
     @ViewBuilder
     private func songList(for playlist: PlaylistDetailInfo) -> some View {
-        VStack(spacing: 0) {
+        // Lazy: a plain VStack builds every row at once, and each row without a
+        // duration starts a network request.
+        LazyVStack(spacing: 0) {
             ForEach(Array(playlist.songs.enumerated()), id: \.offset) { index, song in
                 SongRowView(song: song, onTap: { playSong(song, in: playlist) }, onNavigate: { pendingRoute = $0 })
                 .contextMenu {
