@@ -81,7 +81,7 @@ final class Crossfade {
             songSettings = (id, settings.autoMixEnabled, settings.crossfadeEnabled, settings.crossfadeSeconds)
         }
         guard phase != .fading else { return }
-        guard isEnabled, np.hasNext, !np.isRepeatOn,
+        guard isEnabled, np.hasNext, !np.isRepeatOn, !SleepTimer.shared.stopsAtSongEnd,
               let current = np.videoId, np.duration > 30, np.duration < 600 else {
             if phase != .idle { reset() }
             return

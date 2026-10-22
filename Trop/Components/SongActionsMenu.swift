@@ -12,6 +12,8 @@ import SwiftUI
 struct SongActionsMenu<MenuLabel: View>: View {
     let song: SongItem
     var showsQueueActions = true
+    /// The full player's menu also offers the sleep timer.
+    var showsSleepTimer = false
     /// Collapses the full player so a pushed page is visible underneath.
     var onCollapseRequest: (() -> Void)?
     var onNavigate: ((DetailRoute) -> Void)?
@@ -63,6 +65,10 @@ struct SongActionsMenu<MenuLabel: View>: View {
                        systemImage: pin.isPinned ? "pin.slash" : "pin") {
                     Task { await pin.toggle(song: song) }
                 }
+            }
+
+            if showsSleepTimer {
+                sleepTimerMenu
             }
 
             Menu("Go To", systemImage: "arrow.forward.circle") {
@@ -130,6 +136,28 @@ struct SongActionsMenu<MenuLabel: View>: View {
             }
         }
         .task { await pin.load(videoId: song.videoId) }
+    }
+
+    private var sleepTimerMenu: some View {
+        let timer = SleepTimer.shared
+        return Menu {
+            Button("End of Song", systemImage: "music.note") { timer.stopAtSongEnd() }
+            ForEach(SleepTimer.presetMinutes, id: \.self) { minutes in
+                Button(minutes == 60 ? "1 Hour" : "\(minutes) Minutes", systemImage: "timer") {
+                    timer.start(minutes: minutes)
+                }
+            }
+            if timer.isActive {
+                Section {
+                    Button("Turn Off", systemImage: "moon.zzz") { timer.cancel() }
+                }
+            }
+        } label: {
+            Label(
+                timer.summary.map { "Sleep Timer · \($0)" } ?? "Sleep Timer",
+                systemImage: timer.isActive ? "moon.zzz.fill" : "moon.zzz"
+            )
+        }
     }
 
     @ViewBuilder
