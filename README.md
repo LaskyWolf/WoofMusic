@@ -8,10 +8,13 @@ A free and open source YouTube Music client for iOS, built on [Trop](https://git
 - Stream songs and podcasts from YouTube Music
 - Synced lyrics (Musixmatch, Netease, Kugou, LRCLIB, Genius), with offset, editing and search
 - Library sync (playlists, albums, artists, podcasts, liked songs)
-- Custom playlist covers, synced to your YouTube Music account
+- Playlist editing: name and cover in one sheet; covers sync to your YouTube Music account
 - Downloads for offline listening, with full-size cover art
 - Play Next queue, song radio and listening history
-- System volume bar, equalizer and AirPlay in the player
+- System volume bar, equalizer with presets and AirPlay in the player
+- AutoMix: beat-matched transitions that match tempo and swap the bass on the bar
+- Smart Crossfade: fades into the next song where the current one winds down
+- Home Screen quick actions: Search, Shuffle Liked Songs, Downloads, Resume
 - Last.fm scrobbling and Discord Rich Presence
 - Custom app icons and themes
 
