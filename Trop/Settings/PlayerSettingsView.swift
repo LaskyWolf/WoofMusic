@@ -33,6 +33,7 @@ struct PlayerSettingsView: View {
             }
 
             Section {
+                SettingsToggleRow("AutoMix", icon: "dial.medium", isOn: $settings.autoMixEnabled)
                 SettingsToggleRow("Smart Crossfade", icon: "waveform.path", isOn: $settings.crossfadeEnabled)
                 if settings.crossfadeEnabled {
                     LabeledContent {
@@ -46,7 +47,7 @@ struct PlayerSettingsView: View {
             } header: {
                 Text("Transitions")
             } footer: {
-                Text("Fades into the next song where the current one winds down, on the beat, and evens out small tempo differences.")
+                Text("AutoMix blends songs like a DJ: it matches their tempo, keeps the beats together and swaps the bass on the bar. Songs without a steady beat get a Smart Crossfade instead. Smart Crossfade fades into the next song where the current one winds down.
             }
 
             Section {

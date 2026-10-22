@@ -222,7 +222,19 @@ final class SettingsStore {
 
     /// Smart Crossfade between songs, and its length in seconds.
     var crossfadeEnabled: Bool {
-        didSet { Self.defaults.set(crossfadeEnabled, forKey: Keys.crossfadeEnabled) }
+        didSet {
+            Self.defaults.set(crossfadeEnabled, forKey: Keys.crossfadeEnabled)
+            if crossfadeEnabled { autoMixEnabled = false }
+        }
+    }
+
+    /// Beat-matched DJ-style transitions. Only one of AutoMix and Smart
+    /// Crossfade is on at a time.
+    var autoMixEnabled: Bool {
+        didSet {
+            Self.defaults.set(autoMixEnabled, forKey: Keys.autoMixEnabled)
+            if autoMixEnabled { crossfadeEnabled = false }
+        }
     }
 
     var crossfadeSeconds: Double {
@@ -351,6 +363,7 @@ final class SettingsStore {
         static let autoplaySimilar = "settings.autoplaySimilar"
         static let crossfadeEnabled = "settings.crossfadeEnabled"
         static let crossfadeSeconds = "settings.crossfadeSeconds"
+        static let autoMixEnabled = "settings.autoMixEnabled"
         static let persistQueue = "settings.persistQueue"
         static let lastRadioStyle = "settings.lastRadioStyle"
         static let lastRadioLimit = "settings.lastRadioLimit"
@@ -415,6 +428,7 @@ final class SettingsStore {
         autoplaySimilar = Self.load(Keys.autoplaySimilar, default: true)
         crossfadeEnabled = Self.load(Keys.crossfadeEnabled, default: false)
         crossfadeSeconds = Self.load(Keys.crossfadeSeconds, default: 6.0)
+        autoMixEnabled = Self.load(Keys.autoMixEnabled, default: false)
         persistQueue = Self.load(Keys.persistQueue, default: false)
         lastRadioStyle = Self.loadEnum(Keys.lastRadioStyle, default: .similar)
         lastRadioLimit = Self.load(Keys.lastRadioLimit, default: 25)

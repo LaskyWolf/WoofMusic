@@ -205,15 +205,24 @@ extension PlayerController {
         }
     }
 
-    /// Equalizer and loudness-normalization filters for a song with `loudness`.
-    func filterChain(loudness: Double?) -> String {
+    /// Label of the bass filter AutoMix turns down and up during a mix.
+    static let bassFilterLabel = "automixbass"
+
+    /// Equalizer and loudness-normalization filters for a song with
+    /// `loudness`. With AutoMix on (or a `bassGain`), a bass filter comes
+    /// first so a mix can change it live with `af-command`.
+    func filterChain(loudness: Double?, bassGain: Double? = nil) -> String {
         let settings = SettingsStore.shared
         let eqEnabled = settings.equalizerEnabled
         let eqGains = settings.equalizerGains
         let norm = settings.audioNormalization
+        let bass = bassGain ?? (settings.autoMixEnabled ? 0 : nil)
 
         return {
             var filters: [String] = []
+            if let bass {
+                filters.append("@\(Self.bassFilterLabel):bass=f=180:g=\(Self.fmt(bass))")
+            }
             if eqEnabled {
                 let entries = zip(equalizerFrequencies, eqGains)
                     .map { "entry(\(Self.fmt($0.0)),\(Self.fmt($0.1)))" }
@@ -489,6 +498,21 @@ extension PlayerController {
 
     nonisolated func deck(_ deck: MpvDeck, set name: String, _ value: String) {
         mpvAccessQueue.async { _ = mpv_set_property_string(deck.handle, name, value) }
+    }
+
+    /// Playback positions of two decks read together, so they can be
+    /// compared. `audio-pts` accounts for the audio output delay.
+    nonisolated func positions(_ outgoing: MpvDeck, _ incoming: MpvDeck) -> (outgoing: Double, incoming: Double)? {
+        mpvAccessQueue.sync {
+            func position(_ deck: MpvDeck) -> Double? {
+                var value = Double(0)
+                if mpv_get_property(deck.handle, "audio-pts", MPV_FORMAT_DOUBLE, &value) >= 0 { return value }
+                if mpv_get_property(deck.handle, "time-pos", MPV_FORMAT_DOUBLE, &value) >= 0 { return value }
+                return nil
+            }
+            guard let out = position(outgoing), let inc = position(incoming) else { return nil }
+            return (out, inc)
+        }
     }
 
     nonisolated func deck(_ deck: MpvDeck, command args: [String]) {
