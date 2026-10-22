@@ -22,7 +22,7 @@ struct LyricsProviderOrderView: View {
             }
             .onMove(perform: move)
         }
-        .navigationTitle("Lyrics Providers")
+        .navigationTitle("Source Order")
         .navigationBarTitleDisplayMode(.inline)
         .environment(\.editMode, .constant(.active))
         .safeAreaInset(edge: .bottom) {

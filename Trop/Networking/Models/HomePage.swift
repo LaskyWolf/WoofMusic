@@ -52,6 +52,8 @@ struct MoodItem: Identifiable, Hashable {
     let id = UUID()
     var title: String
     var params: String?
+    /// Category color YouTube Music shows next to the button, as 0xRRGGBB.
+    var color: Int?
 }
 
 enum HomeSection: Identifiable {

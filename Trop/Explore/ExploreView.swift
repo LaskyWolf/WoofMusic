@@ -166,19 +166,7 @@ struct ExploreSectionsList: View {
             ) {
                 ForEach(section.moods) { mood in
                     NavigationLink(value: mood) {
-                        Text(mood.title)
-                            .font(.subheadline)
-                            .fontWeight(.semibold)
-                            .foregroundStyle(.primary)
-                            .lineLimit(2)
-                            .multilineTextAlignment(.center)
-                            .frame(width: 150)
-                            .frame(minHeight: 64)
-                            .padding(.horizontal, 8)
-                            .background(
-                                RoundedRectangle(cornerRadius: 12)
-                                    .fill(Color(.systemGray5).opacity(0.6))
-                            )
+                        MoodCard(mood: mood)
                     }
                     .buttonStyle(.plain)
                 }
@@ -194,6 +182,55 @@ struct ExploreSectionsList: View {
             playSong: { PlaybackQueue.playSingleWithRadio($0, log: Log.explore) },
             appendRoute: { router.explorePath.append($0) }
         )
+    }
+}
+
+// MARK: - Mood card
+
+/// A colored Moods & Genres tile, like Apple Music's category cards. The
+/// color comes from YouTube Music when it sends one, otherwise from the title,
+/// so a category keeps its color between launches.
+private struct MoodCard: View {
+    let mood: MoodItem
+
+    var body: some View {
+        let hue = Self.hue(for: mood)
+        Text(mood.title)
+            .font(.headline.weight(.bold))
+            .foregroundStyle(.white)
+            .lineLimit(2)
+            .multilineTextAlignment(.leading)
+            .padding(12)
+            .frame(width: 172, height: 100, alignment: .bottomLeading)
+            .background(
+                LinearGradient(
+                    colors: [
+                        Color(hue: hue, saturation: 0.7, brightness: 0.62),
+                        Color(hue: (hue + 0.06).truncatingRemainder(dividingBy: 1), saturation: 0.8, brightness: 0.42)
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                ),
+                in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+            )
+    }
+
+    /// Only the hue is kept: saturation and brightness are fixed so white
+    /// text stays readable on every card.
+    private static func hue(for mood: MoodItem) -> Double {
+        if let rgb = mood.color {
+            var hue: CGFloat = 0, saturation: CGFloat = 0, brightness: CGFloat = 0
+            UIColor(
+                red: CGFloat((rgb >> 16) & 0xFF) / 255,
+                green: CGFloat((rgb >> 8) & 0xFF) / 255,
+                blue: CGFloat(rgb & 0xFF) / 255,
+                alpha: 1
+            ).getHue(&hue, saturation: &saturation, brightness: &brightness, alpha: nil)
+            if saturation > 0.15 { return Double(hue) }
+        }
+        // `hashValue` changes every launch; a sum of the letters doesn't.
+        let sum = mood.title.unicodeScalars.reduce(0) { $0 &+ Int($1.value) &* 31 }
+        return Double((sum % 360 + 360) % 360) / 360
     }
 }
 

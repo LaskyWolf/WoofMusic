@@ -11,42 +11,56 @@ struct LyricsSettingsView: View {
     @Environment(\.settingsStore) private var settings
 
     var body: some View {
-        @Bindable var settings = settings
-
         List {
             Section {
-                ForEach(LyricsProviderRegistry.all, id: \.id) { provider in
-                    Toggle(isOn: Binding(
-                        get: { !settings.disabledLyricsProviders.contains(provider.id) },
-                        set: { enabled in
-                            var disabled = settings.disabledLyricsProviders
-                            if enabled {
-                                disabled.remove(provider.id)
-                            } else {
-                                disabled.insert(provider.id)
-                            }
-                            settings.disabledLyricsProviders = disabled
+                LabeledContent {
+                    Menu {
+                        ForEach(LyricsProviderRegistry.all, id: \.id) { provider in
+                            Toggle(provider.name, isOn: isEnabled(provider.id))
                         }
-                    )) {
-                        Label(provider.name, systemImage: "music.note")
+                    } label: {
+                        HStack(spacing: 4) {
+                            Text(sourcesSummary)
+                            Image(systemName: "chevron.up.chevron.down")
+                                .font(.caption.weight(.semibold))
+                        }
                     }
+                    // Stay open so several sources can be switched in one go.
+                    .menuActionDismissBehavior(.disabled)
+                } label: {
+                    Label("Sources", systemImage: "music.note")
                 }
-            } header: {
-                Text("Providers")
-            } footer: {
-                Text("Disabled providers are skipped when fetching lyrics.")
-            }
 
-            Section {
                 NavigationLink {
                     LyricsProviderOrderView()
                 } label: {
-                    Label("Provider Order", systemImage: "list.number")
+                    Label("Source Order", systemImage: "list.number")
                 }
+            } footer: {
+                Text("Lyrics are searched in this order; turned-off sources are skipped.")
             }
         }
         .navigationTitle("Lyrics")
         .navigationBarTitleDisplayMode(.inline)
         .miniPlayerTracksScroll()
+    }
+
+    private var sourcesSummary: String {
+        let all = LyricsProviderRegistry.all
+        let enabled = all.filter { !settings.disabledLyricsProviders.contains($0.id) }.count
+        return enabled == all.count ? "All" : "\(enabled) of \(all.count)"
+    }
+
+    private func isEnabled(_ id: String) -> Binding<Bool> {
+        Binding(
+            get: { !settings.disabledLyricsProviders.contains(id) },
+            set: { enabled in
+                if enabled {
+                    settings.disabledLyricsProviders.remove(id)
+                } else {
+                    settings.disabledLyricsProviders.insert(id)
+                }
+            }
+        )
     }
 }

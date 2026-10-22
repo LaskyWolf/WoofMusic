@@ -18,7 +18,7 @@ struct ContentView: View {
 
     var body: some View {
         TabView(selection: $selectedTab) {
-            Tab("Home", systemImage: "music.note.house.fill", value: 0) {
+            Tab("Home", systemImage: "house.fill", value: 0) {
                 HomeScreenView()
             }
 

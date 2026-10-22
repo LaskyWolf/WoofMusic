@@ -269,8 +269,9 @@ extension HomePageParser {
         if let button = item["musicNavigationButtonRenderer"] as? [String: Any] {
             let title = InnerTubeJSON.runsText(button["buttonText"] as? [String: Any])
             let params = moodParams(from: button["clickCommand"] as? [String: Any])
+            let stripe = ((button["solid"] as? [String: Any])?["leftStripeColor"] as? NSNumber)?.int64Value
             if let title {
-                return MoodItem(title: title, params: params)
+                return MoodItem(title: title, params: params, color: stripe.map { Int($0 & 0xFFFFFF) })
             }
         }
         Log.explore.debug("Explore section[\(sectionIndex)] unparsed mood keys=\(item.keys.sorted())")
