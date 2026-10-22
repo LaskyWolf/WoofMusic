@@ -17,27 +17,39 @@ struct SettingsView: View {
                 accountRow
             }
 
-            // Grouped like iOS Settings: no headers, so the page fits
-            // one screen without scrolling.
             Section {
                 SettingsNavigationRow("Appearance", icon: "paintpalette") {
                     AppearanceSettingsView()
                 }
+            } header: {
+                Text("Appearance")
+            }
+
+            Section {
                 SettingsNavigationRow("Player", icon: "play.circle") {
                     PlayerSettingsView()
                 }
                 SettingsNavigationRow("Downloads", icon: "arrow.down.circle") {
                     DownloadSettingsView()
                 }
+            } header: {
+                Text("Playback & Offline")
             }
 
             Section {
                 SettingsNavigationRow("Content", icon: "globe") {
                     ContentSettingsView()
                 }
+            } header: {
+                Text("Content")
+            }
+
+            Section {
                 SettingsNavigationRow("Integrations", icon: "puzzlepiece.extension") {
                     IntegrationsSettingsView()
                 }
+            } header: {
+                Text("Integrations")
             }
         }
         .listSectionSpacing(.compact)
