@@ -95,18 +95,25 @@ enum TrackAnalyzer {
         while bpm < 85 { bpm *= 2 }
         while bpm > 170 { bpm /= 2 }
 
-        // Beat phase: the offset whose beat grid lands on the most onsets.
-        let period = 60 / bpm / frameSeconds
-        var bestPhase = 0, bestPhaseScore: Float = -1
-        for phase in 0..<max(1, Int(period)) {
-            var sum: Float = 0
-            var position = Double(phase)
-            while Int(position) < onset.count {
-                sum += onset[Int(position)]
-                position += period
+        // Beat grid: the period and offset whose beats land on the most
+        // onsets. Fine-tuning the period too matters: a tempo off by 0.5 BPM
+        // drifts 70 ms over 40 beats.
+        let basePeriod = 60 / bpm / frameSeconds
+        var best = (score: Float(-1), period: basePeriod, phase: 0.0)
+        for step in -20...20 {
+            let period = basePeriod * (1 + Double(step) * 0.001)
+            var phase = 0.0
+            while phase < period {
+                var sum: Float = 0
+                var position = phase
+                while Int(position) < onset.count {
+                    sum += onset[Int(position)]
+                    position += period
+                }
+                if sum > best.score { best = (sum, period, phase) }
+                phase += 0.5
             }
-            if sum > bestPhaseScore { bestPhaseScore = sum; bestPhase = phase }
         }
-        return (bpm, Double(bestPhase) * frameSeconds)
+        return (60 / (best.period * frameSeconds), best.phase * frameSeconds)
     }
 }
