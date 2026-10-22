@@ -198,10 +198,6 @@ final class DownloadManager: ObservableObject {
         isLoaded = true
     }
 
-    func reconcileDownloadedFiles() async {
-        await reload()
-    }
-
     private func apply(_ newTracks: [String: DownloadedTrackEntity]) {
         tracksById = newTracks
         let sorted = newTracks.values.sorted { $0.downloadedAt > $1.downloadedAt }
@@ -497,28 +493,6 @@ extension DownloadManager {
 
     // MARK: - State
 
-    static func shouldRefreshPersistedLibrary(
-        old: [String: DownloadState],
-        new: [String: DownloadState]
-    ) -> Bool {
-        for (videoId, newState) in new {
-            let oldState = old[videoId] ?? .notStarted
-            if oldState == newState { continue }
-            switch (oldState, newState) {
-            case (.downloading, .completed), (.downloading, .failed),
-                 (.completed, .notStarted), (.failed, .notStarted),
-                 (.notStarted, .completed):
-                return true
-            default:
-                continue
-            }
-        }
-        for (videoId, oldState) in old where new[videoId] == nil {
-            if case .completed = oldState { return true }
-        }
-        return false
-    }
-
     private func cancelAllActiveDownloads() {
         for (videoId, state) in downloads {
             if case .downloading = state {
@@ -733,10 +707,6 @@ extension DownloadManager {
 
     func fetchAll() async -> [DownloadedTrackEntity] {
         Array(tracksById.values)
-    }
-
-    func fetchAllSorted() async -> [DownloadedTrackEntity] {
-        tracks
     }
 
     private func fetchAllFromDatabase() async -> [DownloadedTrackEntity] {
