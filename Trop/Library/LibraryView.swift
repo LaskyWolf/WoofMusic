@@ -436,8 +436,12 @@ struct NewPlaylistSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var name = ""
     @State private var syncWithYouTube = false
+    @State private var coverImage: UIImage?
     @State private var isCreating = false
     @State private var error: Error?
+    /// Set once the playlist exists, so a failed cover upload retries only
+    /// the cover instead of creating a second playlist.
+    @State private var createdId: String?
     @FocusState private var isFocused: Bool
 
     private var trimmedName: String { name.trimmingCharacters(in: .whitespaces) }
@@ -445,6 +449,11 @@ struct NewPlaylistSheet: View {
     var body: some View {
         NavigationStack {
             Form {
+                Section {
+                    PlaylistCoverPicker(image: $coverImage)
+                }
+                .listRowBackground(Color.clear)
+
                 Section {
                     TextField("Playlist Name", text: $name)
                         .focused($isFocused)
@@ -454,8 +463,9 @@ struct NewPlaylistSheet: View {
 
                 Section {
                     Toggle("Sync with YouTube Music", isOn: $syncWithYouTube)
+                        .disabled(createdId != nil)
                 } footer: {
-                    Text("Synced playlists live in your YouTube Music account and can get a custom cover. This can't be changed later.")
+                    Text("Synced playlists live in your YouTube Music account. This can't be changed later.")
                 }
 
                 if let error {
@@ -475,13 +485,13 @@ struct NewPlaylistSheet: View {
                     if isCreating {
                         ProgressView()
                     } else {
-                        Button("Create", action: create)
+                        Button(createdId == nil ? "Create" : "Retry", action: create)
                             .disabled(trimmedName.isEmpty)
                     }
                 }
             }
         }
-        .presentationDetents([.medium])
+        .presentationDetents([.large])
         .interactiveDismissDisabled(isCreating)
         .onAppear { isFocused = true }
     }
@@ -492,7 +502,16 @@ struct NewPlaylistSheet: View {
         Task {
             defer { isCreating = false }
             do {
-                try await createPlaylist()
+                let id: String
+                if let createdId {
+                    id = createdId
+                } else {
+                    id = try await createPlaylist()
+                    createdId = id
+                }
+                if let coverImage {
+                    try await PlaylistCoverUploader.apply(coverImage, to: id)
+                }
                 await onCreated()
                 dismiss()
             } catch {
@@ -501,9 +520,10 @@ struct NewPlaylistSheet: View {
         }
     }
 
-    private func createPlaylist() async throws {
+    /// Creates the playlist and returns its id.
+    private func createPlaylist() async throws -> String {
         if syncWithYouTube {
-            _ = try await SyncBridge.mutations.createPlaylist(title: trimmedName)
+            return try await SyncBridge.mutations.createPlaylist(title: trimmedName)
         } else {
             let entity = PlaylistEntity(
                 id: UUID().uuidString,
@@ -515,6 +535,7 @@ struct NewPlaylistSheet: View {
                 remoteSongCount: 0
             )
             try await DatabaseService.shared.insert(entity)
+            return entity.id
         }
     }
 }

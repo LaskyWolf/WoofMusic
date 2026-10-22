@@ -38,6 +38,10 @@ struct AsyncImageView: View {
             loadedImage = nil
             return
         }
+        if let file = LocalPlaylistCover.fileURL(for: urlString) {
+            loadedImage = UIImage(contentsOfFile: file.path)
+            return
+        }
         let scale = displayScale
         // Prevent zero-size layout passes from causing degenerate image cache requests.
         let minPixels: CGFloat = 120 * scale

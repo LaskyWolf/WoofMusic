@@ -31,6 +31,23 @@ enum PlaylistCoverUploader {
     /// Square side sent to YouTube; it serves the cover back at up to 544px.
     private static let coverSide: CGFloat = 1024
 
+    /// Sets the cover of any playlist you own: synced playlists upload to
+    /// YouTube Music, playlists that only live on this iPhone keep a file.
+    static func apply(_ image: UIImage, to playlistId: String) async throws {
+        guard var entity = try? await DatabaseService.shared.fetchOne(PlaylistEntity.self, key: playlistId) else {
+            throw UploadError.rejected(step: "playlist not found")
+        }
+        if entity.browseId != nil {
+            try await setCover(image, playlistId: playlistId)
+            return
+        }
+        guard let jpeg = squareJPEG(image) else { throw UploadError.unreadableImage }
+        let old = entity.thumbnailUrl
+        entity.thumbnailUrl = try LocalPlaylistCover.save(jpeg, playlistId: playlistId)
+        try await DatabaseService.shared.save(entity)
+        LocalPlaylistCover.delete(old)
+    }
+
     /// Uploads `image` as the cover of `playlistId`, saves the new cover URL
     /// locally and returns it.
     @discardableResult
@@ -106,7 +123,7 @@ enum PlaylistCoverUploader {
     }
 
     /// Center-cropped square JPEG, at most `coverSide` pixels wide.
-    private static func squareJPEG(_ image: UIImage) -> Data? {
+    static func squareJPEG(_ image: UIImage) -> Data? {
         let square = image.centerCroppedSquare()
         let side = min(coverSide, square.size.width * square.scale)
         guard side > 0 else { return nil }
@@ -116,5 +133,35 @@ enum PlaylistCoverUploader {
             square.draw(in: CGRect(x: 0, y: 0, width: side, height: side))
         }
         return resized.jpegData(compressionQuality: 0.85)
+    }
+}
+
+/// Covers of playlists that only live on this iPhone, kept as JPEG files.
+/// Their `thumbnailUrl` is "localcover:<file name>": the full path is worked
+/// out when the image loads, because iOS moves the app's folder on updates.
+enum LocalPlaylistCover {
+    private static let scheme = "localcover:"
+
+    private static var directory: URL {
+        URL.documentsDirectory.appending(path: "PlaylistCovers", directoryHint: .isDirectory)
+    }
+
+    static func fileURL(for thumbnailUrl: String) -> URL? {
+        guard thumbnailUrl.hasPrefix(scheme) else { return nil }
+        return directory.appending(path: String(thumbnailUrl.dropFirst(scheme.count)))
+    }
+
+    /// Saves the cover and returns its `thumbnailUrl`. A new name each time
+    /// makes every view reload the image.
+    static func save(_ jpeg: Data, playlistId: String) throws -> String {
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let name = "\(playlistId)-\(UUID().uuidString).jpg"
+        try jpeg.write(to: directory.appending(path: name), options: .atomic)
+        return scheme + name
+    }
+
+    static func delete(_ thumbnailUrl: String?) {
+        guard let thumbnailUrl, let url = fileURL(for: thumbnailUrl) else { return }
+        try? FileManager.default.removeItem(at: url)
     }
 }

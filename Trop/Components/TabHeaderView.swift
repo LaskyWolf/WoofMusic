@@ -24,12 +24,15 @@ struct TabHeaderView: View {
                 .font(.largeTitle)
                 .fontWeight(.bold)
             Spacer()
-            HStack(spacing: 10) {
+            // 36 pt tap targets with 12 pt between them, so the icons don't crowd.
+            HStack(spacing: 12) {
                 if let onAdd {
                     Button(action: onAdd) {
                         Image(systemName: "plus")
                             .font(.title3)
                             .foregroundStyle(.secondary)
+                            .frame(width: 36, height: 36)
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("New Playlist")
@@ -39,6 +42,8 @@ struct TabHeaderView: View {
                     Image(systemName: "clock.arrow.circlepath")
                         .font(.title3)
                         .foregroundStyle(.secondary)
+                        .frame(width: 36, height: 36)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("History")

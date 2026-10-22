@@ -558,8 +558,7 @@ struct PlaylistDetailView: View {
                     PlaylistActionsMenu(
                         playlist: playlist,
                         onSync: { Task { await viewModel.load(); await fetchEntity() } },
-                        isOwned: isEditable,
-                        canChangeCover: isEditable && playlistEntity?.browseId != nil
+                        isOwned: isEditable
                     ) {
                         MoreCircleGlyph()
                     }
