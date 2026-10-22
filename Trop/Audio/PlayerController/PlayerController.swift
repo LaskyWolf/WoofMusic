@@ -19,6 +19,12 @@ final class PlayerController {
     static let shared = PlayerController()
 
     nonisolated(unsafe) private var _mpv: OpaquePointer?
+    /// Second mpv instance that plays the next song during a crossfade.
+    /// Created on first use; swapped with `_mpv` halfway through the fade.
+    nonisolated(unsafe) private var _spare: OpaquePointer?
+    /// While true, the outgoing song's end finishes the crossfade instead of
+    /// advancing the queue.
+    nonisolated(unsafe) var isCrossfading = false
     /// Serial queue for all mpv property read/write calls
     let mpvAccessQueue = DispatchQueue(label: "com.686udjie.PlayerController.mpvAccess")
 
@@ -94,6 +100,7 @@ extension PlayerController {
         loudnessDb: Double? = nil,
         thumbnailUrl: String? = nil
     ) async {
+        Crossfade.shared.reset()
         currentLoudnessDb = loudnessDb
         guard let url = URL(string: url) else {
             Log.player.error("Invalid playback URL")
@@ -134,6 +141,9 @@ extension PlayerController {
         let pauseValue = desiredPlaying ? "no" : "yes"
         let cmdResult = withMpv { mpv -> Int32 in
             mpv_set_property_string(mpv, "pause", pauseValue)
+            // A cancelled crossfade can leave the deck faded or sped up.
+            mpv_set_property_string(mpv, "volume", "100")
+            mpv_set_property_string(mpv, "speed", "1")
             return loadArguments.withUnsafeCArg { mpv_command(mpv, $0) }
         } ?? -1
         if cmdResult != 0 {
@@ -147,6 +157,7 @@ extension PlayerController {
     }
 
     func seek(to time: TimeInterval) {
+        Crossfade.shared.finishNow()
         pendingSeek = (time, Date().addingTimeInterval(1.5))
         NowPlaying.shared.currentTime = time
         withMpv { mpv in
@@ -157,6 +168,7 @@ extension PlayerController {
     }
 
     func setPaused(_ paused: Bool) {
+        Crossfade.shared.finishNow()
         // After the queue ends mpv holds no file: unpausing it would play silence.
         if !paused, playState.value == .stopped, pendingVideoId == nil {
             NowPlaying.shared.playCurrentSong(logContext: "resume")
@@ -184,14 +196,23 @@ extension PlayerController {
     }
 
     func applyPlaybackSettings() {
+        let chain = filterChain(loudness: currentLoudnessDb)
+        let gapless = SettingsStore.shared.gaplessPlayback
+        withMpv { mpv in
+            mpv_set_property_string(mpv, "gapless-audio", gapless ? "yes" : "no")
+            let result = mpv_set_property_string(mpv, "af", chain.isEmpty ? "" : chain)
+            if result < 0 { Log.player.error("Failed to set af chain '\(chain)': mpv error \(result)") }
+        }
+    }
+
+    /// Equalizer and loudness-normalization filters for a song with `loudness`.
+    func filterChain(loudness: Double?) -> String {
         let settings = SettingsStore.shared
-        let loudness = currentLoudnessDb
         let eqEnabled = settings.equalizerEnabled
         let eqGains = settings.equalizerGains
-        let gapless = settings.gaplessPlayback
         let norm = settings.audioNormalization
 
-        let chain: String = {
+        return {
             var filters: [String] = []
             if eqEnabled {
                 let entries = zip(equalizerFrequencies, eqGains)
@@ -207,12 +228,6 @@ extension PlayerController {
             }
             return filters.joined(separator: ",")
         }()
-
-        withMpv { mpv in
-            mpv_set_property_string(mpv, "gapless-audio", gapless ? "yes" : "no")
-            let result = mpv_set_property_string(mpv, "af", chain.isEmpty ? "" : chain)
-            if result < 0 { Log.player.error("Failed to set af chain '\(chain)': mpv error \(result)") }
-        }
     }
 
     private static func fmt(_ value: Double) -> String {
@@ -226,28 +241,8 @@ extension PlayerController {
     fileprivate func startMpv() {
         mpvAccessQueue.async { [weak self] in
             guard let self else { return }
-            guard let mpv = mpv_create() else {
-                Log.player.error("mpv_create failed")
-                return
-            }
-
             _ = setenv("MVK_CONFIG_LOG_LEVEL", "1", 1)
-
-            Self.applyMpvStartupOptions(mpv)
-
-            Log.player.info("mpv initializing...")
-            let initResult = mpv_initialize(mpv)
-            guard initResult >= 0 else {
-                let errStr = String(cString: mpv_error_string(initResult))
-                Log.player.error("mpv_initialize failed: \(initResult) (\(errStr))")
-                mpv_destroy(mpv)
-                return
-            }
-            Log.player.info("mpv initialized successfully")
-
-            Self.applyPostInitProperties(mpv)
-            Self.applyObservedProperties(mpv)
-
+            guard let mpv = Self.createHandle() else { return }
             self._mpv = mpv
             Log.player.info("mpv handle published — event loop starting")
 
@@ -265,15 +260,39 @@ extension PlayerController {
                 }
             }
 
-            let thread = Thread { [weak self] in
-                guard let self else { return }
-                self.isRunning = true
-                self.eventLoop(mpv)
-            }
-            self.eventLoopThread = thread
-            thread.name = "com.686udjie.PlayerController.eventLoop"
-            thread.start()
+            self.eventLoopThread = self.startEventLoop(mpv)
         }
+    }
+
+    nonisolated private static func createHandle() -> OpaquePointer? {
+        guard let mpv = mpv_create() else {
+            Log.player.error("mpv_create failed")
+            return nil
+        }
+        applyMpvStartupOptions(mpv)
+        Log.player.info("mpv initializing...")
+        let initResult = mpv_initialize(mpv)
+        guard initResult >= 0 else {
+            let errStr = String(cString: mpv_error_string(initResult))
+            Log.player.error("mpv_initialize failed: \(initResult) (\(errStr))")
+            mpv_destroy(mpv)
+            return nil
+        }
+        Log.player.info("mpv initialized successfully")
+        applyPostInitProperties(mpv)
+        applyObservedProperties(mpv)
+        return mpv
+    }
+
+    nonisolated private func startEventLoop(_ mpv: OpaquePointer) -> Thread {
+        let thread = Thread { [weak self] in
+            guard let self else { return }
+            self.isRunning = true
+            self.eventLoop(mpv)
+        }
+        thread.name = "com.686udjie.PlayerController.eventLoop"
+        thread.start()
+        return thread
     }
 
     nonisolated private static func applyMpvStartupOptions(_ mpv: OpaquePointer) {
@@ -316,6 +335,11 @@ extension PlayerController {
     nonisolated fileprivate func eventLoop(_ mpv: OpaquePointer) {
         while isRunning {
             guard let event = mpv_wait_event(mpv, 0.2) else { continue }
+            // The crossfade deck reports to the crossfade only.
+            guard mpv == _mpv else {
+                handleDeckEvent(event)
+                continue
+            }
             switch event.pointee.event_id {
             case MPV_EVENT_NONE:
                 break
@@ -331,8 +355,21 @@ extension PlayerController {
                 break
             }
         }
-        _mpv = nil
+        if _mpv == mpv { _mpv = nil }
         mpv_destroy(mpv)
+    }
+
+    nonisolated private func handleDeckEvent(_ event: UnsafeMutablePointer<mpv_event>) {
+        switch event.pointee.event_id {
+        case MPV_EVENT_FILE_LOADED:
+            Task { @MainActor in Crossfade.shared.deckLoaded() }
+        case MPV_EVENT_END_FILE:
+            guard let data = event.pointee.data,
+                  data.load(as: mpv_event_end_file.self).reason == MPV_END_FILE_REASON_ERROR else { return }
+            Task { @MainActor in Crossfade.shared.deckFailed() }
+        default:
+            break
+        }
     }
 
     nonisolated private func handleFileLoaded(_ mpv: OpaquePointer) {
@@ -400,7 +437,9 @@ extension PlayerController {
             if isError, videoId != nil {
                 Task { await PlaybackStateService.shared.stopTracking() }
             }
-            if isEof {
+            if isEof, self.isCrossfading {
+                Crossfade.shared.outgoingEnded()
+            } else if isEof {
                 self.playState.send(.stopped)
                 NowPlaying.shared.stopped(videoId: videoId, isEof: true)
             } else if isError {
@@ -410,6 +449,62 @@ extension PlayerController {
             } else {
                 Log.player.debug("END_FILE non-EOF ignored for auto-advance")
             }
+        }
+    }
+}
+
+// MARK: - Crossfade decks
+
+/// An mpv instance handed to `Crossfade`; mpv handles are thread-safe.
+struct MpvDeck: @unchecked Sendable, Equatable {
+    let handle: OpaquePointer
+}
+
+extension PlayerController {
+    /// File path or stream URL of the playing song.
+    var activePath: String? {
+        withMpv { mpv -> String? in
+            guard let path = mpv_get_property_string(mpv, "path") else { return nil }
+            defer { mpv_free(path) }
+            return String(cString: path)
+        } ?? nil
+    }
+
+    var activeDeck: MpvDeck? {
+        mpvAccessQueue.sync { _mpv.map(MpvDeck.init) }
+    }
+
+    /// The second instance, created and started on first use.
+    func spareDeck() async -> MpvDeck? {
+        await withCheckedContinuation { continuation in
+            mpvAccessQueue.async { [self] in
+                if _spare == nil, let mpv = Self.createHandle() {
+                    _spare = mpv
+                    _ = startEventLoop(mpv)
+                }
+                continuation.resume(returning: _spare.map(MpvDeck.init))
+            }
+        }
+    }
+
+    nonisolated func deck(_ deck: MpvDeck, set name: String, _ value: String) {
+        mpvAccessQueue.async { _ = mpv_set_property_string(deck.handle, name, value) }
+    }
+
+    nonisolated func deck(_ deck: MpvDeck, command args: [String]) {
+        mpvAccessQueue.async { _ = args.withUnsafeCArg { mpv_command(deck.handle, $0) } }
+    }
+
+    /// Makes the spare deck the playing one. The old deck keeps fading out
+    /// as the new spare until `Crossfade` stops it.
+    func promoteSpare(videoId: String, loudness: Double?) {
+        mpvAccessQueue.sync { swap(&_mpv, &_spare) }
+        currentVideoId = videoId
+        pendingVideoId = nil
+        currentLoudnessDb = loudness
+        Task {
+            await PlaybackStateService.shared.stopTracking()
+            await PlaybackStateService.shared.startTracking(videoId: videoId)
         }
     }
 }

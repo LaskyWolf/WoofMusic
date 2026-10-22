@@ -220,6 +220,15 @@ final class SettingsStore {
         didSet { Self.defaults.set(gaplessPlayback, forKey: Keys.gaplessPlayback) }
     }
 
+    /// Smart Crossfade between songs, and its length in seconds.
+    var crossfadeEnabled: Bool {
+        didSet { Self.defaults.set(crossfadeEnabled, forKey: Keys.crossfadeEnabled) }
+    }
+
+    var crossfadeSeconds: Double {
+        didSet { Self.defaults.set(crossfadeSeconds, forKey: Keys.crossfadeSeconds) }
+    }
+
     var autoplaySimilar: Bool {
         didSet { Self.defaults.set(autoplaySimilar, forKey: Keys.autoplaySimilar) }
     }
@@ -340,6 +349,8 @@ final class SettingsStore {
         static let audioNormalization = "settings.audioNormalization"
         static let gaplessPlayback = "settings.gaplessPlayback"
         static let autoplaySimilar = "settings.autoplaySimilar"
+        static let crossfadeEnabled = "settings.crossfadeEnabled"
+        static let crossfadeSeconds = "settings.crossfadeSeconds"
         static let persistQueue = "settings.persistQueue"
         static let lastRadioStyle = "settings.lastRadioStyle"
         static let lastRadioLimit = "settings.lastRadioLimit"
@@ -402,6 +413,8 @@ final class SettingsStore {
         audioNormalization = Self.load(Keys.audioNormalization, default: false)
         gaplessPlayback = Self.load(Keys.gaplessPlayback, default: true)
         autoplaySimilar = Self.load(Keys.autoplaySimilar, default: true)
+        crossfadeEnabled = Self.load(Keys.crossfadeEnabled, default: false)
+        crossfadeSeconds = Self.load(Keys.crossfadeSeconds, default: 6.0)
         persistQueue = Self.load(Keys.persistQueue, default: false)
         lastRadioStyle = Self.loadEnum(Keys.lastRadioStyle, default: .similar)
         lastRadioLimit = Self.load(Keys.lastRadioLimit, default: 25)

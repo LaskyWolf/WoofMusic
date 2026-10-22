@@ -33,6 +33,23 @@ struct PlayerSettingsView: View {
             }
 
             Section {
+                SettingsToggleRow("Smart Crossfade", icon: "waveform.path", isOn: $settings.crossfadeEnabled)
+                if settings.crossfadeEnabled {
+                    LabeledContent {
+                        Slider(value: $settings.crossfadeSeconds, in: 1...12, step: 1)
+                            .frame(maxWidth: 180)
+                    } label: {
+                        Text("Fade \(Int(settings.crossfadeSeconds)) s")
+                            .monospacedDigit()
+                    }
+                }
+            } header: {
+                Text("Transitions")
+            } footer: {
+                Text("Fades into the next song where the current one winds down, on the beat, and evens out small tempo differences.")
+            }
+
+            Section {
                 SettingsToggleRow("Autoplay Similar", icon: "infinity", isOn: $settings.autoplaySimilar)
                 SettingsToggleRow("Persist Queue", icon: "clock.arrow.circlepath", isOn: $settings.persistQueue)
             } header: {

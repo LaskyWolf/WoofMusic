@@ -263,6 +263,16 @@ final class NowPlaying {
         playCurrentSong(logContext: "playNext")
     }
 
+    /// Moves to the next song after `Crossfade` already started it on the
+    /// other deck: updates the screen and queue without loading anything.
+    func advanceForCrossfade(to videoId: String) {
+        guard hasNext, queueSongs[queueIndex + 1].videoId == videoId else { return }
+        queueIndex += 1
+        update(with: queueSongs[queueIndex])
+        isPlaying = true
+        persistQueueState()
+    }
+
     func playPrevious() {
         guard hasPrevious else { return }
         guard !isResolvingNext else { return }
@@ -598,6 +608,7 @@ final class NowPlaying {
     private func timerTick() {
         // Also writes currentTime and duration.
         PlayerController.shared.updateNowPlayingProgress()
+        Crossfade.shared.tick()
         if let videoId, duration >= 600 || musicVideoType == "MUSIC_VIDEO_TYPE_PODCAST_EPISODE" {
             let vid = videoId
             let pos = currentTime
