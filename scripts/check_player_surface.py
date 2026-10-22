@@ -64,7 +64,9 @@ import UIKit
         try! data.write(to: url, options: .atomic)
         guard phase != "complete" else { return }
         let acknowledgment = URL.documentsDirectory.appending(path: "surface-check-ack.txt")
-        for _ in 0..<300 {
+        // The first screenshot and the screen recording can take over a
+        // minute to start on a slow CI machine.
+        for _ in 0..<1200 {
             if (try? String(contentsOf: acknowledgment, encoding: .utf8)) == phase {
                 trace("Captured " + phase)
                 return
@@ -249,7 +251,7 @@ try:
         data = Path(run("xcrun", "simctl", "get_app_container", device, identifier, "data"))
         result_path = data / "Documents/surface-check.json"
         seen = set()
-        deadline = time.monotonic() + 180
+        deadline = time.monotonic() + 600
         while time.monotonic() < deadline:
             if result_path.exists():
                 result = json.loads(result_path.read_text())
