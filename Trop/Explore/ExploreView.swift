@@ -208,12 +208,13 @@ private struct MoodCard: View {
             // Light from above, so the card reads as a raised surface.
             LinearGradient(colors: [.white.opacity(0.16), .clear], startPoint: .top, endPoint: .center)
 
+            // Larger than the card and tilted left, so the card edge crops it.
             Image(systemName: Self.symbol(for: mood.title))
-                .font(.system(size: 54, weight: .semibold))
+                .font(.system(size: 84, weight: .semibold))
                 .foregroundStyle(.white.opacity(0.3))
-                .rotationEffect(.degrees(14))
-                .offset(x: 14, y: -4)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                .rotationEffect(.degrees(-18))
+                .offset(x: 24, y: 12)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
                 .accessibilityHidden(true)
 
             Text(mood.title)
