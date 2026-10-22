@@ -34,6 +34,8 @@ struct FullPlayerView: View {
     @State private var lastTitleQueueIndex = NowPlaying.shared.queueIndex
     private let titleLineHeight: CGFloat = 30
     @State private var currentLyrics: [LyricLine] = []
+    /// How far the player is pulled down by the dismiss gesture.
+    @State private var pullDistance: CGFloat = 0
     private var playerBackgroundColors: [Color] { np.dominantColors }
 
     private var activeLyricText: String? {
@@ -149,6 +151,8 @@ struct FullPlayerView: View {
             }
             .animation(.easeInOut(duration: reduceMotion ? 0.15 : 0.25), value: showQueue)
             .animation(.easeInOut(duration: reduceMotion ? 0.15 : 0.25), value: showLyrics)
+            .offset(y: pullDistance)
+            .gesture(pullToDismiss(height: geometry.size.height))
             .onChange(of: np.videoId) { oldValue, newValue in
                 if oldValue != nil, newValue != nil {
                     titleChangeDirection = np.queueIndex < lastTitleQueueIndex ? -1 : 1
@@ -258,6 +262,19 @@ struct FullPlayerView: View {
     }
 
     // MARK: - Gestures
+
+    private func pullToDismiss(height: CGFloat) -> PlayerDismissGesture {
+        PlayerDismissGesture(isEnabled: !showQueue && !showLyrics) { distance in
+            pullDistance = max(0, distance)
+        } onEnded: { distance, velocity in
+            // Far enough (a fifth of the screen) or a quick flick closes it.
+            if distance > height * 0.2 || (distance > 20 && velocity > 800) {
+                onCollapse()
+            } else {
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { pullDistance = 0 }
+            }
+        }
+    }
 
     private func playerSwipe() -> PlayerTrackSwipeGesture {
         PlayerTrackSwipeGesture(
