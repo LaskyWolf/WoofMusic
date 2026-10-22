@@ -195,24 +195,77 @@ private struct MoodCard: View {
 
     var body: some View {
         let hue = Self.hue(for: mood)
-        Text(mood.title)
-            .font(.headline.weight(.bold))
-            .foregroundStyle(.white)
-            .lineLimit(2)
-            .multilineTextAlignment(.leading)
-            .padding(12)
-            .frame(width: 172, height: 100, alignment: .bottomLeading)
-            .background(
-                LinearGradient(
-                    colors: [
-                        Color(hue: hue, saturation: 0.7, brightness: 0.62),
-                        Color(hue: (hue + 0.06).truncatingRemainder(dividingBy: 1), saturation: 0.8, brightness: 0.42)
-                    ],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                ),
-                in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+        let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
+        ZStack(alignment: .bottomLeading) {
+            LinearGradient(
+                colors: [
+                    Color(hue: hue, saturation: 0.7, brightness: 0.62),
+                    Color(hue: (hue + 0.06).truncatingRemainder(dividingBy: 1), saturation: 0.8, brightness: 0.42)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
             )
+            // Light from above, so the card reads as a raised surface.
+            LinearGradient(colors: [.white.opacity(0.16), .clear], startPoint: .top, endPoint: .center)
+
+            Image(systemName: Self.symbol(for: mood.title))
+                .font(.system(size: 54, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.3))
+                .rotationEffect(.degrees(14))
+                .offset(x: 14, y: -4)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                .accessibilityHidden(true)
+
+            Text(mood.title)
+                .font(.headline.weight(.bold))
+                .foregroundStyle(.white)
+                .lineLimit(2)
+                .multilineTextAlignment(.leading)
+                .padding(12)
+        }
+        .frame(width: 172, height: 100)
+        .clipShape(shape)
+        .shadow(color: Color(hue: hue, saturation: 0.8, brightness: 0.3).opacity(0.35), radius: 6, y: 4)
+    }
+
+    /// An SF Symbol for the category, matched on words in its title. The
+    /// more specific words come first ("K-Pop" before "Pop").
+    private static func symbol(for title: String) -> String {
+        let title = title.lowercased()
+        let symbols: [(words: [String], symbol: String)] = [
+            (["k-pop", "j-pop", "mandopop", "cantopop"], "sparkles"),
+            (["hip-hop", "hip hop", "rap"], "music.mic"),
+            (["r&b", "soul"], "music.mic.circle.fill"),
+            (["dance", "electronic", "edm"], "waveform"),
+            (["metal"], "flame.fill"),
+            (["rock"], "guitars.fill"),
+            (["folk", "acoustic"], "guitars"),
+            (["classical", "piano"], "pianokeys"),
+            (["jazz", "blues"], "music.quarternote.3"),
+            (["country"], "sun.horizon.fill"),
+            (["latin"], "figure.dance"),
+            (["reggae", "caribbean"], "beach.umbrella.fill"),
+            (["indie", "alternative"], "headphones"),
+            (["soundtrack", "musical", "film"], "film.fill"),
+            (["christian", "gospel"], "hands.sparkles.fill"),
+            (["family", "kids", "children"], "figure.2.and.child.holdinghands"),
+            (["holiday", "christmas"], "gift.fill"),
+            (["decade", "0s", "throwback"], "clock.arrow.circlepath"),
+            (["chill", "relax"], "leaf.fill"),
+            (["commut", "travel", "drive"], "car.fill"),
+            (["energy", "boost"], "bolt.fill"),
+            (["feel good", "happy"], "sun.max.fill"),
+            (["focus", "study"], "scope"),
+            (["gaming"], "gamecontroller.fill"),
+            (["party"], "party.popper.fill"),
+            (["romance", "love"], "heart.fill"),
+            (["sad"], "cloud.rain.fill"),
+            (["sleep"], "moon.zzz.fill"),
+            (["workout", "fitness", "running"], "figure.run"),
+            (["african", "arabic", "indian", "bollywood", "korean", "japanese", "world"], "globe"),
+            (["pop"], "star.fill")
+        ]
+        return symbols.first { entry in entry.words.contains { title.contains($0) } }?.symbol ?? "music.note"
     }
 
     /// Only the hue is kept: saturation and brightness are fixed so white
