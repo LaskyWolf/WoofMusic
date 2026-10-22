@@ -139,6 +139,7 @@ struct SongActionsMenu<MenuLabel: View>: View {
             Button("Remove Download", systemImage: "trash", role: .destructive) {
                 confirmRemoveDownload = true
             }
+            .tint(.red)
         case .downloading:
             Button("Downloading…", systemImage: "arrow.down.circle") {}
                 .disabled(true)

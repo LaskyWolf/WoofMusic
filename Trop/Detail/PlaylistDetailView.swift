@@ -681,6 +681,7 @@ struct PlaylistDetailView: View {
                         } label: {
                             Label("Remove from Playlist", systemImage: "minus.circle")
                         }
+                        .tint(.red)
                     }
                 }
 

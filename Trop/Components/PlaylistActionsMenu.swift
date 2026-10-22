@@ -43,6 +43,7 @@ struct PlaylistActionsMenu<MenuLabel: View>: View {
                 Button("Remove Downloads", systemImage: "trash", role: .destructive) {
                     showRemoveDownloads = true
                 }
+                .tint(.red)
             }
             .disabled(playlist.songs.isEmpty)
 
@@ -51,6 +52,7 @@ struct PlaylistActionsMenu<MenuLabel: View>: View {
                     Button(isOwned ? "Delete Playlist" : "Remove from Library", systemImage: "trash", role: .destructive) {
                         showDelete = true
                     }
+                    .tint(.red)
                 }
             }
         } label: {

@@ -200,6 +200,7 @@ struct SearchView: View {
                         } label: {
                             Label("Delete", systemImage: "trash")
                         }
+                        .tint(.red)
                     }
 
                     Divider()

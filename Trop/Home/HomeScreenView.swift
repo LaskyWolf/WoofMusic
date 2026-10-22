@@ -193,6 +193,7 @@ struct HomeScreenView: View {
                             } label: {
                                 Label("Unpin", systemImage: "pin.slash")
                             }
+                            .tint(.red)
                         }
                     }
 
