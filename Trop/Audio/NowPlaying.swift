@@ -609,6 +609,8 @@ final class NowPlaying {
         // Also writes currentTime and duration.
         PlayerController.shared.updateNowPlayingProgress()
         Crossfade.shared.tick()
+        SponsorBlock.shared.tick()
+        ListenBrainz.shared.tick()
         if let videoId, duration >= 600 || musicVideoType == "MUSIC_VIDEO_TYPE_PODCAST_EPISODE" {
             let vid = videoId
             let pos = currentTime

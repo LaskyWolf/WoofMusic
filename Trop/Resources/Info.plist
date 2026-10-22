@@ -74,5 +74,16 @@
 			</array>
 		</dict>
 	</array>
+	<key>INAlternativeAppNames</key>
+	<array>
+		<dict>
+			<key>INAlternativeAppName</key>
+			<string>Woof Music</string>
+		</dict>
+		<dict>
+			<key>INAlternativeAppName</key>
+			<string>Woof</string>
+		</dict>
+	</array>
 </dict>
 </plist>

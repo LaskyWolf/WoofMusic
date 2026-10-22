@@ -15,7 +15,9 @@ A free and open source YouTube Music client for iOS, built on [Trop](https://git
 - AutoMix: beat-matched transitions that match tempo and swap the bass on the bar
 - Smart Crossfade: fades into the next song where the current one winds down
 - Home Screen quick actions: Search, Shuffle Liked Songs, Downloads, Resume
-- Last.fm scrobbling and Discord Rich Presence
+- Last.fm and ListenBrainz scrobbling, and Discord Rich Presence
+- Skips non-music parts of music videos (intros, skits) with SponsorBlock
+- Siri and Shortcuts: shuffle liked songs, play/pause, next song ("Shuffle my liked songs in Woof Music")
 - Custom app icons and themes
 
 ## What differs from Trop

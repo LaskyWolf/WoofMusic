@@ -265,6 +265,11 @@ final class SettingsStore {
         didSet { Self.defaults.set(artworkSwipeNavigation, forKey: Keys.artworkSwipeNavigation) }
     }
 
+    /// Skip intros, skits and other non-music parts using SponsorBlock.
+    var skipNonMusic: Bool {
+        didSet { Self.defaults.set(skipNonMusic, forKey: Keys.skipNonMusic) }
+    }
+
     // MARK: - Content
 
     var hideExplicit: Bool {
@@ -369,6 +374,7 @@ final class SettingsStore {
         static let lastRadioLimit = "settings.lastRadioLimit"
         static let lastRadioAllowExplicit = "settings.lastRadioAllowExplicit"
         static let artworkSwipeNavigation = "settings.artworkSwipeNavigation"
+        static let skipNonMusic = "settings.skipNonMusic"
         static let hideExplicit = "settings.hideExplicit"
         static let showQuickPicks = "settings.showQuickPicks"
         static let topListsLength = "settings.topListsLength"
@@ -434,6 +440,7 @@ final class SettingsStore {
         lastRadioLimit = Self.load(Keys.lastRadioLimit, default: 25)
         lastRadioAllowExplicit = Self.load(Keys.lastRadioAllowExplicit, default: true)
         artworkSwipeNavigation = Self.load(Keys.artworkSwipeNavigation, default: true)
+        skipNonMusic = Self.load(Keys.skipNonMusic, default: true)
         hideExplicit = Self.load(Keys.hideExplicit, default: false)
         showQuickPicks = Self.load(Keys.showQuickPicks, default: true)
         topListsLength = Self.load(Keys.topListsLength, default: 8)
