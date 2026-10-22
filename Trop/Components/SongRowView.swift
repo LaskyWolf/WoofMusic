@@ -61,9 +61,9 @@ struct SongRowView: View {
                 }
             }
         }
-        .background(DownloadCellProgressView(song: song))
         .padding(.horizontal, DesignTokens.screenHPadding)
         .padding(.vertical, DesignTokens.rowVPadding)
+        .background(DownloadCellProgressView(song: song))
         .contentShape(Rectangle())
         .onTapGesture(perform: onTap)
         .task { await durations.resolve(videoId: song.videoId, knownDuration: song.duration) }
@@ -73,21 +73,28 @@ struct SongRowView: View {
     }
 }
 
-/// Full-cell progress background shown while a song is downloading.
+/// Covers the whole row while its song downloads: a tinted fill that grows
+/// with the progress and a solid bar along the bottom edge.
 struct DownloadCellProgressView: View {
     let song: SongItem
+    @Environment(SettingsStore.self) private var settings
     @ObservedObject private var downloadManager = DownloadManager.shared
 
     var body: some View {
         let state = downloadManager.state(for: song.videoId)
-        return GeometryReader { geo in
+        GeometryReader { geo in
             if case .downloading(let fraction) = state {
-                Color.accentColor.opacity(0.25)
-                    .frame(
-                        width: geo.size.width * CGFloat(min(max(fraction, 0), 1)),
-                        height: geo.size.height
-                    )
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                let width = geo.size.width * CGFloat(min(max(fraction, 0), 1))
+                ZStack(alignment: .bottomLeading) {
+                    settings.accentColor.opacity(0.18)
+                        .frame(width: width)
+                    settings.accentColor
+                        .frame(width: width, height: 3)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+                .transition(.opacity)
+                .accessibilityElement()
+                .accessibilityLabel("Downloading, \(Int(fraction * 100)) percent")
             }
         }
         .animation(.easeInOut(duration: 0.3), value: state)
