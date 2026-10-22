@@ -40,7 +40,8 @@ final class PlaylistDetailViewModel {
             return
         }
 
-        isLoading = true
+        // Reloads keep the current page on screen instead of a spinner.
+        if playlist == nil { isLoading = true }
         error = nil
 
         // Check if this is a local-only playlist
@@ -58,10 +59,11 @@ final class PlaylistDetailViewModel {
             // Persist songs to the song table so they become searchable in the library
             let pid = playlistId
             let songs = parsed.songs
+            let setVideoIds = Self.setVideoIds(rows)
             let title = parsed.title
             try await DatabaseService.shared.write { db in
                 let existing = try PlaylistEntity.fetchOne(db, key: pid)
-                let entity = PlaylistEntity.merging(
+                var entity = PlaylistEntity.merging(
                     existing: existing,
                     id: pid,
                     browseId: browseId,
@@ -69,6 +71,8 @@ final class PlaylistDetailViewModel {
                     remoteSongCount: songs.count,
                     thumbnailUrl: parsed.thumbnailUrl
                 )
+                // Library sync can't tell owned playlists apart; the detail header can.
+                if parsed.isEditable { entity.isEditable = true }
                 try entity.save(db)
 
                 try db.execute(sql: "DELETE FROM playlist_song_map WHERE playlist_id = ?", arguments: [pid])
@@ -90,7 +94,7 @@ final class PlaylistDetailViewModel {
                         playlistId: pid,
                         songId: song.videoId,
                         position: index,
-                        setVideoId: nil
+                        setVideoId: setVideoIds[song.videoId]
                     )
                     try map.insert(db, onConflict: .ignore)
                 }
@@ -216,6 +220,19 @@ extension PlaylistDetailViewModel {
     /// from musicDetailHeaderRenderer on the first page, and songs from the
     /// track rows collected across every continuation page.
     /// Branch count is inherent to tolerant InnerTube JSON parsing.
+    /// videoId → playlistSetVideoId, the per-row id YouTube needs to remove a song.
+    static func setVideoIds(_ rows: [[String: Any]]) -> [String: String] {
+        var ids: [String: String] = [:]
+        for row in rows {
+            guard let renderer = row["musicResponsiveListItemRenderer"] as? [String: Any],
+                  let item = renderer["playlistItemData"] as? [String: Any],
+                  let videoId = item["videoId"] as? String,
+                  let setVideoId = item["playlistSetVideoId"] as? String else { continue }
+            ids[videoId] = ids[videoId] ?? setVideoId
+        }
+        return ids
+    }
+
     static func parsePlaylistDetail(firstPage json: [String: Any], rows: [[String: Any]], playlistId: String) -> PlaylistDetailInfo {
         var title = "Unknown Playlist"
         var authorName: String?
@@ -371,7 +388,9 @@ extension PlaylistDetailViewModel {
             duration: duration,
             thumbnailUrl: thumbnailUrl,
             playlistId: playlistId,
-            songs: songs
+            songs: songs,
+            isEditable: firstTabSection?["musicEditablePlaylistDetailHeaderRenderer"] != nil
+                || (json["header"] as? [String: Any])?["musicEditablePlaylistDetailHeaderRenderer"] != nil
         )
     }
 }
@@ -383,7 +402,6 @@ struct PlaylistDetailView: View {
     @State private var viewModel: PlaylistDetailViewModel
     @State private var playlistEntity: PlaylistEntity?
     @State private var showAddSongs = false
-    @State private var showMoreSheet = false
     @State private var pendingRoute: DetailRoute?
 
     @Environment(\.dismiss) private var dismiss
@@ -434,8 +452,8 @@ struct PlaylistDetailView: View {
         }
         .task {
             guard viewModel.isLoading else { return }
-            await fetchEntity()
             await viewModel.load()
+            await fetchEntity()
         }
         .detailRouteSheet(item: $pendingRoute)
     }
@@ -534,20 +552,21 @@ struct PlaylistDetailView: View {
 
             // Action buttons: shuffle, play
             PlaybackControlsView(
-                showsMore: true,
                 onPlay: { playAll(playlist) },
                 onShuffle: { shufflePlay(playlist) },
-                onMore: { showMoreSheet = true }
+                moreMenu: AnyView(
+                    PlaylistActionsMenu(
+                        playlist: playlist,
+                        onSync: { Task { await viewModel.load(); await fetchEntity() } },
+                        isOwned: isEditable,
+                        canChangeCover: isEditable && playlistEntity?.browseId != nil
+                    ) {
+                        MoreCircleGlyph()
+                    }
+                )
             )
         }
         .padding(.vertical, 16)
-        .sheet(isPresented: $showMoreSheet) {
-            PlaylistMoreSheet(
-                playlist: playlist,
-                onSync: { Task { await viewModel.load() } },
-                canChangeCover: isEditable && playlistEntity?.browseId != nil
-            )
-        }
     }
 
     @ViewBuilder

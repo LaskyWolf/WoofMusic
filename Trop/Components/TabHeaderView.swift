@@ -15,6 +15,8 @@ struct TabHeaderView: View {
     var accountImageUrl: String?
     var onHistory: () -> Void
     var onAccount: () -> Void
+    /// Shows a "+" button when set (Library: new playlist).
+    var onAdd: (() -> Void)?
 
     var body: some View {
         HStack(alignment: .center) {
@@ -23,6 +25,16 @@ struct TabHeaderView: View {
                 .fontWeight(.bold)
             Spacer()
             HStack(spacing: 10) {
+                if let onAdd {
+                    Button(action: onAdd) {
+                        Image(systemName: "plus")
+                            .font(.title3)
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("New Playlist")
+                }
+
                 Button(action: onHistory) {
                     Image(systemName: "clock.arrow.circlepath")
                         .font(.title3)

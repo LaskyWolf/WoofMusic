@@ -158,6 +158,7 @@ enum Log {
     static let homeViewModel = AppLogger(logger: Logger(subsystem: subsystem, category: "HomeViewModel"), category: "homeViewModel")
     static let explore = AppLogger(logger: Logger(subsystem: subsystem, category: "Explore"), category: "explore")
     static let libraryView = AppLogger(logger: Logger(subsystem: subsystem, category: "LibraryView"), category: "libraryView")
+    static let playlistCover = AppLogger(logger: Logger(subsystem: subsystem, category: "PlaylistCover"), category: "playlistCover")
     static let innerTube = AppLogger(logger: Logger(subsystem: subsystem, category: "InnerTube"), category: "innerTube")
     static let playbackState = AppLogger(logger: Logger(subsystem: subsystem, category: "PlaybackState"), category: "playbackState")
     static let registerPlayback = AppLogger(logger: Logger(subsystem: subsystem, category: "RegisterPlayback"), category: "registerPlayback")

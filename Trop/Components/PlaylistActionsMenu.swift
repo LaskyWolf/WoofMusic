@@ -1,5 +1,5 @@
 //
-//  PlaylistMoreSheet.swift
+//  PlaylistActionsMenu.swift
 //  Trop
 //
 //  Created by 686udjie on 28/08/2026.
@@ -8,120 +8,88 @@
 import PhotosUI
 import SwiftUI
 
-struct PlaylistMoreSheet: View {
+/// The playlist header's "⋯" button: a native pull-down menu. Rename and
+/// Change Cover open system dialogs after the menu closes.
+struct PlaylistActionsMenu<MenuLabel: View>: View {
     let playlist: PlaylistDetailInfo
     var onSync: (() -> Void)?
-    /// Only playlists you own on YouTube Music can get a custom cover.
+    /// Only playlists you own can be renamed.
+    var isOwned = false
+    /// Custom covers also need the playlist to exist on YouTube Music.
     var canChangeCover = false
+    @ViewBuilder var label: () -> MenuLabel
 
-    @Environment(\.dismiss) private var dismiss
-    @Environment(\.settingsStore) private var settings
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-    @State private var showEditAlert = false
+    @State private var showRename = false
     @State private var editedName = ""
     @State private var showRemoveDownloads = false
+    @State private var showCoverPicker = false
     @State private var coverItem: PhotosPickerItem?
     @State private var isUploadingCover = false
-    @State private var coverError: String?
+    @State private var actionError: String?
 
     var body: some View {
-        NavigationStack {
-            List {
-                Section {
-                    MenuSongPreview(
-                        title: playlist.title,
-                        artist: playlist.authorName ?? "\(playlist.songs.count) songs",
-                        thumbnailURL: playlist.thumbnailUrl ?? playlist.songs.first?.thumbnailUrl
-                    )
+        Menu {
+            ControlGroup {
+                Button("Rename", systemImage: "pencil") {
+                    editedName = playlist.title
+                    showRename = true
                 }
-
-                Section {
-                    shortcutRow
+                .disabled(!isOwned)
+                Button("Sync", systemImage: "arrow.triangle.2.circlepath") { onSync?() }
+                    .disabled(onSync == nil)
+                if let url = URL.playlistShareURL(id: playlist.playlistId) {
+                    ShareLink(item: url) {
+                        Label("Share", systemImage: "square.and.arrow.up")
+                    }
                 }
+            }
+            .controlGroupStyle(.compactMenu)
 
+            Section {
+                Button("Add to Queue", systemImage: "text.append", action: addToQueue)
                 if canChangeCover {
-                    Section {
-                        PhotosPicker(selection: $coverItem, matching: .images) {
-                            HStack {
-                                actionLabel("Change Cover…", icon: "photo")
-                                if isUploadingCover {
-                                    Spacer()
-                                    ProgressView()
-                                }
-                            }
-                        }
-                        .disabled(isUploadingCover)
-                    } footer: {
-                        Text("The cover is saved to your YouTube Music playlist.")
+                    Button(isUploadingCover ? "Uploading Cover…" : "Change Cover…", systemImage: "photo") {
+                        showCoverPicker = true
                     }
-                }
-
-                Section("Queue") {
-                    Button {
-                        addToQueue()
-                        dismiss()
-                    } label: {
-                        actionLabel("Add to Queue", icon: "list.bullet")
-                    }
-                    .disabled(playlist.songs.isEmpty)
-                }
-
-                Section {
-                    Button {
-                        downloadAll()
-                        dismiss()
-                    } label: {
-                        actionLabel("Download", icon: "arrow.down.circle")
-                    }
-                    .disabled(playlist.songs.isEmpty)
-
-                    Button(role: .destructive) {
-                        showRemoveDownloads = true
-                    } label: {
-                        Label("Remove Downloads", systemImage: "trash")
-                    }
-                    .disabled(playlist.songs.isEmpty)
-                } header: {
-                    Text("Downloads")
-                } footer: {
-                    Text("Remove Downloads deletes this playlist’s offline copies. Your playlist stays in your library.")
+                    .disabled(isUploadingCover)
                 }
             }
-            .listStyle(.insetGrouped)
-            .tint(settings.accentColor)
-            .navigationTitle("Playlist Options")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { dismiss() }
+            .disabled(playlist.songs.isEmpty && !canChangeCover)
+
+            Section {
+                Button("Download", systemImage: "arrow.down.circle", action: downloadAll)
+                Button("Remove Downloads", systemImage: "trash", role: .destructive) {
+                    showRemoveDownloads = true
                 }
             }
+            .disabled(playlist.songs.isEmpty)
+        } label: {
+            label()
         }
-        .appSheetChrome()
-        .destructiveConfirm(
-            "Remove Downloads?",
-            isPresented: $showRemoveDownloads,
-            message: Text("Remove offline copies of this playlist’s songs from your device?"),
-            confirmTitle: "Remove Downloads"
-        ) {
-            deleteAllDownloads()
-            dismiss()
-        }
+        .menuOrder(.fixed)
+        .photosPicker(isPresented: $showCoverPicker, selection: $coverItem, matching: .images)
         .onChange(of: coverItem) { _, item in
             guard let item else { return }
             uploadCover(item)
         }
-        .alert("Couldn't Change Cover", isPresented: .init(
-            get: { coverError != nil },
-            set: { if !$0 { coverError = nil } }
+        .alert("Couldn't Update Playlist", isPresented: .init(
+            get: { actionError != nil },
+            set: { if !$0 { actionError = nil } }
         )) {
             Button("OK", role: .cancel) {}
         } message: {
-            Text(coverError ?? "")
+            Text(actionError ?? "")
         }
+        .destructiveConfirm(
+            "Remove Downloads?",
+            isPresented: $showRemoveDownloads,
+            message: Text("Remove offline copies of this playlist’s songs from your device? The playlist stays in your library."),
+            confirmTitle: "Remove Downloads",
+            onConfirm: deleteAllDownloads
+        )
         .textPrompt(
             "Rename Playlist",
-            isPresented: $showEditAlert,
+            isPresented: $showRename,
             placeholder: "Playlist name",
             text: $editedName,
             okTitle: "Rename",
@@ -129,47 +97,7 @@ struct PlaylistMoreSheet: View {
         )
     }
 
-    private var shortcutRow: some View {
-        let layout = dynamicTypeSize.isAccessibilitySize
-            ? AnyLayout(VStackLayout(spacing: 8))
-            : AnyLayout(HStackLayout(spacing: 0))
-        return layout {
-            MenuShortcutButton(title: "Edit", icon: "pencil") {
-                editedName = playlist.title
-                showEditAlert = true
-            }
-            .accessibilityLabel("Rename Playlist")
-            if !dynamicTypeSize.isAccessibilitySize { Divider().frame(height: 32) }
-            MenuShortcutButton(title: "Sync", icon: "arrow.triangle.2.circlepath") {
-                onSync?()
-                dismiss()
-            }
-            .disabled(onSync == nil)
-            if !dynamicTypeSize.isAccessibilitySize { Divider().frame(height: 32) }
-            MenuShortcutButton(title: "Share", icon: "square.and.arrow.up", action: share)
-        }
-    }
-
-    private func actionLabel(_ title: String, icon: String) -> some View {
-        Label {
-            Text(title).foregroundStyle(.primary)
-        } icon: {
-            Image(systemName: icon).foregroundStyle(settings.accentColor)
-        }
-    }
-
     // MARK: - Actions
-
-    private func renamePlaylist() {
-        let name = editedName.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !name.isEmpty, name != playlist.title else { return }
-        Task {
-            try? await SyncBridge.mutations.renamePlaylist(
-                playlistId: playlist.playlistId,
-                newName: name
-            )
-        }
-    }
 
     private func uploadCover(_ item: PhotosPickerItem) {
         isUploadingCover = true
@@ -185,9 +113,25 @@ struct PlaylistMoreSheet: View {
                 }
                 try await PlaylistCoverUploader.setCover(image, playlistId: playlist.playlistId)
                 onSync?()
-                dismiss()
             } catch {
-                coverError = error.localizedDescription
+                Log.playlistCover.error("Cover upload failed: \(error)")
+                actionError = error.localizedDescription
+            }
+        }
+    }
+
+    private func renamePlaylist() {
+        let name = editedName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty, name != playlist.title else { return }
+        Task {
+            do {
+                try await SyncBridge.mutations.renamePlaylist(
+                    playlistId: playlist.playlistId,
+                    newName: name
+                )
+                onSync?()
+            } catch {
+                actionError = error.localizedDescription
             }
         }
     }
@@ -202,12 +146,6 @@ struct PlaylistMoreSheet: View {
         for song in playlist.songs {
             Task { await DownloadManager.shared.download(song: song) }
         }
-    }
-
-    private func share() {
-        guard let url = URL.playlistShareURL(id: playlist.playlistId) else { return }
-        presentShareSheet(items: [url])
-        dismiss()
     }
 
     private func deleteAllDownloads() {

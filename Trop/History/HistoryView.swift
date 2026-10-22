@@ -9,7 +9,7 @@ import SwiftUI
 
 struct HistoryScreenView: View {
     @Environment(SettingsStore.self) private var settings
-    @State private var viewModel = HistoryView()
+    @State private var viewModel = HistoryViewModel()
     @State private var isSelecting = false
     @State private var selectedEvents: Set<Event> = []
 
@@ -49,8 +49,10 @@ struct HistoryScreenView: View {
                 }
             }
             .pickerStyle(.segmented)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 8)
+            .controlSize(.large)
+            .padding(.horizontal, DesignTokens.screenHPadding)
+            .padding(.top, 8)
+            .padding(.bottom, 12)
 
             Group {
                 if viewModel.isLoading {

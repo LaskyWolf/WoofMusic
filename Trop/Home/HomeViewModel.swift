@@ -128,7 +128,7 @@ final class HomeViewModel {
     func handleLogin(cookies: [String: String], sapisid: String?, visitorData: String?) {
         isLoggedIn = sapisid != nil
         Task {
-            await cookieStore.save(cookies: cookies, sapisid: sapisid, visitorData: visitorData)
+            // LoginViewModel already saved the session (with dataSyncId).
             await InnerTubeClient.tropShared.loadState(from: cookieStore)
             if isLoggedIn {
                 await fetchAccountInfo()

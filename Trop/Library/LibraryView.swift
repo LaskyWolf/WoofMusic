@@ -35,7 +35,7 @@ struct LibraryView: View {
     private var autoPlaylists: [AutoPlaylistInfo] {
         [
             AutoPlaylistInfo(id: "liked", title: "Liked Songs", icon: "heart.fill", subtitle: "\(likedSongCount) songs", route: .likedSongs),
-            AutoPlaylistInfo(id: "top100", title: "My Top 100", icon: "trophy.fill", subtitle: "Top 100", route: .topSongs(limit: 100)),
+            AutoPlaylistInfo(id: "top100", title: "My Top 100", icon: "trophy.fill", subtitle: "Most played", route: .topSongs(limit: 100)),
             AutoPlaylistInfo(id: "downloads", title: "Downloads", icon: "arrow.down.circle.fill",
                              subtitle: downloadsSubtitle, route: nil, detailRoute: .downloads)
         ]
@@ -62,7 +62,8 @@ struct LibraryView: View {
                     accountIsLoggedIn: accountState.isLoggedIn,
                     accountImageUrl: accountState.accountImageUrl,
                     onHistory: { router.libraryPath.append(DetailRoute.history) },
-                    onAccount: { router.libraryPath.append(DetailRoute.settings) }
+                    onAccount: { router.libraryPath.append(DetailRoute.settings) },
+                    onAdd: { showCreateDialog = true }
                 )
 
                 Group {
@@ -76,29 +77,9 @@ struct LibraryView: View {
             .frame(maxHeight: .infinity, alignment: .top)
             .toolbar(.hidden, for: .navigationBar)
             .detailRouteDestinations()
-            .overlay(alignment: .bottomTrailing) {
-                                Button(action: { showCreateDialog = true }, label: {
-                    Image(systemName: "plus")
-                        .font(.title2.weight(.semibold))
-                        .foregroundColor(.white)
-                        .frame(width: 56, height: 56)
-                        .background(Circle().fill(settings.accentColor))
-                        .shadow(color: .black.opacity(0.3), radius: 6, y: 3)
-                })
-                .accessibilityLabel("Create playlist")
-                .padding(.trailing, 20)
-                .padding(.bottom, 20)
+            .sheet(isPresented: $showCreateDialog) {
+                NewPlaylistSheet(onCreated: { await loadContent() })
             }
-            .overlay {
-                if showCreateDialog {
-                    CreatePlaylistDialog(
-                        isPresented: $showCreateDialog,
-                        onCreated: { await loadContent() }
-                    )
-                    .transition(.scale(scale: 0.9).combined(with: .opacity))
-                }
-            }
-            .animation(.spring(response: 0.4, dampingFraction: 0.8), value: showCreateDialog)
             .task {
                 await loadContent()
                 Task {
@@ -446,154 +427,88 @@ struct LibraryView: View {
     }
 }
 
-// MARK: - Create Playlist Dialog
+// MARK: - New Playlist Sheet
 
-struct CreatePlaylistDialog: View {
-    @Environment(SettingsStore.self) private var settings
-    @Binding var isPresented: Bool
+/// System-style form for creating a playlist, local or synced.
+struct NewPlaylistSheet: View {
     let onCreated: () async -> Void
 
+    @Environment(\.dismiss) private var dismiss
     @State private var name = ""
     @State private var syncWithYouTube = false
     @State private var isCreating = false
     @State private var error: Error?
     @FocusState private var isFocused: Bool
 
+    private var trimmedName: String { name.trimmingCharacters(in: .whitespaces) }
+
     var body: some View {
-        VStack(spacing: 0) {
-            Text("New Playlist")
-                .font(.title3)
-                .fontWeight(.bold)
-                .padding(.top, 24)
-                .padding(.bottom, 20)
-
-            TextField("Playlist name", text: $name)
-                .font(.body)
-                .focused($isFocused)
-                .padding(.horizontal, DesignTokens.screenHPadding)
-                .padding(.vertical, 12)
-                .background(
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .fill(Color(.systemGray6))
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .stroke(isFocused ? settings.accentColor : Color(.systemGray4), lineWidth: 1)
-                )
-                .autocorrectionDisabled()
-                .padding(.horizontal, 24)
-                .padding(.bottom, 20)
-
-            // Sync toggle
-            HStack(spacing: 12) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Sync playlist")
-                        .font(.subheadline)
-                        .fontWeight(.medium)
-                    Text("Syncs with your YouTube Music account. This cannot be changed later.")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .lineLimit(2)
+        NavigationStack {
+            Form {
+                Section {
+                    TextField("Playlist Name", text: $name)
+                        .focused($isFocused)
+                        .submitLabel(.done)
+                        .onSubmit(create)
                 }
 
-                Spacer(minLength: 12)
-
-                Toggle("", isOn: $syncWithYouTube)
-                    .labelsHidden()
-                    .tint(settings.accentColor)
-            }
-            .padding(.horizontal, 24)
-            .padding(.bottom, 20)
-
-            if let error {
-                HStack(spacing: 8) {
-                    Image(systemName: "exclamationmark.circle.fill")
-                        .font(.caption)
-                    Text(error.localizedDescription)
-                        .font(.caption)
+                Section {
+                    Toggle("Sync with YouTube Music", isOn: $syncWithYouTube)
+                } footer: {
+                    Text("Synced playlists live in your YouTube Music account and can get a custom cover. This can't be changed later.")
                 }
-                .foregroundColor(.red)
-                .padding(.horizontal, 24)
-                .padding(.bottom, 12)
-            }
 
-            Divider()
-                .padding(.bottom, 4)
-
-            HStack(spacing: 12) {
-                                Button(action: { isPresented = false }, label: {
-                    Text("Cancel")
-                        .font(.body.weight(.medium))
-                        .foregroundColor(.primary)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
-                        .background(
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .fill(Color(.systemGray6))
-                        )
-                })
-                .buttonStyle(.plain)
-
-                Button(action: {
-                    guard !name.trimmingCharacters(in: .whitespaces).isEmpty else { return }
-                    Task {
-                        isCreating = true
-                        do {
-                            try await createPlaylist()
-                            await onCreated()
-                            isPresented = false
-                        } catch {
-                            self.error = error
-                        }
-                        isCreating = false
+                if let error {
+                    Section {
+                        Label(error.localizedDescription, systemImage: "exclamationmark.circle")
+                            .foregroundStyle(.red)
                     }
-                }, label: {
-                    HStack(spacing: 6) {
-                        if isCreating {
-                            ProgressView()
-                                .tint(.white)
-                                .scaleEffect(0.8)
-                        }
-                        Text("Create")
-                            .font(.body.weight(.semibold))
-                    }
-                    .foregroundColor(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 12)
-                    .background(
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .fill(name.trimmingCharacters(in: .whitespaces).isEmpty ? settings.accentColor.opacity(0.4) : settings.accentColor)
-                    )
-                })
-                .buttonStyle(.plain)
-                .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty || isCreating)
+                }
             }
-            .padding(.horizontal, 24)
-            .padding(.top, 8)
-            .padding(.bottom, 20)
+            .navigationTitle("New Playlist")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    if isCreating {
+                        ProgressView()
+                    } else {
+                        Button("Create", action: create)
+                            .disabled(trimmedName.isEmpty)
+                    }
+                }
+            }
         }
-        .frame(width: 320)
-        .background(
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .fill(Color(.systemBackground))
-        )
-        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .shadow(color: .black.opacity(0.15), radius: 30, y: 10)
-        .onTapGesture { }
+        .presentationDetents([.medium])
+        .interactiveDismissDisabled(isCreating)
         .onAppear { isFocused = true }
     }
 
+    private func create() {
+        guard !trimmedName.isEmpty, !isCreating else { return }
+        isCreating = true
+        Task {
+            defer { isCreating = false }
+            do {
+                try await createPlaylist()
+                await onCreated()
+                dismiss()
+            } catch {
+                self.error = error
+            }
+        }
+    }
+
     private func createPlaylist() async throws {
-        let title = name.trimmingCharacters(in: .whitespaces)
         if syncWithYouTube {
-            _ = try await SyncBridge.mutations.createPlaylist(title: title)
+            _ = try await SyncBridge.mutations.createPlaylist(title: trimmedName)
         } else {
-            let id = UUID().uuidString
             let entity = PlaylistEntity(
-                id: id,
+                id: UUID().uuidString,
                 browseId: nil,
-                name: title,
+                name: trimmedName,
                 thumbnailUrl: nil,
                 isEditable: true,
                 bookmarkedAt: Date(),

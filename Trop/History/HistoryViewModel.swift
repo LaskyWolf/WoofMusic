@@ -8,13 +8,13 @@
 import Foundation
 
 enum HistorySource: String, CaseIterable, Sendable {
-    case local = "Local"
-    case remote = "Remote"
+    case local = "On This iPhone"
+    case remote = "YouTube Music"
 }
 
 @MainActor
 @Observable
-final class HistoryView {
+final class HistoryViewModel {
     var groupedEntries: [(title: String, entries: [DatabaseService.HistoryEntry])] = []
     var remoteSections: [(title: String, songs: [SongItem])] = []
     var source: HistorySource = .local

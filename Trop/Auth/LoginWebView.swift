@@ -107,22 +107,24 @@ private final class LoginNavigationDelegate: NSObject, WKNavigationDelegate {
                 Log.login.notice("  ❌ No SAPISID found — login may have failed")
             }
 
-            self?.model.cookies = cookieDict
-            self?.model.sapisid = sapisid
-            self?.model.visitorData = visitorData
-            self?.model.isLoggedIn = sapisid != nil
-            self?.model.isPresented = false
+            guard let sapisid else { return }
 
-            // Extract dataSyncId from the YouTube page config via JS injection
+            // Read dataSyncId first, then save the whole session in one step so
+            // the login survives a relaunch and InnerTube is signed in before
+            // any view sees isLoggedIn.
             webView.evaluateJavaScript("window.yt?.config_?.DATASYNC_ID ?? ''") { result, error in
-                if let dataSyncId = result as? String, !dataSyncId.isEmpty {
-                    self?.model.dataSyncId = dataSyncId
-                    Log.login.debug("Account sync identifier found")
-                } else if let error = error {
+                let dataSyncId = (result as? String).flatMap { $0.isEmpty ? nil : $0 }
+                if let error {
                     Log.login.error("  ⚠️ JS eval for dataSyncId failed: \(error.localizedDescription)")
-                } else {
+                } else if dataSyncId == nil {
                     Log.login.notice("  ⚠️ dataSyncId not found in page context")
                 }
+                self?.model.handleLogin(
+                    cookies: cookieDict,
+                    sapisid: sapisid,
+                    visitorData: visitorData,
+                    dataSyncId: dataSyncId
+                )
             }
         }
     }

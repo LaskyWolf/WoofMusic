@@ -78,7 +78,7 @@ enum PlaylistCoverUploader {
 
         // 3. Attach the uploaded image to the playlist.
         let response = try await InnerTubeClient.tropShared.editPlaylist(
-            playlistId: playlistId,
+            playlistId: playlistId.hasPrefix("VL") ? String(playlistId.dropFirst(2)) : playlistId,
             actions: [[
                 "action": "ACTION_SET_CUSTOM_THUMBNAIL",
                 "addedCustomThumbnail": [

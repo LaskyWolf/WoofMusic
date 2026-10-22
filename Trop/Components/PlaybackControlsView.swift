@@ -17,6 +17,9 @@ struct PlaybackControlsView: View {
     var onPlay: () -> Void
     var onShuffle: () -> Void = {}
     var onMore: () -> Void = {}
+    /// A pull-down menu shown in place of the More button (which then
+    /// ignores `onMore`).
+    var moreMenu: AnyView?
 
     var body: some View {
         HStack(spacing: 20) {
@@ -43,18 +46,28 @@ struct PlaybackControlsView: View {
             .buttonStyle(.plain)
             .accessibilityLabel("Play all")
 
-            if showsMore {
+            if let moreMenu {
+                moreMenu
+            } else if showsMore {
                 Button(action: onMore) {
-                    Text("⋮")
-                        .font(.title3)
-                        .foregroundStyle(.primary)
-                        .frame(width: 48, height: 48)
-                        .background(Circle().fill(Color(.secondarySystemGroupedBackground)))
+                    MoreCircleGlyph()
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("More options")
             }
         }
         .padding(.top, 4)
+    }
+}
+
+/// The round "⋯" button face used next to Play and Shuffle.
+struct MoreCircleGlyph: View {
+    var body: some View {
+        Image(systemName: "ellipsis")
+            .font(.title3.weight(.semibold))
+            .foregroundStyle(.primary)
+            .frame(width: 48, height: 48)
+            .background(Circle().fill(Color(.secondarySystemGroupedBackground)))
+            .contentShape(Circle())
+            .accessibilityLabel("More options")
     }
 }

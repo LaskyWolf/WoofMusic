@@ -48,6 +48,8 @@ struct PlaylistDetailInfo {
     var thumbnailUrl: String?
     var playlistId: String
     var songs: [SongItem]
+    /// The signed-in account owns this playlist (YouTube sends an editable header).
+    var isEditable = false
 }
 
 /// Parsed detail data for a podcast page.
