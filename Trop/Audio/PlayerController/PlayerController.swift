@@ -157,6 +157,11 @@ extension PlayerController {
     }
 
     func setPaused(_ paused: Bool) {
+        // After the queue ends mpv holds no file: unpausing it would play silence.
+        if !paused, playState.value == .stopped, pendingVideoId == nil {
+            NowPlaying.shared.playCurrentSong(logContext: "resume")
+            return
+        }
         desiredPlaying = !paused
         let currentlyPaused = playState.value != .playing
         guard currentlyPaused != paused else {
@@ -384,7 +389,8 @@ extension PlayerController {
         let reason = endFile.reason
         let isEof = reason == MPV_END_FILE_REASON_EOF
         let isError = reason == MPV_END_FILE_REASON_ERROR
-        let stoppedVideoId = self.currentVideoId
+        // A stream that fails before FILE_LOADED only has a pending id.
+        let stoppedVideoId = isError ? (self.pendingVideoId ?? self.currentVideoId) : self.currentVideoId
         Task { @MainActor [weak self] in
             guard let self else { return }
             let videoId = stoppedVideoId
@@ -491,14 +497,16 @@ extension PlayerController {
         }
     }
 
-    @objc private func handleRouteChange(_ notification: Notification) {
+    @objc nonisolated private func handleRouteChange(_ notification: Notification) {
         guard let userInfo = notification.userInfo,
               let reasonValue = userInfo[AVAudioSessionRouteChangeReasonKey] as? UInt,
               let reason = AVAudioSession.RouteChangeReason(rawValue: reasonValue) else { return }
 
         Log.player.info("ROUTE_CHANGE reason=\(reason.rawValue)")
-        if reason == .oldDeviceUnavailable, playState.value == .playing {
-            Task { @MainActor in togglePlayPause() }
+        // iOS posts route changes off the main thread; read playState on main.
+        guard reason == .oldDeviceUnavailable else { return }
+        Task { @MainActor in
+            if self.playState.value == .playing { self.togglePlayPause() }
         }
     }
 }

@@ -33,7 +33,7 @@ final class DiscordIntegration {
         DiscordRpcManager.shared.initializeIfNeeded()
 
         // Observe toggle
-        UserDefaults.standard.publisher(for: \.discordRPCEnableValue)
+        UserDefaults.standard.publisher(for: \.discordRPCEnable)
             .sink { [weak self] enabled in
                 self?.handleToggle(enabled: enabled)
             }
@@ -191,7 +191,7 @@ private enum SettingsKeys {
     static let userStatus = "discordUserStatus"
 }
 private extension UserDefaults {
-    @objc dynamic var discordRPCEnableValue: Bool {
+    @objc dynamic var discordRPCEnable: Bool {
         object(forKey: "discordRPCEnable") as? Bool ?? true
     }
 }

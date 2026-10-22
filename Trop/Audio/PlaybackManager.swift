@@ -69,15 +69,17 @@ actor PlaybackManager {
             return cached
         }
 
-        if let existing = inflightResolutions[videoId] {
+        // Own key: a resolve-only preload of the same id must not swallow the play.
+        let key = "\(videoId):play"
+        if let existing = inflightResolutions[key] {
             return try await existing.value
         }
 
         let task = Task { [self] in
             try await resolveAndPlayFromNetwork(videoId: videoId)
         }
-        inflightResolutions[videoId] = task
-        defer { clearInflight(key: videoId) }
+        inflightResolutions[key] = task
+        defer { clearInflight(key: key) }
         return try await task.value
     }
 
@@ -96,6 +98,12 @@ actor PlaybackManager {
     }
 
     private func playNetworkResult(_ result: PlaybackResult, videoId: String) async {
+        // A slow resolve must not replace a song the user picked after it.
+        let current = await MainActor.run { () -> String? in
+            let np = NowPlaying.shared
+            return np.queueSongs.indices.contains(np.queueIndex) ? np.queueSongs[np.queueIndex].videoId : nil
+        }
+        guard current == nil || current == videoId else { return }
         let queueSong = await queueSong(for: videoId)
         await PlayerController.shared.play(
             url: result.streamUrl,

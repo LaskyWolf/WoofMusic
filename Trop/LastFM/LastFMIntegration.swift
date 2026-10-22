@@ -178,6 +178,8 @@ final class LastFMIntegration {
 
         songStartedAtSec = Int64(Date().timeIntervalSince1970)
         songStarted = true
+        // A new play of the same song may scrobble again.
+        lastScrobbledVideoId = nil
 
         scrobbleJob?.cancel()
         let thresholdMs = Int64(Float(durationSec) * 1000 * scrobbleDelayPercent)
@@ -200,6 +202,8 @@ final class LastFMIntegration {
         if useNowPlaying {
             updateNowPlaying(song: song)
         }
+        // A track loaded while paused must not count until it plays.
+        if !NowPlaying.shared.isPlaying { onSongPause() }
     }
 
     private func onSongPause() {
@@ -242,7 +246,7 @@ final class LastFMIntegration {
         let album = song.album
         let duration = song.duration
         let ts = songStartedAtSec
-        guard !artist.isEmpty, !track.isEmpty else { return }
+        guard isEnabled, !artist.isEmpty, !track.isEmpty else { return }
         if lastScrobbledVideoId == song.videoId { return }
         lastScrobbledVideoId = song.videoId
         Task {
