@@ -87,6 +87,11 @@ struct LibraryView: View {
                     await loadContent()
                 }
             }
+            .onAppear {
+                // Coming back from a playlist that was deleted there.
+                guard !isLoading else { return }
+                Task { await loadContent() }
+            }
             .task(id: isLoading) {
                 guard !isLoading else { return }
                 let urls = (playlists.map(\.thumbnailUrl) + albums.map(\.thumbnailUrl) + artists.map(\.thumbnailUrl) + podcasts.map(\.thumbnailUrl))
@@ -99,13 +104,15 @@ struct LibraryView: View {
                 await loadContent()
             }
             .destructiveConfirm(
-                "Delete Playlist",
+                playlistToDelete?.isEditable == false ? "Remove from Library" : "Delete Playlist",
                 isPresented: .init(
                     get: { playlistToDelete != nil },
                     set: { if !$0 { playlistToDelete = nil } }
                 ),
-                message: Text("Are you sure you want to delete \"\(playlistToDelete?.name ?? "")\"?"),
-                confirmTitle: "Delete"
+                message: Text(playlistToDelete?.isEditable == false
+                    ? "Remove \"\(playlistToDelete?.name ?? "")\" from your library?"
+                    : "Are you sure you want to delete \"\(playlistToDelete?.name ?? "")\"?"),
+                confirmTitle: playlistToDelete?.isEditable == false ? "Remove" : "Delete"
             ) {
                 if let p = playlistToDelete {
                     Task { await deletePlaylist(p) }
@@ -172,12 +179,10 @@ struct LibraryView: View {
                 }
                 .buttonStyle(.plain)
                 .contextMenu {
-                    if playlist.isEditable {
-                        Button(role: .destructive) {
-                            playlistToDelete = playlist
-                        } label: {
-                            Label("Delete", systemImage: "trash")
-                        }
+                    Button(role: .destructive) {
+                        playlistToDelete = playlist
+                    } label: {
+                        Label(playlist.isEditable ? "Delete" : "Remove from Library", systemImage: "trash")
                     }
                 }
             }
@@ -419,7 +424,7 @@ struct LibraryView: View {
 
     private func deletePlaylist(_ playlist: PlaylistEntity) async {
         do {
-            try await SyncBridge.mutations.deletePlaylist(playlistId: playlist.id)
+            try await PlaylistRemoval.remove(playlistId: playlist.id, owned: playlist.isEditable)
             await loadContent()
         } catch {
             Log.libraryView.error("Failed to delete playlist: \(error)")

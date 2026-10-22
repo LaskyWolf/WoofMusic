@@ -28,8 +28,12 @@ actor CookieStore {
         await state()?.visitorData
     }
 
+    /// DATASYNC_ID is "<id>||" for a personal account and "<page>||<user>" for a
+    /// brand account; `onBehalfOfUser` expects only the id part.
     func dataSyncId() async -> String? {
-        await state()?.dataSyncId
+        await state()?.dataSyncId?
+            .components(separatedBy: "||")
+            .last { !$0.isEmpty }
     }
 
     func isLoggedIn() async -> Bool {
