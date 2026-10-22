@@ -737,10 +737,9 @@ private struct EpisodeRowView: View {
     var onTap: () -> Void
     var onNavigate: ((DetailRoute) -> Void)?
 
-    @Environment(\.downloadManager) private var downloadManager
+    @ObservedObject private var downloadManager = DownloadManager.shared
     @State private var progress: Double = 0
     @State private var hasResume = false
-    @State private var showMenu = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -786,8 +785,8 @@ private struct EpisodeRowView: View {
 
                 Spacer(minLength: 0)
 
-                MoreButton {
-                    showMenu = true
+                SongActionsMenu(song: episode.toSongItem(), onNavigate: { onNavigate?($0) }) {
+                    MoreGlyph()
                 }
             }
             .padding(.horizontal, 16)
@@ -806,12 +805,6 @@ private struct EpisodeRowView: View {
                 .padding(.trailing, 16)
                 .padding(.bottom, 6)
             }
-        }
-        .sheet(isPresented: $showMenu) {
-            SongMenuSheet(
-                song: episode.toSongItem(),
-                onNavigate: { onNavigate?($0) }
-            )
         }
         .task(id: episode.videoId) {
             // Tracked progress drives the bar and auto-resume on tap.

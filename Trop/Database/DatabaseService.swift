@@ -238,17 +238,16 @@ extension DatabaseService {
     func fetchRecentSongs(days: Int = 30, limit: Int = 20) async throws -> [SongEntity] {
         try await dbPool.read { db in
             let cutoff = Calendar.current.date(byAdding: .day, value: -days, to: Date()) ?? Date()
-            let recentIds = try Event
-                .filter(Column("timestamp") > cutoff)
-                .select(Column("song_id"))
-                .distinct()
-                .order(Column("timestamp").desc)
-                .limit(limit)
-                .asRequest(of: String.self)
-                .fetchAll(db)
+            let recentIds = try String.fetchAll(db, sql: """
+                SELECT song_id FROM event
+                WHERE timestamp > ?
+                GROUP BY song_id
+                ORDER BY MAX(timestamp) DESC
+                LIMIT ?
+                """, arguments: [cutoff, limit])
             guard !recentIds.isEmpty else { return [] }
             let byId = try Self.fetchSongMapByIds(recentIds, db: db)
-            // Preserve recency order from recentIds (distinct order by timestamp desc)
+            // Preserve recency order from recentIds (most recent play first)
             return recentIds.compactMap { byId[$0] }
         }
     }

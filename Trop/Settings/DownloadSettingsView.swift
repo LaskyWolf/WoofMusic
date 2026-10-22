@@ -7,7 +7,7 @@ import SwiftUI
 
 struct DownloadSettingsView: View {
     @Environment(\.settingsStore) private var settings
-    @Environment(\.downloadManager) private var downloadManager
+    @ObservedObject private var downloadManager = DownloadManager.shared
     @State private var storageBytes: Int64 = 0
     @State private var trackCount = 0
 
@@ -40,8 +40,7 @@ struct DownloadSettingsView: View {
         .navigationBarTitleDisplayMode(.inline)
         .miniPlayerTracksScroll()
         .task { await refreshStats() }
-        .onChange(of: downloadManager.downloads) { old, new in
-            guard DownloadManager.shouldRefreshPersistedLibrary(old: old, new: new) else { return }
+        .onChange(of: downloadManager.persistedDownloadCount) { _, _ in
             Task { await refreshStats() }
         }
     }

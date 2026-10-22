@@ -18,7 +18,6 @@ struct LyricsView: View {
     @State private var isLoading = true
     @State private var activeIndex: Int = 0
     @State private var displayTime: TimeInterval = 0
-    @State private var showSongMenu = false
     @State private var instrumentalGaps: [InstrumentalGap] = []
     @State private var romanizedLines: [String?] = []
 
@@ -34,6 +33,7 @@ struct LyricsView: View {
     @State private var userHasScrolled = false
     @State private var hasPositionedInitialLyrics = false
     @State private var scrollProxy: ScrollViewProxy?
+    @State private var loadGeneration = 0
 
     var body: some View {
         VStack(spacing: 0) {
@@ -41,9 +41,6 @@ struct LyricsView: View {
 
             lyricsBody
                 .layoutPriority(1)
-        }
-        .sheet(isPresented: $showSongMenu) {
-            LyricsMenuSheet()
         }
         .task(id: np.videoId) { await loadLyrics() }
         .onChange(of: np.currentTime) { _, _ in updateActiveLine() }
@@ -64,12 +61,13 @@ struct LyricsView: View {
             Text("Lyrics")
                 .font(.title2.bold())
             Spacer()
-            Button { showSongMenu = true } label: {
-                Text("⋮")
-                    .font(.system(size: 20, weight: .black))
+            LyricsOptionsMenu {
+                Image(systemName: "ellipsis")
+                    .font(.body.weight(.semibold))
                     .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
+                    .accessibilityLabel("Lyrics options")
             }
-            .accessibilityLabel("Lyrics options")
             Button { showLyrics = false } label: {
                 Image(systemName: "xmark")
                     .font(.body.weight(.semibold))
@@ -134,14 +132,17 @@ struct LyricsView: View {
                             pauseAutoScroll()
                         }
                     }
-                    .onAppear { scrollProxy = proxy }
+                    .onAppear {
+                        scrollProxy = proxy
+                        positionInitialLyrics()
+                    }
                     .onChange(of: activeIndex) { _, newIndex in
                         guard lines.indices.contains(newIndex) else { return }
                         if isAutoScrollEnabled && !userHasScrolled {
                             if hasPositionedInitialLyrics {
                                 scrollToActive()
                             } else {
-                                hasPositionedInitialLyrics = true
+                                positionInitialLyrics()
                             }
                         }
                     }
@@ -197,6 +198,13 @@ struct LyricsView: View {
     /// Centers the active line via the proxy only — writing the
     /// scrollPosition binding here would top-align the line and fight the
     /// center anchor.
+    /// Jumps without animation to the current line the first time lyrics show.
+    private func positionInitialLyrics() {
+        guard lines.indices.contains(activeIndex) else { return }
+        scrollProxy?.scrollTo(lines[activeIndex].id, anchor: .center)
+        hasPositionedInitialLyrics = true
+    }
+
     private func scrollToActive() {
         guard lines.indices.contains(activeIndex) else { return }
         let targetID = lines[activeIndex].id
@@ -360,8 +368,12 @@ struct LyricsView: View {
     // MARK: - Data
 
     private func loadLyrics() async {
+        // Song changes and refreshes can overlap; only the newest load
+        // may write results or clear the loading state.
+        loadGeneration += 1
+        let generation = loadGeneration
         isLoading = true
-        defer { isLoading = false }
+        defer { if generation == loadGeneration { isLoading = false } }
         guard let videoId = np.videoId else {
             lines = []
             return
@@ -377,7 +389,7 @@ struct LyricsView: View {
         guard !Task.isCancelled else { return }
         do {
             let result = try await LyricsService.shared.fetchLyrics(videoId: videoId)
-            guard !result.isEmpty else { return }
+            guard generation == loadGeneration, !result.isEmpty else { return }
             let withoutMarkers = result.filter { !Self.isInstrumentalMarker($0) }
             lines = withoutMarkers.isEmpty ? result : withoutMarkers
             instrumentalGaps = detectGaps(in: result)

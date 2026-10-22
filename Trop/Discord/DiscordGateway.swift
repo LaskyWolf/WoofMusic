@@ -163,7 +163,8 @@ final class DiscordGateway: @unchecked Sendable {
 
     private func startReceiveLoop(myId: Int64) {
         receiveTask?.cancel()
-        receiveTask = Task { [weak self] in
+        // All gateway state is confined to the main actor; the awaits below don't block it.
+        receiveTask = Task { @MainActor [weak self] in
             guard let self else { return }
             while !Task.isCancelled {
                 guard let task = self.webSocketTask, self.activeId == myId else { return }
@@ -177,7 +178,13 @@ final class DiscordGateway: @unchecked Sendable {
                     @unknown default: break
                     }
                 } catch {
-                    await self.handleClose(code: 4000, reason: error.localizedDescription, remote: false, wsId: myId)
+                    // receive() throws a generic error; Discord's close code (4004, 4014, ...) lives on the task.
+                    // Transport-level codes (1001, 1006, ...) keep the old 4000 = "try to resume" path.
+                    let rawCode = task.closeCode.rawValue
+                    let code = (4000...4999).contains(rawCode) ? rawCode : 4000
+                    let reason = task.closeReason.flatMap { String(data: $0, encoding: .utf8) }?.nilIfEmpty
+                        ?? error.localizedDescription
+                    await self.handleClose(code: code, reason: reason, remote: false, wsId: myId)
                     return
                 }
             }
@@ -199,6 +206,8 @@ final class DiscordGateway: @unchecked Sendable {
             let interval = (dDict?["heartbeat_interval"] as? NSNumber)?.int64Value
                 ?? (dDict?["heartbeat_interval"] as? Int64)
                 ?? defaultHeartbeatMs
+            // HELLO can arrive before connect() finishes its 200ms wait; the heartbeat loop needs isOpen.
+            isOpen = true
             startHeartbeat(intervalMs: interval)
             emit(.hello(heartbeatIntervalMs: interval))
         case GatewayOp.heartbeatAck.rawValue:
@@ -222,11 +231,11 @@ final class DiscordGateway: @unchecked Sendable {
             let resumable = (json["d"] as? Bool) ?? false
             if !resumable { _sessionId = nil }
             emit(.invalidSession(resumable: resumable))
-            Task { await self.handleClose(code: 4000, reason: "invalid session", remote: true, wsId: activeId) }
+            Task { @MainActor in await self.handleClose(code: 4000, reason: "invalid session", remote: true, wsId: activeId) }
         case GatewayOp.heartbeat.rawValue:
             try? heartbeat(seq: currentSeq)
         case GatewayOp.reconnect.rawValue:
-            Task { await self.handleClose(code: 4000, reason: "reconnect requested", remote: true, wsId: activeId) }
+            Task { @MainActor in await self.handleClose(code: 4000, reason: "reconnect requested", remote: true, wsId: activeId) }
         default:
             emit(.textDispatch(op: op, t: t, d: dDict ?? [:]))
         }
@@ -251,7 +260,7 @@ final class DiscordGateway: @unchecked Sendable {
             emit(.refreshToken)
         case .resume, .reIdentify:
             if reconnectAttempts >= maxReconnectAttempts {
-                emit(.disconnected(code: 4000, reason: "max reconnect attempts", remote: false))
+                emit(.disconnected(code: code, reason: "max reconnect attempts", remote: false))
                 return
             }
             reconnectAttempts += 1
@@ -284,10 +293,12 @@ final class DiscordGateway: @unchecked Sendable {
     private func startHeartbeat(intervalMs: Int64) {
         heartbeatTask?.cancel()
         let jittered = applyJitter(intervalMs, ratio: jitterRatio)
-        lastAckAtMs = nowMs()
-        heartbeatTask = Task { [weak self] in
+        let startedAt = nowMs()
+        lastAckAtMs = startedAt
+        heartbeatTask = Task { @MainActor [weak self] in
             guard let self else { return }
-            var lastSentAt = self.nowMs()
+            // Same timestamp as lastAckAtMs: nothing was sent yet, so the first tick can't time out.
+            var lastSentAt = startedAt
             while !Task.isCancelled, self.isOpen {
                 try? await Task.sleep(nanoseconds: UInt64(jittered) * 1_000_000)
                 guard !Task.isCancelled, self.isOpen else { break }

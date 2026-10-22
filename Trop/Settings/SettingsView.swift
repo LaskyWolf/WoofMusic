@@ -8,8 +8,15 @@
 import SwiftUI
 
 struct SettingsView: View {
+    @Environment(SettingsStore.self) private var settings
+    private let account = AccountState.shared
+
     var body: some View {
         List {
+            Section {
+                accountRow
+            }
+
             Section {
                 SettingsNavigationRow("Appearance", icon: "paintpalette") {
                     AppearanceSettingsView()
@@ -33,11 +40,8 @@ struct SettingsView: View {
                 SettingsNavigationRow("Content", icon: "globe") {
                     ContentSettingsView()
                 }
-                SettingsNavigationRow("Lyrics", icon: "text.quote") {
-                    LyricsSettingsView()
-                }
             } header: {
-                Text("Content & Lyrics")
+                Text("Content")
             }
 
             Section {
@@ -47,17 +51,48 @@ struct SettingsView: View {
             } header: {
                 Text("Integrations")
             }
-
-            Section {
-                SettingsNavigationRow("About", icon: "info.circle") {
-                    AboutSettingsView()
-                }
-            } header: {
-                Text("About")
-            }
         }
         .navigationTitle("Settings")
         .navigationBarTitleDisplayMode(.inline)
         .miniPlayerTracksScroll()
+        .loginSheet()
+    }
+
+    private var accountRow: some View {
+        HStack(spacing: 14) {
+            Group {
+                if account.isLoggedIn {
+                    AsyncImageView(url: account.accountImageUrl)
+                } else {
+                    Image(systemName: "person.crop.circle.fill")
+                        .resizable()
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .frame(width: 48, height: 48)
+            .clipShape(Circle())
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(account.isLoggedIn ? account.accountName : "Not Signed In")
+                    .font(.headline)
+                    .lineLimit(1)
+                Text(account.isLoggedIn ? "YouTube Music" : "Sign in to sync your library")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 8)
+
+            if account.isLoggedIn {
+                Button("Sign Out", role: .destructive) { account.signOut() }
+                    .buttonStyle(.bordered)
+            } else {
+                Button("Sign In") { account.isLoginSheetPresented = true }
+                    .buttonStyle(.borderedProminent)
+                    .tint(settings.accentColor)
+            }
+        }
+        .padding(.vertical, 4)
     }
 }

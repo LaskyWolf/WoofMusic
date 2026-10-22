@@ -16,11 +16,13 @@ import UIKit
 import ffmpegkit
 
 @MainActor
-class DownloadManager: ObservableObject {
+final class DownloadManager: ObservableObject {
     static let shared = DownloadManager()
 
     @Published private(set) var downloads: [String: DownloadState] = [:]
-    @Published private(set) var persistedDownloadCount: Int = 0
+    @Published private(set) var tracks: [DownloadedTrackEntity] = []
+    @Published private(set) var persistedDownloadCount = 0
+    @Published private(set) var isLoaded = false
 
     enum DownloadState: Equatable {
         case notStarted
@@ -29,17 +31,22 @@ class DownloadManager: ObservableObject {
         case failed(String)
     }
 
+    private static let minimumAudioBytes = 8_192
+
     private let fileManager = FileManager.default
     private let pathMonitor = NWPathMonitor()
     private var currentPath: NWPath?
-    private var downloadedVideoIds: Set<String> = []
+    private var isReloading = false
     private var cancelledDownloadIds: Set<String> = []
     private var lastReportedProgress: [String: Double] = [:]
     private var activeFFmpegSessions: [String: FFmpegSession] = [:]
+
+    private var tracksById: [String: DownloadedTrackEntity] = [:]
+
     private var downloadsDir: URL {
         let base = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first
             ?? fileManager.temporaryDirectory
-        return base.appendingPathComponent("Downloads")
+        return base.appendingPathComponent("Downloads", isDirectory: true)
     }
 
     private init() {
@@ -49,16 +56,18 @@ class DownloadManager: ObservableObject {
             }
         }
         pathMonitor.start(queue: DispatchQueue(label: "com.trop.network"))
-        Task { await refreshDownloadedCache() }
+
         NotificationCenter.default.addObserver(
             forName: UIApplication.willEnterForegroundNotification,
             object: nil,
             queue: .main
         ) { [weak self] _ in
             Task { @MainActor [weak self] in
-                await self?.reconcileDownloadedFiles()
+                await self?.reload()
             }
         }
+
+        Task { await reload() }
     }
 
     private var isOnWiFi: Bool {
@@ -68,12 +77,7 @@ class DownloadManager: ObservableObject {
             || currentPath.usesInterfaceType(.wiredEthernet) == true
     }
 
-    // MARK: - Filename
-
-    func fileURL(forVideoId videoId: String) -> URL {
-        ensureDirectories()
-        return downloadsDir.appendingPathComponent(videoId + ".m4a")
-    }
+    // MARK: - Paths
 
     func fileURL(for song: SongItem) async -> URL {
         await displayDestinationURL(
@@ -87,18 +91,7 @@ class DownloadManager: ObservableObject {
         ensureDirectories()
         let rawStem = title.isEmpty ? videoId : (artist.isEmpty ? title : "\(artist) - \(title)")
         let stem = Self.sanitizeFileName(rawStem)
-        var url = downloadsDir.appendingPathComponent(stem + ".m4a")
-        if fileManager.fileExists(atPath: url.path) {
-            let owner = try? await DatabaseService.shared.fetchAll(
-                DownloadedTrackEntity.self,
-                sql: "SELECT * FROM downloaded_track WHERE local_path = ? LIMIT 1",
-                arguments: [url.path]
-            ).first
-            if owner?.id != videoId {
-                url = downloadsDir.appendingPathComponent(stem + " [\(videoId)].m4a")
-            }
-        }
-        return url
+        return downloadsDir.appendingPathComponent("\(stem) [\(videoId)].m4a")
     }
 
     /// Strips characters illegal on filesystems, trims whitespace/dots and
@@ -120,26 +113,167 @@ class DownloadManager: ObservableObject {
         case .standard: return 96_000
         }
     }
+
+    @discardableResult
+    func ensureDirectories() -> Bool {
+        try? fileManager.createDirectory(at: downloadsDir, withIntermediateDirectories: true)
+        // Re-downloadable audio: keep it out of iCloud/device backups.
+        var dir = downloadsDir
+        var values = URLResourceValues()
+        values.isExcludedFromBackup = true
+        try? dir.setResourceValues(values)
+        return true
+    }
+
+    private func resolvedURL(for track: DownloadedTrackEntity) -> URL? {
+        let stored = track.localPath
+        let url: URL
+        if stored.hasPrefix("/") {
+            url = URL(fileURLWithPath: stored)
+        } else {
+            url = downloadsDir.appendingPathComponent(stored)
+        }
+        if fileManager.fileExists(atPath: url.path) { return url }
+
+        let fileName = (stored as NSString).lastPathComponent
+        if !fileName.isEmpty {
+            let byName = downloadsDir.appendingPathComponent(fileName)
+            if fileManager.fileExists(atPath: byName.path) { return byName }
+        }
+
+        return nil
+    }
+
+    private func storedPath(for url: URL) -> String {
+        url.lastPathComponent
+    }
+
+    // MARK: - Reload / reconciliation
+
+    /// Rebuilds the library from the database and the Downloads directory.
+    /// Orphaned files are adopted, rows whose files vanished are dropped and
+    /// stale absolute paths are rewritten relative to the current container.
+    func reload() async {
+        guard !isReloading else { return }
+        isReloading = true
+        defer { isReloading = false }
+
+        ensureDirectories()
+        let scanned = scanDownloadedFiles()
+
+        var rebuilt: [String: DownloadedTrackEntity] = [:]
+        let databaseTracks = await fetchAllFromDatabase()
+
+        for track in databaseTracks {
+            guard let url = resolvedURL(for: track) ?? scanned[track.id] else {
+                _ = try? await DatabaseService.shared.delete(track)
+                continue
+            }
+            var fixed = track
+            fixed.localPath = storedPath(for: url)
+            if fixed.localPath != track.localPath {
+                try? await DatabaseService.shared.save(fixed)
+            }
+            rebuilt[fixed.id] = fixed
+        }
+
+        for (videoId, url) in scanned where rebuilt[videoId] == nil {
+            let metadata = await songMetadata(for: videoId)
+            let entity = DownloadedTrackEntity(
+                id: videoId,
+                title: metadata?.title ?? Self.displayTitle(from: url),
+                artist: metadata?.artistName ?? "",
+                duration: metadata?.duration ?? 0,
+                thumbnailUrl: metadata?.thumbnailUrl,
+                localPath: storedPath(for: url),
+                downloadedAt: (try? url.resourceValues(forKeys: [.contentModificationDateKey])
+                    .contentModificationDate) ?? Date()
+            )
+            _ = try? await DatabaseService.shared.insertOrReplace(entity)
+            rebuilt[videoId] = entity
+            Log.downloadManager.notice("Recovered orphaned download \(videoId) from \(url.lastPathComponent)")
+        }
+
+        apply(rebuilt)
+        isLoaded = true
+    }
+
+    func reconcileDownloadedFiles() async {
+        await reload()
+    }
+
+    private func apply(_ newTracks: [String: DownloadedTrackEntity]) {
+        tracksById = newTracks
+        let sorted = newTracks.values.sorted { $0.downloadedAt > $1.downloadedAt }
+        if tracks != sorted { tracks = sorted }
+        if persistedDownloadCount != newTracks.count { persistedDownloadCount = newTracks.count }
+    }
+
+    private func scanDownloadedFiles() -> [String: URL] {
+        let keys: [URLResourceKey] = [.fileSizeKey, .contentModificationDateKey]
+        guard let urls = try? fileManager.contentsOfDirectory(
+            at: downloadsDir,
+            includingPropertiesForKeys: keys,
+            options: [.skipsHiddenFiles]
+        ) else { return [:] }
+
+        var found: [String: URL] = [:]
+        var dates: [String: Date] = [:]
+
+        for url in urls where url.pathExtension.lowercased() == "m4a" {
+            let values = try? url.resourceValues(forKeys: Set(keys))
+            guard (values?.fileSize ?? 0) >= Self.minimumAudioBytes else { continue }
+            guard let videoId = Self.videoId(from: url.lastPathComponent) else { continue }
+            let modified = values?.contentModificationDate ?? .distantPast
+            if let existingDate = dates[videoId], existingDate >= modified { continue }
+            found[videoId] = url
+            dates[videoId] = modified
+        }
+        return found
+    }
+
+    /// Extracts the video id from `Artist - Title [<id>].m4a`.
+    nonisolated static func videoId(from fileName: String) -> String? {
+        let base = (fileName as NSString).deletingPathExtension
+        guard let range = base.range(of: #"\[([A-Za-z0-9_-]{6,})\]$"#, options: .regularExpression) else {
+            return nil
+        }
+        let bracketed = base[range]
+        return bracketed.dropFirst().dropLast().description
+    }
+
+    nonisolated private static func displayTitle(from url: URL) -> String {
+        var base = (url.lastPathComponent as NSString).deletingPathExtension
+        if let range = base.range(of: #"\s*\[[A-Za-z0-9_-]{6,}\]$"#, options: .regularExpression) {
+            base.removeSubrange(range)
+        }
+        return base.isEmpty ? url.lastPathComponent : base
+    }
+
+    private func songMetadata(for videoId: String) async -> SongEntity? {
+        try? await DatabaseService.shared.fetchOne(SongEntity.self, key: videoId)
+    }
 }
 
 // MARK: - Download
 
 extension DownloadManager {
+
     func download(song: SongItem) async {
         let videoId = song.videoId
         if case .downloading = downloads[videoId] {
             Log.downloadManager.debug("Download already in progress for \(videoId)")
             return
         }
-        if let existing = await localURL(for: videoId) {
-            let values = try? existing.resourceValues(forKeys: [.fileSizeKey])
-            if (values?.fileSize ?? 0) >= 8_192 {
-                downloads[videoId] = .completed
-                downloadedVideoIds.insert(videoId)
-                persistedDownloadCount = downloadedVideoIds.count
-                objectWillChange.send()
-                return
+
+        if let existing = await localURL(for: videoId),
+           let size = try? existing.resourceValues(forKeys: [.fileSizeKey]).fileSize,
+           size >= Self.minimumAudioBytes {
+            downloads[videoId] = .completed
+            if tracksById[videoId] == nil {
+                await adoptExistingFile(at: existing, song: song)
             }
+            return
         }
 
         var bgTask: UIBackgroundTaskIdentifier = .invalid
@@ -159,14 +293,13 @@ extension DownloadManager {
 
         if SettingsStore.shared.wifiOnlyDownloads, !isOnWiFi {
             downloads[videoId] = .failed("Wi-Fi Only is enabled and you are not on Wi-Fi.")
-            objectWillChange.send()
             return
         }
 
         setProgress(0.02, for: videoId)
 
+        let fileURL = await fileURL(for: song)
         do {
-            let fileURL = await fileURL(for: song)
             if fileManager.fileExists(atPath: fileURL.path) {
                 try? fileManager.removeItem(at: fileURL)
             }
@@ -252,7 +385,6 @@ extension DownloadManager {
                 lastReportedProgress.removeValue(forKey: videoId)
                 try? fileManager.removeItem(at: fileURL)
                 downloads[videoId] = .notStarted
-                objectWillChange.send()
                 return
             }
 
@@ -262,47 +394,68 @@ extension DownloadManager {
                 artist: artist,
                 duration: song.duration,
                 thumbnailUrl: song.thumbnailUrl,
-                localPath: fileURL.path,
+                localPath: storedPath(for: fileURL),
                 downloadedAt: Date()
             )
-            try await DatabaseService.shared.insertOrReplace(entity)
-            downloadedVideoIds.insert(videoId)
-            persistedDownloadCount = downloadedVideoIds.count
+            await register(entity)
 
             downloads[videoId] = .completed
             lastReportedProgress.removeValue(forKey: videoId)
             let totalElapsed = CFAbsoluteTimeGetCurrent() - downloadStart
             Log.downloadManager.debug("DONE \(String(format: "%.1f", totalElapsed))s total: \(artist) - \(song.title)")
-            objectWillChange.send()
         } catch is CancellationError {
             cancelledDownloadIds.remove(videoId)
             lastReportedProgress.removeValue(forKey: videoId)
+            try? fileManager.removeItem(at: fileURL)
             downloads[videoId] = .notStarted
-            objectWillChange.send()
         } catch {
             if cancelledDownloadIds.contains(videoId) || (error as? URLError)?.code == .cancelled {
                 cancelledDownloadIds.remove(videoId)
                 lastReportedProgress.removeValue(forKey: videoId)
+                try? fileManager.removeItem(at: fileURL)
                 downloads[videoId] = .notStarted
-                objectWillChange.send()
                 return
+            }
+            if downloads[videoId] != .completed {
+                try? fileManager.removeItem(at: fileURL)
             }
             downloads[videoId] = .failed(userFacingDownloadError(error))
             lastReportedProgress.removeValue(forKey: videoId)
             Log.downloadManager.error("Failed download \(videoId): \(error.localizedDescription)")
-            objectWillChange.send()
         }
     }
-}
+
+    private func adoptExistingFile(at url: URL, song: SongItem) async {
+        let entity = DownloadedTrackEntity(
+            id: song.videoId,
+            title: song.title,
+            artist: song.artists.map(\.name).joined(separator: ", "),
+            duration: song.duration,
+            thumbnailUrl: song.thumbnailUrl,
+            localPath: storedPath(for: url),
+            downloadedAt: (try? url.resourceValues(forKeys: [.contentModificationDateKey])
+                .contentModificationDate) ?? Date()
+        )
+        await register(entity)
+    }
+
+    private func register(_ entity: DownloadedTrackEntity) async {
+        tracksById[entity.id] = entity
+        apply(tracksById)
+        do {
+            try await DatabaseService.shared.insertOrReplace(entity)
+        } catch {
+            Log.downloadManager.error("Failed to persist download \(entity.id): \(error)")
+        }
+    }
 
     // MARK: - Validation & Errors
 
-extension DownloadManager {
     private func validateDownloadedFile(at url: URL) async throws {
         let values = try url.resourceValues(forKeys: [.fileSizeKey])
         let size = values.fileSize ?? 0
         // Real audio streams are well above this; error/HTML bodies are not.
-        guard size >= 8_192 else {
+        guard size >= Self.minimumAudioBytes else {
             Log.downloadManager.error("Downloaded file too small (\(size) bytes) — likely a dead stream URL")
             throw DownloadError.invalidStreamURL
         }
@@ -342,12 +495,7 @@ extension DownloadManager {
         return "Download failed. Try again."
     }
 
-    // MARK: - Refresh & State
-
-    private func refreshDownloadedCache() async {
-        downloadedVideoIds = Set((await fetchAll()).map(\.id))
-        persistedDownloadCount = downloadedVideoIds.count
-    }
+    // MARK: - State
 
     static func shouldRefreshPersistedLibrary(
         old: [String: DownloadState],
@@ -393,7 +541,10 @@ extension DownloadManager {
     }
 
     private func prefetchArtwork(from thumbnailUrl: String?) async -> Data? {
-        guard let thumbUrl = thumbnailUrl, let url = URL(string: thumbUrl) else { return nil }
+        // Embed the player-size cover: the row thumbnail is ~120px and looks
+        // pixelated when the player shows the embedded art full screen.
+        guard let thumbUrl = ArtworkURLs.highRes(thumbnailUrl) ?? thumbnailUrl,
+              let url = URL(string: thumbUrl) else { return nil }
         guard let image = try? await ArtworkLoader.image(for: url) else { return nil }
         return image.jpegData(compressionQuality: 0.9)
     }
@@ -486,8 +637,11 @@ extension DownloadManager {
         }
     }
 
-    // MARK: - Delete
+}
 
+// MARK: - Delete & queries
+
+extension DownloadManager {
     func delete(videoId: String) async {
         cancelledDownloadIds.insert(videoId)
         if let session = activeFFmpegSessions.removeValue(forKey: videoId) {
@@ -495,94 +649,98 @@ extension DownloadManager {
         }
         lastReportedProgress.removeValue(forKey: videoId)
         downloads[videoId] = .notStarted
-        downloadedVideoIds.remove(videoId)
-        persistedDownloadCount = downloadedVideoIds.count
+        tracksById.removeValue(forKey: videoId)
+
         if let entity = try? await DatabaseService.shared.fetchOne(DownloadedTrackEntity.self, key: videoId) {
-            try? fileManager.removeItem(atPath: entity.localPath)
+            if let url = resolvedURL(for: entity) {
+                try? fileManager.removeItem(at: url)
+            }
             _ = try? await DatabaseService.shared.delete(entity)
         }
-        objectWillChange.send()
+        // Also remove any orphaned file matching this id.
+        if let scanned = scanDownloadedFiles()[videoId] {
+            try? fileManager.removeItem(at: scanned)
+        }
+
+        apply(tracksById)
+    }
+
+    func deleteAll() async {
+        cancelAllActiveDownloads()
+
+        // Remove files directly so orphaned downloads are cleaned too.
+        for url in scanDownloadedFiles().values {
+            try? fileManager.removeItem(at: url)
+        }
+        let tracks = await fetchAllFromDatabase()
+        for track in tracks {
+            _ = try? await DatabaseService.shared.delete(track)
+        }
+
+        tracksById.removeAll()
+        downloads.removeAll()
+        // Keep cancelledDownloadIds so in-flight download(song:) ops still see cancel.
+        lastReportedProgress.removeAll()
+        apply([:])
     }
 
     // MARK: - Local URL Resolution
 
     func localURL(for videoId: String) async -> URL? {
-        guard let entity = try? await DatabaseService.shared.read({ db in
-            try DownloadedTrackEntity.fetchOne(db, key: videoId)
-        }) else {
+        if let track = tracksById[videoId], let url = resolvedURL(for: track) {
+            repairStoredPathIfNeeded(track, url: url)
+            return url
+        }
+
+        guard let entity = try? await DatabaseService.shared.fetchOne(
+            DownloadedTrackEntity.self,
+            key: videoId
+        ) else {
             Log.downloadManager.debug("localURL: no DB entity for \(videoId)")
             return nil
         }
 
-        let storedURL = URL(fileURLWithPath: entity.localPath)
-        if fileManager.fileExists(atPath: storedURL.path) {
-            return storedURL
+        guard let url = resolvedURL(for: entity) else {
+            Log.downloadManager.debug("localURL: \(videoId) file not found (stored=\(entity.localPath))")
+            return nil
         }
 
-        // Canonical `<videoId>.m4a` path — covers DB rows written before the
-        // stored path was backfilled.
-        let canonicalURL = fileURL(forVideoId: videoId)
-        if fileManager.fileExists(atPath: canonicalURL.path) {
-            Log.downloadManager.debug("localURL: \(videoId) resolved via canonical videoId path")
-            try? await DatabaseService.shared.write { db in
-                var updated = entity
-                updated.localPath = canonicalURL.path
-                try updated.update(db)
-            }
-            return canonicalURL
+        var fixed = entity
+        fixed.localPath = storedPath(for: url)
+        tracksById[fixed.id] = fixed
+        if fixed.localPath != entity.localPath {
+            try? await DatabaseService.shared.save(fixed)
         }
+        apply(tracksById)
+        return url
+    }
 
-        Log.downloadManager.debug("localURL: \(videoId) file not found (stored=\(entity.localPath))")
-        return nil
+    private func repairStoredPathIfNeeded(_ track: DownloadedTrackEntity, url: URL) {
+        let current = storedPath(for: url)
+        guard track.localPath != current else { return }
+        var fixed = track
+        fixed.localPath = current
+        tracksById[fixed.id] = fixed
+        apply(tracksById)
+        Task { try? await DatabaseService.shared.save(fixed) }
     }
 
     // MARK: - Query Helpers
 
     func isDownloaded(videoId: String) -> Bool {
-        downloadedVideoIds.contains(videoId)
-    }
-
-    func reconcileDownloadedFiles() async {
-        let allTracks = await fetchAll()
-        var validIds = Set<String>()
-        for track in allTracks {
-            if await localURL(for: track.id) != nil {
-                validIds.insert(track.id)
-                await migrateLegacyFileName(track)
-            } else {
-                _ = try? await DatabaseService.shared.delete(track)
-            }
-        }
-        if validIds != downloadedVideoIds {
-            downloadedVideoIds = validIds
-            persistedDownloadCount = validIds.count
-            objectWillChange.send()
-        }
-    }
-
-    private func migrateLegacyFileName(_ track: DownloadedTrackEntity) async {
-        guard URL(fileURLWithPath: track.localPath).lastPathComponent == "\(track.id).m4a" else { return }
-        let destination = await displayDestinationURL(title: track.title, artist: track.artist, videoId: track.id)
-        guard destination.path != track.localPath else { return }
-        do {
-            try fileManager.moveItem(atPath: track.localPath, toPath: destination.path)
-            var updated = track
-            updated.localPath = destination.path
-            try await DatabaseService.shared.save(updated)
-        } catch {
-            Log.downloadManager.error("Failed to rename download \(track.id): \(error)")
-        }
+        tracksById[videoId] != nil
     }
 
     func fetchAll() async -> [DownloadedTrackEntity] {
-        (try? await DatabaseService.shared.fetchAll(DownloadedTrackEntity.self)) ?? []
+        Array(tracksById.values)
     }
 
     func fetchAllSorted() async -> [DownloadedTrackEntity] {
-        (try? await DatabaseService.shared.fetchAll(
-            DownloadedTrackEntity.self,
-            sql: "SELECT * FROM downloaded_track ORDER BY downloaded_at DESC"
-        )) ?? []
+        tracks
+    }
+
+    private func fetchAllFromDatabase() async -> [DownloadedTrackEntity] {
+        (try? await DatabaseService.shared.fetchAll(DownloadedTrackEntity.self)) ?? []
     }
 
     var activeDownloads: [(videoId: String, progress: Double)] {
@@ -596,42 +754,20 @@ extension DownloadManager {
     }
 
     func totalStorageBytes() async -> Int64 {
-        let tracks = (try? await DatabaseService.shared.fetchAll(DownloadedTrackEntity.self)) ?? []
         var total: Int64 = 0
-        for track in tracks {
-            guard let url = await localURL(for: track.id) else { continue }
+        for track in tracksById.values {
+            guard let url = resolvedURL(for: track) else { continue }
             let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
             total += Int64(size)
         }
         return total
     }
 
-    func deleteAll() async {
-        cancelAllActiveDownloads()
-        let tracks = await fetchAll()
-        for track in tracks {
-            try? fileManager.removeItem(atPath: track.localPath)
-            _ = try? await DatabaseService.shared.delete(track)
-        }
-        downloads.removeAll()
-        downloadedVideoIds.removeAll()
-        persistedDownloadCount = 0
-        // Keep cancelledDownloadIds so in-flight download(song:) ops still see cancel.
-        lastReportedProgress.removeAll()
-        objectWillChange.send()
-    }
-
     func state(for videoId: String) -> DownloadState {
         if let state = downloads[videoId], state != .notStarted {
             return state
         }
-        return downloadedVideoIds.contains(videoId) ? .completed : .notStarted
-    }
-
-    @discardableResult
-    func ensureDirectories() -> Bool {
-        try? fileManager.createDirectory(at: downloadsDir, withIntermediateDirectories: true)
-        return true
+        return tracksById[videoId] != nil ? .completed : .notStarted
     }
 
     private func ffmpegMetadataArgs(title: String, artist: String) -> [String] {

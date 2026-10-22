@@ -20,8 +20,13 @@ extension TropLibraryStore {
         try await db.write { db in
             for item in items {
                 try db.execute(sql: """
-                    INSERT OR REPLACE INTO artist (id, name, thumbnail_url, bookmarked_at, is_podcast_channel, channel_id)
+                    INSERT INTO artist (id, name, thumbnail_url, bookmarked_at, is_podcast_channel, channel_id)
                     VALUES (?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(id) DO UPDATE SET
+                        name = excluded.name,
+                        thumbnail_url = excluded.thumbnail_url,
+                        channel_id = excluded.channel_id,
+                        bookmarked_at = COALESCE(artist.bookmarked_at, excluded.bookmarked_at)
                     """, arguments: [item.browseId, item.name, item.thumbnailUrl,
                                      Date(), false, item.channelId])
             }

@@ -16,14 +16,13 @@ final class HomeViewModel {
     var isLoading = true
     var isRefreshing = false
     var selectedChip: HomePage.Chip?
+    /// True while a mood chip's filtered feed is loading.
+    private(set) var isChipLoading = false
     var error: Error?
 
     var isLoggedIn = false
     var accountName = "Guest"
     var accountImageUrl: String?
-
-    var isLoginSheetPresented = false
-    var isAccountSheetPresented = false
 
     var hideExplicit = false {
         didSet { mergeSections() }
@@ -39,22 +38,21 @@ final class HomeViewModel {
     private var cachedLocalSections: [HomeSection] = []
     private var cachedPhase2Sections: [HomeSection] = []
 
-    private nonisolated(unsafe) var chipTask: Task<Void, Never>?
-    private nonisolated(unsafe) var notificationObserver: NSObjectProtocol?
+    private let cleanup = HomeViewModelCleanup()
 
     deinit {
-        if let observer = notificationObserver {
+        if let observer = cleanup.notificationObserver {
             NotificationCenter.default.removeObserver(observer)
         }
-        chipTask?.cancel()
+        cleanup.chipTask?.cancel()
     }
 
     init() {
         hideExplicit = SettingsStore.shared.hideExplicit
-        if let existing = notificationObserver {
+        if let existing = cleanup.notificationObserver {
             NotificationCenter.default.removeObserver(existing)
         }
-        notificationObserver = NotificationCenter.default.addObserver(
+        cleanup.notificationObserver = NotificationCenter.default.addObserver(
             forName: .personalizationDataUpdated,
             object: nil,
             queue: .main
@@ -129,7 +127,6 @@ final class HomeViewModel {
 
     func handleLogin(cookies: [String: String], sapisid: String?, visitorData: String?) {
         isLoggedIn = sapisid != nil
-        isLoginSheetPresented = false
         Task {
             await cookieStore.save(cookies: cookies, sapisid: sapisid, visitorData: visitorData)
             await InnerTubeClient.tropShared.loadState(from: cookieStore)
@@ -140,20 +137,13 @@ final class HomeViewModel {
         }
     }
 
-    func logout() {
-        Task {
-            await AuthService.shared.logout()
-            isLoggedIn = false
-            accountName = "Guest"
-            accountImageUrl = nil
-            isAccountSheetPresented = false
-            cachedPhase2Sections = []
-            mergeSections()
-        }
-    }
-
-    func tapAccount() {
-        isAccountSheetPresented = true
+    /// Clears account-only sections after a sign-out from Settings.
+    func handleLogout() {
+        isLoggedIn = false
+        accountName = "Guest"
+        accountImageUrl = nil
+        cachedPhase2Sections = []
+        mergeSections()
     }
 
     private func fetchAccountInfo() async {
@@ -286,11 +276,12 @@ final class HomeViewModel {
     }
 
     func toggleChip(_ chip: HomePage.Chip?) {
-        chipTask?.cancel()
+        cleanup.chipTask?.cancel()
         if chip == nil || chip?.title == selectedChip?.title {
             homePage = previousHomePage
             previousHomePage = nil
             selectedChip = nil
+            isChipLoading = false
             mergeSections()
             return
         }
@@ -300,8 +291,10 @@ final class HomeViewModel {
         }
 
         selectedChip = chip
+        isChipLoading = true
         let generation = loadGeneration
-        chipTask = Task {
+        cleanup.chipTask = Task {
+            defer { if !Task.isCancelled { isChipLoading = false } }
             do {
                 let json = try await InnerTubeClient.tropShared.browse(
                     browseId: "FEmusic_home",
@@ -350,7 +343,11 @@ final class HomeViewModel {
 
     private func mergeSections() {
         let serverSections = homePage?.sections.enumerated().map { mapServerSection($1, index: $0) } ?? []
-        let all = cachedLocalSections + serverSections + cachedPhase2Sections
+        // A mood chip shows only YouTube's filtered feed; mixing the local
+        // sections back in pushed the filtered results below the fold.
+        let all = selectedChip != nil
+            ? serverSections
+            : cachedLocalSections + serverSections + cachedPhase2Sections
         let merged = orderSections(all)
         homeSections = merged
     }
@@ -448,4 +445,9 @@ final class HomeViewModel {
         case .moodAndGenres: return 15
         }
     }
+}
+
+private final class HomeViewModelCleanup: @unchecked Sendable {
+    var chipTask: Task<Void, Never>?
+    var notificationObserver: NSObjectProtocol?
 }

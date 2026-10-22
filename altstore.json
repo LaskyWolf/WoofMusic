@@ -26,11 +26,11 @@
       "versions": [
         {
           "version": "0.0.1",
-          "buildVersion": "116",
-          "date": "2026-10-15T19:57:52Z",
-          "localizedDescription": "refactor(core): adopt ArtistCredits and fix playback/state bugs",
+          "buildVersion": "117",
+          "date": "2026-10-22T10:23:08Z",
+          "localizedDescription": "refactor(core): harden playback and download state management",
           "downloadURL": "https://github.com/686udjie/Trop/releases/download/nightly/Trop.ipa",
-          "size": 47489608,
+          "size": 47499865,
           "minOSVersion": "26.0"
         }
       ]

@@ -13,7 +13,7 @@ struct ExploreView: View {
 
     @State private var pendingRoute: DetailRoute?
 
-    @State private var accountState = AccountSheetState()
+    private let accountState = AccountState.shared
 
     var body: some View {
         NavigationStack(path: $router.explorePath) {
@@ -23,7 +23,7 @@ struct ExploreView: View {
                     accountIsLoggedIn: accountState.isLoggedIn,
                     accountImageUrl: accountState.accountImageUrl,
                     onHistory: { router.explorePath.append(DetailRoute.history) },
-                    onAccount: { accountState.isAccountSheetPresented = true }
+                    onAccount: { router.explorePath.append(DetailRoute.settings) }
                 )
 
                 content
@@ -41,13 +41,6 @@ struct ExploreView: View {
                 }
             }
             .onAppear { viewModel.load() }
-            .accountSheets(state: accountState) {
-                router.explorePath.append(DetailRoute.settings)
-            }
-            .task {
-                accountState.restoreSession()
-                await accountState.fetchAccountInfo()
-            }
             .task(id: viewModel.sections.count) {
                 let urls = viewModel.sections
                     .flatMap(\.items)

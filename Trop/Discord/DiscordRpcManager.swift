@@ -58,6 +58,7 @@ final class DiscordRpcManager: @unchecked Sendable {
     private var currentActivityId: Int64 = 0
     private var currentActivityHadImages: Bool = false
     private var imageResolutionTask: Task<Void, Never>?
+    private var refreshesSinceReady = 0
 
     private let auth = DiscordAuth()
     private let appId = DiscordDefaults.appId
@@ -82,7 +83,7 @@ final class DiscordRpcManager: @unchecked Sendable {
         initialized = true
         statusSubject.value = .disconnected
         startEventCollection()
-        Task {
+        Task { @MainActor in
             if let saved = DiscordTokenStore.shared.retrieve(), !saved.isEmpty {
                 reconnectWithToken(saved)
             }
@@ -91,7 +92,8 @@ final class DiscordRpcManager: @unchecked Sendable {
 
     private func startEventCollection() {
         gatewayEventTask?.cancel()
-        gatewayEventTask = Task { [weak self] in
+        // State here is only touched on the main actor (callers are UI / @MainActor code), so every task hops there.
+        gatewayEventTask = Task { @MainActor [weak self] in
             guard let self else { return }
             for await event in self.gateway.events {
                 await self.handleGatewayEvent(event)
@@ -157,7 +159,7 @@ final class DiscordRpcManager: @unchecked Sendable {
         accessTokenSubject.value = result.accessToken
         _authorized = true
         statusSubject.value = .authorizing
-        Task {
+        Task { @MainActor in
             do {
                 gateway.close(code: 4000, reason: "re-authorizing")
                 try await gateway.connect()
@@ -190,37 +192,6 @@ final class DiscordRpcManager: @unchecked Sendable {
             avatar = "https://cdn.discordapp.com/avatars/\(id)/\(hash).png"
         } else { avatar = nil }
         return DiscordUser(id: id, username: username, name: name, avatar: avatar)
-    }
-
-    // MARK: - fetchCurrentUser
-
-    func fetchCurrentUser(token: String) -> DiscordUser? {
-        guard let url = URL(string: "https://discord.com/api/v10/users/@me") else { return nil }
-        var req = URLRequest(url: url)
-        req.httpMethod = "GET"
-        req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        req.setValue("application/json", forHTTPHeaderField: "Accept")
-        req.timeoutInterval = 10
-        var result: DiscordUser?
-        let sem = DispatchSemaphore(value: 0)
-        URLSession.shared.dataTask(with: req) { data, response, _ in
-            defer { sem.signal() }
-            guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode),
-                  let data = data,
-                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let id = json["id"] as? String,
-                  let username = json["username"] as? String else { return }
-            let gName = json["global_name"] as? String
-            let name = (gName?.isEmpty == false) ? (gName ?? username) : username
-            let avatarHash = json["avatar"] as? String
-            let avatar: String?
-            if let hash = avatarHash, !hash.isEmpty, hash != "null" {
-                avatar = "https://cdn.discordapp.com/avatars/\(id)/\(hash).png"
-            } else { avatar = nil }
-            result = DiscordUser(id: id, username: username, name: name, avatar: avatar)
-        }.resume()
-        sem.wait()
-        return result
     }
 
     // MARK: - setActivity / clear
@@ -268,7 +239,7 @@ final class DiscordRpcManager: @unchecked Sendable {
         let largeUrl = activity.largeImage; let smallUrl = activity.smallImage
         if (largeUrl?.isEmpty ?? true) && (smallUrl?.isEmpty ?? true) { return }
         let activityIdAtLaunch = currentActivityId
-        imageResolutionTask = Task { [weak self] in
+        imageResolutionTask = Task { @MainActor [weak self] in
             guard let self else { return }
             let tokenHeader = "Bearer \(token)"
             let largeResolved = largeUrl != nil && !(largeUrl!.isEmpty)
@@ -312,8 +283,7 @@ final class DiscordRpcManager: @unchecked Sendable {
 
     func reconnectWithToken(_ token: String) {
         guard initialized else { return }
-        Task {
-            // mutex via NSLock quick
+        Task { @MainActor in
             self.accessToken = token
             self.accessTokenSubject.value = token
             DiscordTokenStore.shared.storeAccessToken(token)
@@ -429,12 +399,13 @@ final class DiscordRpcManager: @unchecked Sendable {
         switch event {
         case .ready:
             _ready = true; _authorized = true
+            refreshesSinceReady = 0
             statusSubject.value = .connected; lastErrorSubject.value = nil
             if let token = accessToken {
-                Task.detached { [weak self] in
+                Task { @MainActor [weak self] in
                     guard let self else { return }
-                    let user = await self.fetchCurrentUserAsync(token: token)
-                    await MainActor.run { self.currentUserSubject.value = user }
+                    let user = await self.fetchCurrentUserAsync2(token: token)
+                    self.currentUserSubject.value = user
                 }
             }
         case .resumed:
@@ -456,16 +427,14 @@ final class DiscordRpcManager: @unchecked Sendable {
         case .invalidSession:
             imageResolutionTask?.cancel(); imageResolutionTask = nil
         case .refreshToken:
-            await refreshAndReconnect()
-        }
-    }
-
-    private func fetchCurrentUserAsync(token: String) async -> DiscordUser? {
-        await withCheckedContinuation { cont in
-            DispatchQueue.global().async {
-                let u = self.fetchCurrentUser(token: token)
-                cont.resume(returning: u)
+            // A fresh token that Discord still rejects would refresh forever.
+            guard refreshesSinceReady < 2 else {
+                lastErrorSubject.value = "discord_error_token_refresh_failed"
+                disconnect()
+                return
             }
+            refreshesSinceReady += 1
+            await refreshAndReconnect()
         }
     }
 }

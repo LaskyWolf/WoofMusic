@@ -1,5 +1,5 @@
 //
-//  PlayerMenuSheet.swift
+//  SongActionsMenu.swift
 //  Trop
 //
 //  Created by 686udjie on 21/08/2026.
@@ -7,221 +7,156 @@
 
 import SwiftUI
 
-/// Song actions presented with the same grouped list as Settings.
-struct PlayerMenuSheet: View {
+/// The "⋯" song menu: a native pull-down menu, like Apple Music.
+/// Items that need more input open one sheet after the menu closes.
+struct SongActionsMenu<MenuLabel: View>: View {
     let song: SongItem
-    /// Collapses the Big Player so the pushed page is visible underneath.
+    var showsQueueActions = true
+    /// Collapses the full player so a pushed page is visible underneath.
     var onCollapseRequest: (() -> Void)?
     var onNavigate: ((DetailRoute) -> Void)?
-    var showsSongPreview = false
-    var showsQueueActions = true
+    @ViewBuilder var label: () -> MenuLabel
 
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-    @Environment(\.dismiss) private var dismiss
-    @Environment(\.settingsStore) private var settings
+    private enum Sheet: Identifiable {
+        case playlist, radio, details, similar
+        var id: Self { self }
+    }
 
-    // Loaded state
     @ObservedObject private var likeStore = LikeStore.shared
+    @ObservedObject private var downloadManager = DownloadManager.shared
     @State private var pin = PinState()
-    @State private var showPlaylistPicker = false
+    @State private var sheet: Sheet?
     @State private var showArtistPicker = false
-    @State private var showRadioOptions = false
+    @State private var confirmRemoveDownload = false
     @State private var isResolvingArtist = false
-    @Environment(\.downloadManager) private var downloadManager
 
     var body: some View {
-        NavigationStack {
-            List {
-                if showsSongPreview {
-                    Section {
-                        MenuSongPreview(title: song.title, artist: song.artistNamesDisplay,
-                                        thumbnailURL: song.thumbnailUrl)
+        Menu {
+            // Compact icon row at the top, like Apple Music's song menu.
+            ControlGroup {
+                let liked = likeStore.isLiked(videoId: song.videoId)
+                Button(liked ? "Unlike" : "Like", systemImage: liked ? "heart.fill" : "heart") {
+                    Task { await likeStore.toggle(song: song) }
+                }
+                Button("Add to Playlist", systemImage: "text.badge.plus") { sheet = .playlist }
+                if let url = URL(string: song.webUrl) {
+                    ShareLink(item: url) {
+                        Label("Share", systemImage: "square.and.arrow.up")
                     }
                 }
+            }
+            .controlGroupStyle(.compactMenu)
 
+            if showsQueueActions {
                 Section {
-                    shortcutRow
-                }
-
-                if showsQueueActions {
-                    Section("Queue") {
-                        Button { playNext() } label: {
-                            actionLabel("Play Next", icon: "text.insert")
-                        }
-                        Button { addToQueue() } label: {
-                            actionLabel("Add to Queue", icon: "list.bullet")
-                        }
+                    Button("Play Next", systemImage: "text.insert") {
+                        NowPlaying.shared.enqueueNext(song)
                     }
-                }
-
-                Section("Library") {
-                    Button {
-                        Task { await likeStore.toggle(song: song) }
-                    } label: {
-                        let liked = likeStore.isLiked(videoId: song.videoId)
-                        actionLabel(liked ? "Unlike" : "Like", icon: liked ? "heart.slash" : "heart")
-                    }
-                    viewArtistRow
-                    if let albumId = song.firstAlbumBrowseId {
-                        Button { navigate(.album(browseId: albumId)) } label: {
-                            actionLabel("View Album", icon: "record.circle")
-                        }
-                    }
-                    pinRow
-                    downloadRow
-                }
-
-                Section("More") {
-                    Button {
-                        UIPasteboard.general.string = song.webUrl
-                        dismiss()
-                    } label: {
-                        actionLabel("Copy Link", icon: "link")
-                    }
-                    SettingsNavigationRow("Details", icon: "info.circle") {
-                        SongDetailsView(song: song)
-                    }
-                    SettingsNavigationRow("Similar to this song", icon: "dot.radiowaves.left.and.right") {
-                        SimilarSongsView(
-                            song: song,
-                            onNavigate: { navigate($0) },
-                            onPlaySong: { similar, songs in
-                                dismiss()
-                                PlaybackQueue.play(similar, in: songs, log: Log.search, context: "SimilarTo tap")
-                                AppRouter.shared.expandPlayer()
-                            }
-                        )
-                    }
-                    Button { showRadioOptions = true } label: {
-                        actionLabel("Customize Radio", icon: "slider.horizontal.3")
-                    }
+                    Button("Add to Queue", systemImage: "text.append", action: addToQueue)
                 }
             }
-            .listStyle(.insetGrouped)
-            .tint(settings.accentColor)
-            .navigationTitle("Song Options")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { dismiss() }
+
+            Section {
+                Button("Start Radio…", systemImage: "dot.radiowaves.left.and.right") { sheet = .radio }
+                downloadButton
+                Button(pin.isPinned ? "Unpin from Quick Picks" : "Pin to Quick Picks",
+                       systemImage: pin.isPinned ? "pin.slash" : "pin") {
+                    Task { await pin.toggle(song: song) }
                 }
             }
+
+            Menu("Go To", systemImage: "arrow.forward.circle") {
+                if !song.artists.filter({ !$0.name.isEmpty }).isEmpty {
+                    Button("Artist", systemImage: "music.mic", action: handleViewArtist)
+                        .disabled(isResolvingArtist)
+                }
+                if let albumId = song.firstAlbumBrowseId {
+                    Button("Album", systemImage: "square.stack") {
+                        navigate(.album(browseId: albumId))
+                    }
+                }
+                Button("Similar Songs…", systemImage: "sparkles") { sheet = .similar }
+                Button("Song Details…", systemImage: "info.circle") { sheet = .details }
+            }
+        } label: {
+            label()
         }
-        .appSheetChrome()
-        .confirmationDialog("View Artist", isPresented: $showArtistPicker, titleVisibility: .visible) {
+        .menuOrder(.fixed)
+        .confirmationDialog("Go to Artist", isPresented: $showArtistPicker, titleVisibility: .visible) {
             ForEach(song.artists.filter { !$0.name.isEmpty }, id: \.self) { artist in
-                Button(artist.name) {
-                    openArtist(artist)
-                }
+                Button(artist.name) { openArtist(artist) }
             }
         }
-        .sheet(isPresented: $showPlaylistPicker) {
-            AddSongToPlaylistSheet(song: song)
+        .confirmationDialog("Remove this download?", isPresented: $confirmRemoveDownload,
+                            titleVisibility: .visible) {
+            Button("Remove Download", role: .destructive) {
+                Task { await downloadManager.delete(videoId: song.videoId) }
+            }
         }
-        .sheet(isPresented: $showRadioOptions) {
-            RadioOptionsSheet(song: song)
+        .sheet(item: $sheet) { sheet in
+            switch sheet {
+            case .playlist:
+                AddSongToPlaylistSheet(song: song)
+            case .radio:
+                RadioOptionsSheet(song: song)
+            case .details:
+                NavigationStack {
+                    SongDetailsView(song: song)
+                        .toolbar {
+                            ToolbarItem(placement: .confirmationAction) {
+                                Button("Done") { self.sheet = nil }
+                            }
+                        }
+                }
+                .appSheetChrome()
+            case .similar:
+                NavigationStack {
+                    SimilarSongsView(
+                        song: song,
+                        onNavigate: { navigate($0) },
+                        onPlaySong: { similar, songs in
+                            self.sheet = nil
+                            PlaybackQueue.play(similar, in: songs, log: Log.search, context: "SimilarTo tap")
+                            AppRouter.shared.expandPlayer()
+                        }
+                    )
+                    .toolbar {
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("Done") { self.sheet = nil }
+                        }
+                    }
+                }
+                .appSheetChrome()
+            }
         }
         .task { await pin.load(videoId: song.videoId) }
     }
 
-    private var shortcutRow: some View {
-        let layout = dynamicTypeSize.isAccessibilitySize
-            ? AnyLayout(VStackLayout(spacing: 8))
-            : AnyLayout(HStackLayout(spacing: 0))
-        return layout {
-            MenuShortcutButton(title: "Start Radio", icon: "dot.radiowaves.left.and.right",
-                               action: startRadio)
-            if !dynamicTypeSize.isAccessibilitySize { Divider().frame(height: 32) }
-            MenuShortcutButton(title: "Playlist", icon: "music.note.list") {
-                showPlaylistPicker = true
+    @ViewBuilder
+    private var downloadButton: some View {
+        switch downloadManager.state(for: song.videoId) {
+        case .completed:
+            Button("Remove Download", systemImage: "trash", role: .destructive) {
+                confirmRemoveDownload = true
             }
-            .accessibilityLabel("Add to Playlist")
-            if !dynamicTypeSize.isAccessibilitySize { Divider().frame(height: 32) }
-            MenuShortcutButton(title: "Share", icon: "square.and.arrow.up", action: share)
-        }
-    }
-
-    private func actionLabel(_ title: String, icon: String) -> some View {
-        Label {
-            Text(title).foregroundStyle(.primary)
-        } icon: {
-            Image(systemName: icon).foregroundStyle(settings.accentColor)
-        }
-    }
-
-    // MARK: - Download Row
-
-    private var downloadRow: some View {
-        let state = downloadManager.state(for: song.videoId)
-        return Group {
-            switch state {
-            case .completed:
-                Button(role: .destructive) {
-                    Task { await downloadManager.delete(videoId: song.videoId) }
-                } label: {
-                    Label("Remove Download", systemImage: "trash")
-                }
-            case .downloading:
-                Label("Downloading…", systemImage: "arrow.down.circle")
-                    .foregroundStyle(.secondary)
-            case .notStarted, .failed:
-                Button {
-                    Task { await downloadManager.download(song: song) }
-                } label: {
-                    actionLabel("Download", icon: "arrow.down.circle")
-                }
+        case .downloading:
+            Button("Downloading…", systemImage: "arrow.down.circle") {}
+                .disabled(true)
+        case .notStarted, .failed:
+            Button("Download", systemImage: "arrow.down.circle") {
+                Task { await downloadManager.download(song: song) }
             }
         }
-    }
-
-    // MARK: - Library Rows
-
-    private var viewArtistRow: some View {
-        Button(action: handleViewArtist) {
-            HStack {
-                actionLabel("View Artist", icon: "music.mic")
-                Spacer()
-                if isResolvingArtist { ProgressView() }
-            }
-        }
-        .disabled(song.artists.isEmpty || isResolvingArtist)
-    }
-
-    private var pinRow: some View {
-        Button {
-            Task { await pin.toggle(song: song) }
-        } label: {
-            actionLabel(pin.isPinned ? "Unpin from Quick Picks" : "Pin to Quick Picks",
-                        icon: pin.isPinned ? "pin.fill" : "pin")
-        }
-    }
-
-    // MARK: - State
-
-    private func startRadio() {
-        PlaybackQueue.startRadio(for: song)
-        dismiss()
-    }
-
-    private func playNext() {
-        let np = NowPlaying.shared
-        np.enqueueNext(song)
-        dismiss()
     }
 
     private func addToQueue() {
         let np = NowPlaying.shared
         np.queueSongs.append(song)
         np.persistQueueState()
-        dismiss()
-    }
-
-    private func share() {
-        presentShareSheet(items: [song.webUrl], afterDismiss: { dismiss() })
     }
 
     private func navigate(_ route: DetailRoute) {
-        dismiss()
+        sheet = nil
         onCollapseRequest?()
         // Appends directly to the selected tab's NavigationPath — plain state
         // mutation, so it lands even while the player is tearing down.
@@ -260,16 +195,18 @@ struct PlayerMenuSheet: View {
             do {
                 let json = try await SearchService.shared.search(query: name)
                 let wanted = name.trimmingCharacters(in: .whitespacesAndNewlines)
-                browseId = SearchParser.parseSearchResults(from: json)
+                let artists = SearchParser.parseSearchResults(from: json)
                     .flatMap(\.items)
                     .compactMap { item -> ArtistItem? in
                         if case .artist(let artist) = item { return artist }
                         return nil
                     }
-                    .first {
-                        $0.name.trimmingCharacters(in: .whitespacesAndNewlines)
-                            .caseInsensitiveCompare(wanted) == .orderedSame
-                    }?.browseId
+                // Prefer the exact name; otherwise trust search ranking.
+                let exact = artists.first {
+                    $0.name.trimmingCharacters(in: .whitespacesAndNewlines)
+                        .caseInsensitiveCompare(wanted) == .orderedSame
+                }
+                browseId = (exact ?? artists.first)?.browseId
             } catch {
                 browseId = nil
             }
@@ -279,6 +216,7 @@ struct PlayerMenuSheet: View {
         }
     }
 }
+
 
 // MARK: - Add to Playlist Picker
 

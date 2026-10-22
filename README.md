@@ -1,55 +1,46 @@
-# Trop
+# Woof Music
 
-A free and open source YouTube Music client for iOS.
-
-<p>
-	<img src=".github/assets/1.png" width="25%" alt="Homepage" />
-	<img src=".github/assets/2.png" width="25%" alt="Player" />
-	<img src=".github/assets/3.png" width="25%" alt="Queue" />
-</p>
+A free and open source YouTube Music client for iOS, built on [Trop](https://github.com/686udjie/Trop) by 686udjie.
 
 ## Features
 
 - No ads
-- Stream songs and videos from YouTube Music
-- Synced lyrics (Musixmatch, Netease, Kugou, LRCLIB, Genius)
-- Library sync (playlists, albums, artists, podcasts)
-- Downloads
-- Equalizer
+- Stream songs and podcasts from YouTube Music
+- Synced lyrics (Musixmatch, Netease, Kugou, LRCLIB, Genius), with offset, editing and search
+- Library sync (playlists, albums, artists, podcasts, liked songs)
+- Custom playlist covers, synced to your YouTube Music account
+- Downloads for offline listening, with full-size cover art
+- Play Next queue, song radio and listening history
+- System volume bar, equalizer and AirPlay in the player
+- Last.fm scrobbling and Discord Rich Presence
 - Custom app icons and themes
-- Queue management and listening history
+
+## What differs from Trop
+
+- Native iOS menus for songs, the player and lyrics
+- Account sign-in lives at the top of Settings
+- Library opens with Liked Songs, My Top 100 and Downloads shortcuts
+- The player shows a short title (no "feat." or "Official Video" tags) and a system volume bar
+- Video mode and Spotify Canvas are removed
 
 ## Installation
 
 Requires iOS 26 or later and a YouTube Music account (sign in through the in-app web view).
 
-### Feather / AltStore / SideStore
+The IPA is unsigned: sideload it with a tool that re-signs apps with your Apple ID, such as AltStore, SideStore or Feather. AltStore PAL is not supported.
 
-Add the Trop source, then install the nightly IPA (unsigned — your client re-signs it with your Apple ID):
+### Build the IPA
 
-```
-https://raw.githubusercontent.com/686udjie/Trop/main/altstore.json
-```
-
-
-> **Note:** AltStore PAL is not supported.
-
-Nightlies are published from each successful push to `main` as the floating [`nightly`](../../releases/tag/nightly) release.
-
-### Manual Installation
-
-Run the **Private iPhone Test Build** workflow under [Actions](../../actions) to build an unsigned IPA. You can also build locally with `./build_ipa.sh`; the output is `build/Music.ipa`.
+- **GitHub Actions:** fork this repo, then run the **Private iPhone Test Build** workflow from the Actions tab. The IPA is attached to the run as the `Music-iOS` artifact.
+- **Locally (macOS with Xcode):** run `./build_ipa.sh`. The output is `build/Music.ipa`.
 
 ## Notable mentions
 
+- [Trop](https://github.com/686udjie/Trop) — the app Woof Music is based on
 - [InnerTubeX](https://github.com/MetrolistGroup/innertubex) — eXtended InnerTube API library for Kotlin
 - [zemer-cipher](https://github.com/ZemerTeam/zemer-cipher) — YouTube cipher deobfuscation and PoToken generation
 - [Metrolist](https://github.com/MetrolistGroup/Metrolist) — YouTube Music client for Android
 
-## Community
-
-Join the [Discord server](https://discord.gg/QrMwZAfU97) for support and discussion.
-
 ## License
 
-This repo is licensed under [GPLv3](LICENSE.txt). Trop is not affiliated with, endorsed, or sponsored by Google or YouTube.
+This repo is licensed under [GPLv3](LICENSE.txt), like Trop. Woof Music is not affiliated with, endorsed, or sponsored by Google or YouTube.

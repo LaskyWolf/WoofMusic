@@ -7,22 +7,12 @@
 
 import SwiftUI
 
-struct QueueView<ProgressSlider: View>: View {
+struct QueueView: View {
     private let np = NowPlaying.shared
-    private let player = PlayerController.shared
-    @ObservedObject private var likeStore = LikeStore.shared
 
     @Binding var showQueue: Bool
     @Binding var isShuffleOn: Bool
     @Binding var isRepeatOn: Bool
-    @Binding var editingProgress: Float
-    @Binding var isEditingSlider: Bool
-    let pendingRoute: Binding<DetailRoute?>
-    @ViewBuilder var progressSlider: () -> ProgressSlider
-    var isVideoMode: Bool = false
-    var isOverlay: Bool = false
-
-    @State private var showSongMenu = false
 
     var body: some View {
         queueContent
@@ -37,12 +27,7 @@ struct QueueView<ProgressSlider: View>: View {
                       isHorizontal,
                       value.translation.width > 80 else { return }
                 withAnimation(.easeInOut(duration: 0.3)) {
-                    if isVideoMode {
-                        np.isVideoMode = false
-                        showQueue = false
-                    } else {
-                        showQueue = false
-                    }
+                    showQueue = false
                 }
             }
     }
@@ -51,30 +36,22 @@ struct QueueView<ProgressSlider: View>: View {
 
     private var queueContent: some View {
         VStack(spacing: 0) {
-            if isOverlay {
-                HStack {
-                    Text("Up Next")
-                        .font(.title2.bold())
-                    Spacer()
-                    Button { showQueue = false } label: {
-                        Image(systemName: "xmark")
-                            .font(.body.weight(.semibold))
-                            .frame(width: 44, height: 44)
-                    }
-                    .accessibilityLabel("Close queue")
+            HStack {
+                Text("Up Next")
+                    .font(.title2.bold())
+                Spacer()
+                Button { showQueue = false } label: {
+                    Image(systemName: "xmark")
+                        .font(.body.weight(.semibold))
+                        .frame(width: 44, height: 44)
                 }
-                .foregroundStyle(.white)
-                .padding(.leading, 20)
-                .padding(.trailing, 8)
-                .padding(.top, 8)
-                playbackPillsRow
-            } else if !isVideoMode {
-                queueHeader
-                    .padding(.horizontal, 20)
-                playbackPillsRow
+                .accessibilityLabel("Close queue")
             }
-
-            if !isOverlay { queueListHeaderRow }
+            .foregroundStyle(.white)
+            .padding(.leading, 20)
+            .padding(.trailing, 8)
+            .padding(.top, 8)
+            playbackPillsRow
 
             ScrollViewReader { proxy in
                 List {
@@ -100,86 +77,6 @@ struct QueueView<ProgressSlider: View>: View {
                         proxy.scrollTo(np.queueSongs[np.queueIndex].videoId, anchor: .center)
                     }
                 }
-            }
-
-            if isVideoMode {
-                playbackPillsRow
-                PlayerTransportAirPlayFooter(
-                    isPlaying: np.isPlaying,
-                    hasPrevious: np.hasPrevious,
-                    hasNext: np.hasNext,
-                    onPrevious: { np.playPrevious() },
-                    onPlayPause: { player.togglePlayPause() },
-                    onNext: { np.playNext() }
-                )
-            } else if !isOverlay {
-                VStack(spacing: 16) {
-                    progressSlider()
-                        .padding(.top, 16)
-
-                    PlaybackControlsRow(
-                        isPlaying: np.isPlaying,
-                        hasPrevious: np.hasPrevious,
-                        hasNext: np.hasNext,
-                        onPrevious: { np.playPrevious() },
-                        onPlayPause: { player.togglePlayPause() },
-                        onNext: { np.playNext() }
-                    )
-                    .animation(.spring(response: 0.3, dampingFraction: 0.7), value: np.isPlaying)
-
-                    SecondaryActionsRow(
-                        showQueue: $showQueue,
-                        isRepeatOn: $isRepeatOn
-                    )
-                }
-                .padding(.bottom, 16)
-            }
-        }
-        .clipShape(RoundedRectangle(cornerRadius: isOverlay ? 24 : 0))
-    }
-
-    // MARK: - Queue Header
-
-    private var queueHeader: some View {
-        HStack(spacing: 12) {
-            if let uiImage = np.thumbnailUIImage {
-                Image(uiImage: uiImage)
-                    .resizable()
-                    .scaledToFill()
-                    .frame(width: 64, height: 64)
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-            } else {
-                Image(systemName: "music.note")
-                    .font(.title2)
-                    .foregroundStyle(.white.opacity(0.4))
-                    .frame(width: 64, height: 64)
-            }
-
-            PlayerTitleBlock(title: np.title, artist: np.displayArtist)
-
-            Spacer()
-
-            if let song = np.queueSongs.indices.contains(np.queueIndex) ? np.queueSongs[np.queueIndex] : nil {
-                PlayerLikeButton(isLiked: likeStore.isLiked(videoId: song.videoId)) {
-                    Task { await likeStore.toggle(song: song) }
-                }
-                PlayerOptionsButton(color: .white.opacity(0.6)) {
-                    showSongMenu = true
-                }
-                .sheet(isPresented: $showSongMenu) {
-                    SongMenuSheet(
-                        song: song,
-                        onNavigate: { pendingRoute.wrappedValue = $0 }
-                    )
-                }
-            }
-        }
-        .padding(.top, 12)
-        .padding(.bottom, 8)
-        .contentShape(Rectangle())
-        .onTapGesture {
-            withAnimation(.spring(response: 0.35, dampingFraction: 0.9)) {
-                showQueue = false
             }
         }
     }
@@ -218,19 +115,6 @@ struct QueueView<ProgressSlider: View>: View {
         }
         .accessibilityLabel(icon == "shuffle" ? "Shuffle" : "Repeat")
         .accessibilityValue(isOn.wrappedValue ? "On" : "Off")
-    }
-
-    private var queueListHeaderRow: some View {
-        HStack {
-            Text("Queue")
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.white)
-                .textCase(.uppercase)
-
-            Spacer()
-        }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 8)
     }
 
     private var emptyQueueRow: some View {
@@ -284,7 +168,7 @@ struct QueueView<ProgressSlider: View>: View {
     private func playSong(at index: Int) {
         guard np.queueSongs.indices.contains(index) else { return }
         np.lastManualSkipTime = Date()
-        np.queueIndex = index
+        np.moveQueueIndex(to: index)
         np.playCurrentSong(logContext: "resolveAndPlay", manageResolvingFlag: false)
     }
 

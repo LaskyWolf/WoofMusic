@@ -8,20 +8,17 @@
 import SwiftUI
 
 /// Trailing ⋮ button shared by every song row.
-struct MoreButton: View {
+/// Label for a row's "⋯" song menu.
+struct MoreGlyph: View {
     @Environment(SettingsStore.self) private var settings
-    let action: () -> Void
 
     var body: some View {
-        Button(action: action, label: {
-            Text("⋮")
-                .font(.body.weight(.black))
-                .foregroundStyle(settings.accentColor)
-                .frame(minWidth: 44, minHeight: 44)
-                .contentShape(Rectangle())
-        })
-        .buttonStyle(.plain)
-        .accessibilityLabel("More")
+        Image(systemName: "ellipsis")
+            .font(.body.weight(.semibold))
+            .foregroundStyle(settings.accentColor)
+            .frame(minWidth: 44, minHeight: 44)
+            .contentShape(Rectangle())
+            .accessibilityLabel("More")
     }
 }
 
@@ -36,7 +33,6 @@ struct SongRowView: View {
     var onNavigate: ((DetailRoute) -> Void)?
 
     @State private var durations = DurationResolver()
-    @State private var showSongMenu = false
 
     var body: some View {
         HStack(spacing: DesignTokens.rowSpacing) {
@@ -60,15 +56,9 @@ struct SongRowView: View {
             Spacer()
 
             HStack(spacing: 2) {
-                MoreButton {
-                    showSongMenu = true
+                SongActionsMenu(song: song, onNavigate: { onNavigate?($0) }) {
+                    MoreGlyph()
                 }
-            }
-            .sheet(isPresented: $showSongMenu) {
-                SongMenuSheet(
-                    song: song,
-                    onNavigate: { onNavigate?($0) }
-                )
             }
         }
         .background(DownloadCellProgressView(song: song))

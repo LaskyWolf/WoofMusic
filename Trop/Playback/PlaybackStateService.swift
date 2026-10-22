@@ -15,7 +15,10 @@ actor PlaybackStateService {
 
     private let historyDurationThreshold: TimeInterval = 30
     private var currentVideoId: String?
-    private var playbackStartTime: Date?
+    /// Play time before the last resume; paused time never counts.
+    private var playedBefore: TimeInterval = 0
+    /// When playback last resumed; nil while paused or still loading.
+    private var resumedAt: Date?
     private var isTracking = false
     private var hasRecordedPlayback = false
     private var periodicCheckTask: Task<Void, Never>?
@@ -23,9 +26,15 @@ actor PlaybackStateService {
 
     private init() {}
 
+    private var elapsed: TimeInterval {
+        playedBefore + (resumedAt.map { Date().timeIntervalSince($0) } ?? 0)
+    }
+
+    /// Starts paused; `setPlaying(true)` begins counting once audio runs.
     func startTracking(videoId: String) {
         currentVideoId = videoId
-        playbackStartTime = Date()
+        playedBefore = 0
+        resumedAt = nil
         isTracking = true
         hasRecordedPlayback = false
         bankedPlayTimeMs = 0
@@ -35,15 +44,36 @@ actor PlaybackStateService {
         periodicCheckTask = Task { [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(5))
-                guard let self, let start = await self.playbackStartTime, await self.isTracking else { return }
-                let elapsed = Date().timeIntervalSince(start)
-                let current = await self.currentVideoId ?? ""
-                // Bank every 5s chunk so skipped tracks still count toward Top 100.
-                await self.bankPlayTime(videoId: current, elapsedMs: Int64(elapsed * 1000), minimumMs: 5_000)
-                if elapsed >= self.historyDurationThreshold, !(await self.hasRecordedPlayback) {
-                    await self.firePlayback(videoId: current, playTimeMs: Int64(elapsed * 1000))
-                }
+                guard let self else { return }
+                await self.periodicCheck()
             }
+        }
+    }
+
+    func setPlaying(_ playing: Bool) {
+        guard isTracking else { return }
+        if playing {
+            if resumedAt == nil { resumedAt = Date() }
+        } else if let resumedAt {
+            playedBefore += Date().timeIntervalSince(resumedAt)
+            self.resumedAt = nil
+        }
+    }
+
+    private func periodicCheck() async {
+        guard isTracking, let videoId = currentVideoId else { return }
+        let elapsedMs = Int64(elapsed * 1000)
+        // Bank every 5s chunk so skipped tracks still count toward Top 100.
+        // Claim the chunk before awaiting so stopTracking can't count it twice.
+        let delta = elapsedMs - bankedPlayTimeMs
+        if delta >= 5_000 {
+            bankedPlayTimeMs = elapsedMs
+            await addPlayTime(videoId: videoId, deltaMs: delta)
+        }
+        guard currentVideoId == videoId else { return }
+        if elapsedMs >= Int64(historyDurationThreshold * 1000), !hasRecordedPlayback {
+            hasRecordedPlayback = true
+            await recordPlayback(videoId: videoId, playTimeMs: elapsedMs)
         }
     }
 
@@ -51,19 +81,25 @@ actor PlaybackStateService {
         periodicCheckTask?.cancel()
         periodicCheckTask = nil
 
-        guard isTracking, let videoId = currentVideoId, let start = playbackStartTime else {
+        guard isTracking, let videoId = currentVideoId else {
             Log.playbackState.debug("stopTracking called but no active tracking")
             reset()
             return
         }
-        let elapsed = Date().timeIntervalSince(start)
+        // Copy state and reset before any await: the next song may start
+        // tracking while this one is still being saved.
+        let elapsed = self.elapsed
+        let delta = Int64(elapsed * 1000) - bankedPlayTimeMs
+        let needsHistory = elapsed >= historyDurationThreshold && !hasRecordedPlayback
+        reset()
         Log.playbackState.debug("Stopped tracking videoId=\(videoId) totalElapsed=\(String(format: "%.1f", elapsed))s")
-        defer { reset() }
 
-        // Bank the remainder first (down to 1s) so short plays count.
-        await bankPlayTime(videoId: videoId, elapsedMs: Int64(elapsed * 1000), minimumMs: 1_000)
-        if elapsed >= historyDurationThreshold, !hasRecordedPlayback {
-            await firePlayback(videoId: videoId, playTimeMs: Int64(elapsed * 1000))
+        // Bank the remainder (down to 1s) so short plays count.
+        if delta >= 1_000 {
+            await addPlayTime(videoId: videoId, deltaMs: delta)
+        }
+        if needsHistory {
+            await recordPlayback(videoId: videoId, playTimeMs: Int64(elapsed * 1000))
         } else if elapsed < historyDurationThreshold {
             Log.playbackState.debug(
                 "Elapsed \(String(format: "%.1f", elapsed))s below threshold \(self.historyDurationThreshold)s — skipping history recording"
@@ -71,24 +107,13 @@ actor PlaybackStateService {
         }
     }
 
-    private func firePlayback(videoId: String, playTimeMs: Int64) async {
-        hasRecordedPlayback = true
-        await recordPlayback(videoId: videoId, playTimeMs: playTimeMs)
-    }
-
-    @discardableResult
-    private func bankPlayTime(videoId: String, elapsedMs: Int64, minimumMs: Int64) async -> Int64 {
-        guard SettingsStore.shared.trackPlayHistory else { return 0 }
-        let delta = elapsedMs - bankedPlayTimeMs
-        guard delta >= minimumMs, delta > 0, !videoId.isEmpty else { return 0 }
+    private func addPlayTime(videoId: String, deltaMs: Int64) async {
+        guard SettingsStore.shared.trackPlayHistory, !videoId.isEmpty else { return }
+        await ensureSongEntity(videoId: videoId)
         do {
-            await ensureSongEntity(videoId: videoId)
-            try await db.incrementTotalPlayTime(songId: videoId, playTimeMs: delta)
-            bankedPlayTimeMs = elapsedMs
-            return delta
+            try await db.incrementTotalPlayTime(songId: videoId, playTimeMs: deltaMs)
         } catch {
             Log.playbackState.error("Failed to bank play time: \(error)")
-            return 0
         }
     }
 
@@ -146,15 +171,16 @@ actor PlaybackStateService {
             try await db.incrementPlayCount(songId: videoId, year: calendar.component(.year, from: now), month: calendar.component(.month, from: now))
             Log.playbackState.debug("Play count incremented")
 
-            let banked = await bankPlayTime(videoId: videoId, elapsedMs: playTimeMs, minimumMs: 0)
-            if banked > 0 {
-                Log.playbackState.debug("Total play time incremented (+\(banked)ms)")
-            }
-
             let trackingUrl = await getCachedTrackingUrl(videoId: videoId)
             if let trackingUrl {
                 Log.playbackState.debug("Sending playback to YTM for tracking")
-                try await InnerTubeClient.tropShared.registerPlayback(trackingUrl: trackingUrl)
+                Task {
+                    do {
+                        try await InnerTubeClient.tropShared.registerPlayback(trackingUrl: trackingUrl)
+                    } catch {
+                        Log.playbackState.error("YTM playback registration failed: \(error)")
+                    }
+                }
             } else {
                 Log.playbackState.debug("No cached tracking URL for videoId=\(videoId) — skipping YTM registration")
             }
@@ -173,8 +199,10 @@ actor PlaybackStateService {
 
     private func reset() {
         currentVideoId = nil
-        playbackStartTime = nil
+        playedBefore = 0
+        resumedAt = nil
         isTracking = false
+        hasRecordedPlayback = false
         bankedPlayTimeMs = 0
     }
 }

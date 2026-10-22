@@ -7,6 +7,7 @@
 
 import Nuke
 import SwiftUI
+import WebKit
 
 @main
 struct TropApp: App {
@@ -20,6 +21,25 @@ struct TropApp: App {
         Task { await InnerTubeClient.tropShared.syncTropLocale() }
         Task { @MainActor in DiscordIntegration.shared.start() }
         Task { @MainActor in LastFMIntegration.shared.start() }
+        Self.removeSpotifyLeftovers()
+    }
+
+    /// Spotify Canvas was removed; wipe the sign-in it may have left behind.
+    private static func removeSpotifyLeftovers() {
+        let defaults = UserDefaults.standard
+        let flag = "cleanup.spotifyRemoved"
+        guard !defaults.bool(forKey: flag) else { return }
+        try? SecureStore(service: "com.trop.spotify.canvas").delete(for: "spDc")
+        for key in ["spotify.userId", "spotify.displayName", "spotify.avatarURL", "spotify.product",
+                    "settings.canvasEnabled", "settings.canvasOverCellular"] {
+            defaults.removeObject(forKey: key)
+        }
+        WKWebsiteDataStore.default().fetchDataRecords(ofTypes: WKWebsiteDataStore.allWebsiteDataTypes()) { records in
+            let spotify = records.filter { $0.displayName.contains("spotify") }
+            WKWebsiteDataStore.default().removeData(ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(), for: spotify) {
+                defaults.set(true, forKey: flag)
+            }
+        }
     }
 
     /// Re-applies mpv playback settings whenever the user changes the
@@ -35,6 +55,8 @@ struct TropApp: App {
             } onChange: {
                 Task { @MainActor in
                     PlayerController.shared.applyPlaybackSettings()
+                    // onChange fires once; observe again for the next change.
+                    register()
                 }
             }
         }

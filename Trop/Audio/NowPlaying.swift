@@ -44,9 +44,6 @@ final class NowPlaying {
     var isShuffleOn = false
     var isRepeatOn = false
 
-    var hasVideo: Bool = false
-    var isVideoMode: Bool = false
-    var isVideoReady: Bool = false
     var musicVideoType: String?
 
     private var originalQueue: [SongItem]?
@@ -145,18 +142,33 @@ final class NowPlaying {
         persistQueueState()
     }
 
-    /// Keeps manual additions when an in-flight radio request completes.
-    func replaceWithRadio(_ songs: [SongItem], currentIndex: Int) {
-        let pending: [SongItem]
-        if let end = playNextEnd, end > queueIndex, queueSongs.indices.contains(end) {
-            pending = Array(queueSongs[(queueIndex + 1)...end])
-        } else {
-            pending = []
-        }
-        setQueue(songs, startIndex: currentIndex)
+    /// Songs added with Play Next that have not played yet.
+    private var pendingPlayNext: [SongItem] {
+        guard let end = playNextEnd, end > queueIndex, queueSongs.indices.contains(end) else { return [] }
+        return Array(queueSongs[(queueIndex + 1)...end])
+    }
+
+    /// Puts pending Play Next songs back right after the current song.
+    private func reinsertPlayNext(_ pending: [SongItem]) {
         queueSongs.insert(contentsOf: pending, at: min(queueIndex + 1, queueSongs.count))
         playNextEnd = pending.isEmpty ? nil : queueIndex + pending.count
+    }
+
+    /// Keeps manual additions when an in-flight radio request completes.
+    func replaceWithRadio(_ songs: [SongItem], currentIndex: Int) {
+        let pending = pendingPlayNext
+        setQueue(songs, startIndex: currentIndex)
+        reinsertPlayNext(pending)
         persistQueueState()
+    }
+
+    /// Moves to a queue entry the user picked. Jumping back, or past the
+    /// Play Next songs, ends the Play Next block.
+    func moveQueueIndex(to index: Int) {
+        if index < queueIndex || index >= (playNextEnd ?? index) {
+            playNextEnd = nil
+        }
+        queueIndex = index
     }
 
     func removeQueueSong(at index: Int) {
@@ -211,6 +223,7 @@ final class NowPlaying {
 
     /// Restore the original (unshuffled) queue order.
     func disableShuffle() {
+        let pending = pendingPlayNext
         playNextEnd = nil
         guard queueSongs.indices.contains(queueIndex) else { return }
         if let orig = originalQueue {
@@ -220,6 +233,7 @@ final class NowPlaying {
             // (radio appends, deletes and reorders change lengths).
             let restored = orig.firstIndex(where: { $0.videoId == currentVideoId }) ?? queueIndex
             queueIndex = min(restored, max(orig.count - 1, 0))
+            reinsertPlayNext(pending)
         }
         originalQueue = nil
         isShuffleOn = false
@@ -297,13 +311,10 @@ final class NowPlaying {
         self.currentTime = 0
         self.duration = 0
         self.videoId = videoId
-        self.hasVideo = false
-        self.isVideoMode = false
-        self.isVideoReady = false
+        self.musicVideoType = nil
         startTimer()
         loadThumbnail(videoId: videoId, thumbnailUrl: thumbnailUrl)
         preloadNextTrack()
-        CanvasPrefetch.request(videoId: videoId, title: title, artist: self.artist, album: album)
     }
 
     /// Convenience pushing a `SongItem`'s metadata into the player state.
@@ -316,20 +327,6 @@ final class NowPlaying {
             artists: song.artists,
             thumbnailUrl: song.thumbnailUrl
         )
-    }
-
-    /// Records video availability: the watchable-video verdict comes from
-    /// the shared availability check (row type preferred, authoritative
-    /// lookup as fallback); this only stores it alongside the type and
-    /// pre-warms when there is one to show.
-    func updateVideoAvailability(musicVideoType: String? = nil, hasVideo: Bool = false) {
-        if let musicVideoType {
-            self.musicVideoType = musicVideoType
-        }
-        self.hasVideo = hasVideo
-        if hasVideo {
-            PlayerController.shared.preloadVideoURL()
-        }
     }
 
     /// Pre-warms artwork for the previous and upcoming songs so swiping the
@@ -381,6 +378,7 @@ final class NowPlaying {
             isPlaying = false
             stopTimer()
             PlayerController.shared.updateNowPlayingProgress()
+            Task { await PlaybackStateService.shared.stopTracking() }
         }
     }
 
@@ -415,7 +413,6 @@ final class NowPlaying {
             isPlaying = false
             return
         }
-        PlayerController.shared.handleVideoStreamFailure()
         if let last = lastFailureAt[videoId], Date().timeIntervalSince(last) < 30 {
             isPlaying = false
             return
@@ -459,14 +456,14 @@ final class NowPlaying {
         Task {
             // For downloaded songs, try to extract embedded artwork from the local file first.
             if let localURL = await DownloadManager.shared.localURL(for: videoId) {
-                loadArtworkFromLocalFile(localURL, videoId: videoId)
+                loadArtworkFromLocalFile(localURL, videoId: videoId, thumbnailUrl: thumb)
                 return
             }
             loadThumbnailFromCDN(videoId: videoId, thumbnailUrl: thumb)
         }
     }
 
-    private func loadArtworkFromLocalFile(_ fileURL: URL, videoId: String) {
+    private func loadArtworkFromLocalFile(_ fileURL: URL, videoId: String, thumbnailUrl: String?) {
         Task {
             let asset = AVURLAsset(url: fileURL)
             let metadata = try? await asset.load(.metadata)
@@ -483,11 +480,13 @@ final class NowPlaying {
 
             await MainActor.run {
                 guard lastLoadedVideoId == videoId else { return }
+                // Older downloads embedded a small row thumbnail; prefer the
+                // CDN cover unless the embedded one is player-sized.
                 if let artworkImage {
                     publishArtwork(artworkImage)
-                } else {
-                    loadThumbnailFromCDN(videoId: videoId)
+                    if min(artworkImage.size.width, artworkImage.size.height) * artworkImage.scale >= 600 { return }
                 }
+                loadThumbnailFromCDN(videoId: videoId, thumbnailUrl: thumbnailUrl)
             }
         }
     }
@@ -597,8 +596,7 @@ final class NowPlaying {
 
     @MainActor
     private func timerTick() {
-        currentTime = PlayerController.shared.currentTime
-        duration = PlayerController.shared.duration
+        // Also writes currentTime and duration.
         PlayerController.shared.updateNowPlayingProgress()
         if let videoId, duration >= 600 || musicVideoType == "MUSIC_VIDEO_TYPE_PODCAST_EPISODE" {
             let vid = videoId

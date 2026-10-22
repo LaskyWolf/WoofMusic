@@ -66,8 +66,10 @@ actor PersonalizationService {
     private func enrichLikedSongs(songs: [SongEntity]) async {
         for entity in songs where entity.title.isEmpty {
             guard let metadata = try? await fetchSongMetadata(videoId: entity.id),
-                  !metadata.title.isEmpty else { continue }
-            let enriched = SongEntity(sync: SyncSong.merging(entity.toSync(), with: metadata))
+                  !metadata.title.isEmpty,
+                  // Re-read: likes or play time saved during the fetch must survive.
+                  let fresh = try? await db.fetchOne(SongEntity.self, key: entity.id) else { continue }
+            let enriched = SongEntity(sync: SyncSong.merging(fresh.toSync(), with: metadata))
             try? await db.save(enriched)
         }
     }
@@ -93,8 +95,10 @@ actor PersonalizationService {
         var didEnrich = false
         for entity in toEnrich {
             guard let metadata = try? await fetchSongMetadata(videoId: entity.id),
-                  !metadata.title.isEmpty else { continue }
-            let enriched = SongEntity(sync: SyncSong.merging(entity.toSync(), with: metadata))
+                  !metadata.title.isEmpty,
+                  // Re-read: likes or play time saved during the fetch must survive.
+                  let fresh = try? await db.fetchOne(SongEntity.self, key: entity.id) else { continue }
+            let enriched = SongEntity(sync: SyncSong.merging(fresh.toSync(), with: metadata))
             try? await db.save(enriched)
             didEnrich = true
         }
@@ -341,8 +345,17 @@ actor PersonalizationService {
         let duration = DurationFormat.parseRendererDuration(renderer)
         return SongItem(
             videoId: vid, title: title, artists: artists, duration: duration,
-            thumbnailUrl: thumbnail, isExplicit: false, musicVideoType: VideoAvailability.rowMusicVideoType(renderer)
+            thumbnailUrl: thumbnail, isExplicit: Self.hasExplicitBadge(renderer),
+            musicVideoType: VideoAvailability.rowMusicVideoType(renderer)
         )
+    }
+
+    private static func hasExplicitBadge(_ renderer: [String: Any]) -> Bool {
+        let badges = renderer["badges"] as? [[String: Any]] ?? []
+        return badges.contains { badge in
+            let icon = (badge["musicInlineBadgeRenderer"] as? [String: Any])?["icon"] as? [String: Any]
+            return icon?["iconType"] as? String == "MUSIC_EXPLICIT_BADGE"
+        }
     }
 
     private func parseArtists(from bylineRuns: [[String: Any]]) -> [YTArtist] {

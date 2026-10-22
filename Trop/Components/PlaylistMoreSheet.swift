@@ -5,11 +5,14 @@
 //  Created by 686udjie on 28/08/2026.
 //
 
+import PhotosUI
 import SwiftUI
 
 struct PlaylistMoreSheet: View {
     let playlist: PlaylistDetailInfo
     var onSync: (() -> Void)?
+    /// Only playlists you own on YouTube Music can get a custom cover.
+    var canChangeCover = false
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.settingsStore) private var settings
@@ -17,6 +20,9 @@ struct PlaylistMoreSheet: View {
     @State private var showEditAlert = false
     @State private var editedName = ""
     @State private var showRemoveDownloads = false
+    @State private var coverItem: PhotosPickerItem?
+    @State private var isUploadingCover = false
+    @State private var coverError: String?
 
     var body: some View {
         NavigationStack {
@@ -31,6 +37,23 @@ struct PlaylistMoreSheet: View {
 
                 Section {
                     shortcutRow
+                }
+
+                if canChangeCover {
+                    Section {
+                        PhotosPicker(selection: $coverItem, matching: .images) {
+                            HStack {
+                                actionLabel("Change Cover…", icon: "photo")
+                                if isUploadingCover {
+                                    Spacer()
+                                    ProgressView()
+                                }
+                            }
+                        }
+                        .disabled(isUploadingCover)
+                    } footer: {
+                        Text("The cover is saved to your YouTube Music playlist.")
+                    }
                 }
 
                 Section("Queue") {
@@ -84,6 +107,18 @@ struct PlaylistMoreSheet: View {
             deleteAllDownloads()
             dismiss()
         }
+        .onChange(of: coverItem) { _, item in
+            guard let item else { return }
+            uploadCover(item)
+        }
+        .alert("Couldn't Change Cover", isPresented: .init(
+            get: { coverError != nil },
+            set: { if !$0 { coverError = nil } }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(coverError ?? "")
+        }
         .textPrompt(
             "Rename Playlist",
             isPresented: $showEditAlert,
@@ -133,6 +168,27 @@ struct PlaylistMoreSheet: View {
                 playlistId: playlist.playlistId,
                 newName: name
             )
+        }
+    }
+
+    private func uploadCover(_ item: PhotosPickerItem) {
+        isUploadingCover = true
+        Task {
+            defer {
+                isUploadingCover = false
+                coverItem = nil
+            }
+            do {
+                guard let data = try await item.loadTransferable(type: Data.self),
+                      let image = UIImage(data: data) else {
+                    throw PlaylistCoverUploader.UploadError.unreadableImage
+                }
+                try await PlaylistCoverUploader.setCover(image, playlistId: playlist.playlistId)
+                onSync?()
+                dismiss()
+            } catch {
+                coverError = error.localizedDescription
+            }
         }
     }
 

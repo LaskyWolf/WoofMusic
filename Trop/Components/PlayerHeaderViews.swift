@@ -14,23 +14,22 @@ struct PlayerTitleBlock: View {
     var artist: String
     var spacing: CGFloat = 2
     var titleFont: Font = .body.weight(.semibold)
-    var titleHeight: CGFloat = 24
     var onArtistTap: (() -> Void)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: spacing) {
-            MarqueeText(
-                text: title,
-                font: titleFont,
-                frameHeight: titleHeight
-            )
-            .allowsHitTesting(false)
+            // Short title instead of a scrolling one; lists show the full title.
+            Text(SongTitle.display(title))
+                .font(titleFont)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+                .accessibilityLabel(title)
+                .allowsHitTesting(false)
 
             if !artist.isEmpty {
                 if let onArtistTap {
                     Button(action: onArtistTap) {
                         artistLabel
-                            .frame(minHeight: 44, alignment: .topLeading)
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
@@ -72,17 +71,14 @@ struct PlayerLikeButton: View {
 }
 
 /// White ⋮ button for player surfaces. The options sheet stays owned by the caller.
-struct PlayerOptionsButton: View {
-    var color: Color = .white
-    let action: () -> Void
-
+/// Label for the full player's "⋯" song menu.
+struct PlayerOptionsGlyph: View {
     var body: some View {
-        Button(action: action) {
-            Text("⋮")
-                .font(.system(size: 20, weight: .black))
-                .foregroundStyle(color)
-                .frame(width: 36, height: 36)
-        }
-        .accessibilityLabel("Song options")
+        Image(systemName: "ellipsis")
+            .font(.system(size: 18, weight: .bold))
+            .foregroundStyle(.white)
+            .frame(width: 44, height: 44)
+            .contentShape(Rectangle())
+            .accessibilityLabel("Song options")
     }
 }

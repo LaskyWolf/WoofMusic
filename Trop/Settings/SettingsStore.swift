@@ -240,10 +240,6 @@ final class SettingsStore {
         didSet { Self.defaults.set(lastRadioAllowExplicit, forKey: Keys.lastRadioAllowExplicit) }
     }
 
-    var playerVolume: Double {
-        didSet { Self.defaults.set(playerVolume, forKey: Keys.playerVolume) }
-    }
-
     var artworkSwipeNavigation: Bool {
         didSet { Self.defaults.set(artworkSwipeNavigation, forKey: Keys.artworkSwipeNavigation) }
     }
@@ -325,16 +321,6 @@ final class SettingsStore {
         didSet { Self.defaults.set(syncSongs, forKey: Keys.syncSongs) }
     }
 
-    // MARK: - Spotify Canvas
-
-    var canvasEnabled: Bool {
-        didSet { Self.defaults.set(canvasEnabled, forKey: Keys.canvasEnabled) }
-    }
-
-    var canvasOverCellular: Bool {
-        didSet { Self.defaults.set(canvasOverCellular, forKey: Keys.canvasOverCellular) }
-    }
-
     // MARK: - Keys
 
     private enum Keys {
@@ -358,7 +344,6 @@ final class SettingsStore {
         static let lastRadioStyle = "settings.lastRadioStyle"
         static let lastRadioLimit = "settings.lastRadioLimit"
         static let lastRadioAllowExplicit = "settings.lastRadioAllowExplicit"
-        static let playerVolume = "settings.playerVolume"
         static let artworkSwipeNavigation = "settings.artworkSwipeNavigation"
         static let hideExplicit = "settings.hideExplicit"
         static let showQuickPicks = "settings.showQuickPicks"
@@ -376,8 +361,6 @@ final class SettingsStore {
         static let syncAlbums = "settings.syncAlbums"
         static let syncPodcasts = "settings.syncPodcasts"
         static let syncSongs = "settings.syncSongs"
-        static let canvasEnabled = "settings.canvasEnabled"
-        static let canvasOverCellular = "settings.canvasOverCellular"
     }
 
     private static let defaults: UserDefaults = .standard
@@ -402,9 +385,7 @@ final class SettingsStore {
             .color ?? AccentPreset.all[0].color
         accentName = d.string(forKey: Keys.accentName) ?? AccentPreset.all[0].name
         playerBackgroundStyle = Self.loadEnum(Keys.playerBackgroundStyle, default: .dynamic)
-        // Migrated when Explore took index 2 (was Search): stored 2 → 3.
-        let storedTab = Self.load(Keys.defaultTab, default: 0)
-        defaultTab = storedTab == 2 ? 3 : storedTab
+        defaultTab = Self.load(Keys.defaultTab, default: 0)
         lyricsFontSize = Self.load(Keys.lyricsFontSize, default: 17)
         lyricsAlignment = Self.loadEnum(Keys.lyricsAlignment, default: .center)
         lyricsOffsetSeconds = Self.load(Keys.lyricsOffsetSeconds, default: 0)
@@ -425,7 +406,6 @@ final class SettingsStore {
         lastRadioStyle = Self.loadEnum(Keys.lastRadioStyle, default: .similar)
         lastRadioLimit = Self.load(Keys.lastRadioLimit, default: 25)
         lastRadioAllowExplicit = Self.load(Keys.lastRadioAllowExplicit, default: true)
-        playerVolume = Self.load(Keys.playerVolume, default: 1)
         artworkSwipeNavigation = Self.load(Keys.artworkSwipeNavigation, default: true)
         hideExplicit = Self.load(Keys.hideExplicit, default: false)
         showQuickPicks = Self.load(Keys.showQuickPicks, default: true)
@@ -443,8 +423,6 @@ final class SettingsStore {
         syncAlbums = Self.load(Keys.syncAlbums, default: true)
         syncPodcasts = Self.load(Keys.syncPodcasts, default: true)
         syncSongs = Self.load(Keys.syncSongs, default: true)
-        canvasEnabled = Self.load(Keys.canvasEnabled, default: false)
-        canvasOverCellular = Self.load(Keys.canvasOverCellular, default: false)
     }
 }
 

@@ -70,6 +70,10 @@ defer {
     defaults.removeObject(forKey: LastFMDefaults.usernameKey)
 }
 defaults.set("legacy-secret", forKey: LastFMDefaults.sessionKeyKey)
+SecureStore.failSave = true
+_ = LastFMTokenStore()
+assert(defaults.string(forKey: LastFMDefaults.sessionKeyKey) == "legacy-secret")
+SecureStore.failSave = false
 let migrated = LastFMTokenStore()
 assert(migrated.retrieveSessionKey() == "legacy-secret")
 assert(defaults.object(forKey: LastFMDefaults.sessionKeyKey) == nil)
@@ -91,7 +95,7 @@ migrated.clear()
 assert(migrated.retrieveSessionKey() == nil)
 assert(SecureStore.values.isEmpty)
 assert(defaults.object(forKey: LastFMDefaults.sessionKeyKey) == nil)
-print("PASS: legacy migration, Keychain-only storage, write failure, logout")
+print("PASS: legacy migration, failed migration keeps old copy, Keychain-only storage, write failure, logout")
 '''
 with tempfile.TemporaryDirectory() as directory:
     path = Path(directory) / "main.swift"

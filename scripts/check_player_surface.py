@@ -35,6 +35,8 @@ import UIKit
             (CGPoint(x: 15, y: 200), false),
             (CGPoint(x: -15, y: -200), false),
             (CGPoint(x: 100, y: 100), false),
+            (CGPoint(x: 180, y: 100), false),
+            (CGPoint(x: 210, y: 100), true),
             (.zero, false),
             (CGPoint(x: 200, y: 15), true),
             (CGPoint(x: -200, y: 15), true),

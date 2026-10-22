@@ -32,6 +32,14 @@ struct ContentSettingsView: View {
             }
 
             Section {
+                SettingsNavigationRow("Lyrics Providers", icon: "text.quote") {
+                    LyricsSettingsView()
+                }
+            } header: {
+                Text("Lyrics")
+            }
+
+            Section {
                 Picker("Country", selection: $settings.contentCountry) {
                     ForEach(Self.countries, id: \.self) { code in
                         Text(countryName(for: code)).tag(code)

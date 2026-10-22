@@ -15,6 +15,7 @@ struct ProgressBar: View {
     let isPlaying: Bool
     let onEditingChanged: (Bool) -> Void
     @GestureState private var isScrubbing = false
+    @State private var didStartEditing = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
@@ -37,24 +38,36 @@ struct ProgressBar: View {
                     .frame(width: elapsedWidth, height: trackHeight)
             }
             .padding(.horizontal, trackInset)
+            .animation(.easeInOut(duration: reduceMotion ? 0.12 : (isScrubbing ? 0.4 : 0.3)), value: isScrubbing)
             .frame(maxHeight: .infinity)
             .contentShape(Rectangle())
             .gesture(
                 DragGesture(minimumDistance: 0)
                     .updating($isScrubbing) { _, active, _ in active = true }
                     .onChanged { value in
-                        onEditingChanged(true)
-                        let loc = value.location.x
-                        let percent = width > 0 ? max(0, min(1, loc / width)) : 0
+                        // Tell the parent once per drag, then just move the bar.
+                        if !didStartEditing {
+                            didStartEditing = true
+                            onEditingChanged(true)
+                        }
+                        let percent = width > 0 ? max(0, min(1, value.location.x / width)) : 0
                         progress = Float(percent)
                     }
                     .onEnded { _ in
+                        didStartEditing = false
                         onEditingChanged(false)
                     }
             )
+            .onChange(of: isScrubbing) { _, scrubbing in
+                // A cancelled drag (e.g. the sheet takes over the touch) never
+                // calls onEnded; finish the edit here so the bar doesn't freeze.
+                if !scrubbing, didStartEditing {
+                    didStartEditing = false
+                    onEditingChanged(false)
+                }
+            }
         }
         .frame(height: 32)
-        .animation(.easeInOut(duration: reduceMotion ? 0.12 : (isScrubbing ? 0.4 : 0.3)), value: isScrubbing)
     }
 }
 
@@ -70,6 +83,9 @@ struct PlayerPlayPauseButton: View {
                 .foregroundStyle(.white)
                 .contentTransition(.symbolEffect(.replace))
         }
+        // Scoped here: on the whole row it also bent the skip glyph
+        // animation whenever play state changed mid-skip.
+        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isPlaying)
         .frame(width: 80, height: 80)
         .accessibilityLabel(isPlaying ? "Pause" : "Play")
     }
@@ -126,43 +142,11 @@ private struct PlayerSkipButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .scaleEffect(reduceMotion || !configuration.isPressed ? 1 : 0.9)
             .frame(width: 68, height: 68)
             .background(.white.opacity(configuration.isPressed ? 0.12 : 0), in: Circle())
             .contentShape(Circle())
             .scaleEffect(reduceMotion || !configuration.isPressed ? 1 : 0.85)
             .animation(reduceMotion ? .easeOut(duration: 0.12) : .spring(response: 0.3, dampingFraction: 0.7), value: configuration.isPressed)
-    }
-}
-
-struct PlayerTransportAirPlayFooter: View {
-    let isPlaying: Bool
-    let hasPrevious: Bool
-    let hasNext: Bool
-    let onPrevious: () -> Void
-    let onPlayPause: () -> Void
-    let onNext: () -> Void
-
-    var body: some View {
-        VStack(spacing: 0) {
-            PlaybackControlsRow(
-                isPlaying: isPlaying,
-                hasPrevious: hasPrevious,
-                hasNext: hasNext,
-                onPrevious: onPrevious,
-                onPlayPause: onPlayPause,
-                onNext: onNext
-            )
-            .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isPlaying)
-
-            HStack {
-                Spacer()
-                PlayerAirPlayControl()
-                Spacer()
-            }
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.bottom, 16)
     }
 }
 

@@ -25,11 +25,12 @@ final class LastFMTokenStore: @unchecked Sendable {
             cachedSessionKey = legacy
             do {
                 try saveString(legacy, for: sessionKeyAccount)
+                // Delete the plain copy only once the Keychain holds it.
+                UserDefaults.standard.removeObject(forKey: LastFMDefaults.sessionKeyKey)
             } catch {
-                Log.lastfm.error("Could not migrate Last.fm session to Keychain; reconnect after restarting")
+                Log.lastfm.error("Could not migrate Last.fm session to Keychain; will retry on next launch")
             }
         }
-        UserDefaults.standard.removeObject(forKey: LastFMDefaults.sessionKeyKey)
     }
 
     // Credentials are read only from memory or Keychain.

@@ -34,9 +34,6 @@ actor PlaybackManager {
                 artists: artists,
                 thumbnailUrl: song?.thumbnailUrl
             )
-            await MainActor.run {
-                NowPlaying.shared.updateVideoAvailability()
-            }
             return PlaybackResult(
                 streamUrl: localPath.absoluteString,
                 itag: 0,
@@ -68,7 +65,7 @@ actor PlaybackManager {
                 loudnessDb: cached.loudnessDb,
                 thumbnailUrl: queueSong?.thumbnailUrl
             )
-            await publishVideoAvailability(result: cached, videoId: videoId, rowType: queueSong?.musicVideoType)
+            await publishMusicVideoType(cached.musicVideoType ?? queueSong?.musicVideoType)
             return cached
         }
 
@@ -110,7 +107,7 @@ actor PlaybackManager {
             loudnessDb: result.loudnessDb,
             thumbnailUrl: queueSong?.thumbnailUrl
         )
-        await publishVideoAvailability(result: result, videoId: videoId, rowType: queueSong?.musicVideoType)
+        await publishMusicVideoType(result.musicVideoType ?? queueSong?.musicVideoType)
     }
 
     private func clearInflight(key: String) {
@@ -126,62 +123,8 @@ actor PlaybackManager {
         }
     }
 
-    /// Publishes video availability for a resolve result. The row type wins
-    /// (resolve responses often omit it); unknown rows fall back to an
-    /// authoritative lookup inside the shared availability check.
-    private func publishVideoAvailability(result: PlaybackResult, videoId: String, rowType: String?) async {
-        let type = result.musicVideoType ?? rowType
-        let hasVideo = await VideoAvailability.shared.hasVideo(
-            videoId: videoId, rowType: rowType, result: result, using: InnerTubeClient.tropShared
-        )
-        await MainActor.run {
-            NowPlaying.shared.updateVideoAvailability(musicVideoType: type, hasVideo: hasVideo)
-        }
-    }
-
-    /// Resolves a playable video stream URL for video mode. Prefers a muxed
-    /// (audio+video) stream; when the video offers none, falls back to an EDL
-    /// that combines a DASH video-only stream with a separate audio stream.
-    func resolveVideoStream(videoId: String) async throws -> String {
-        var request = StreamResolveRequest(videoId: videoId)
-        request.options.audioQuality = SettingsStore.shared.audioQuality
-        switch try await StreamFallback.resolveVideo(
-            request,
-            using: InnerTubeClient.tropShared,
-            providers: .tropLive
-        ) {
-        case .muxed(let url):
-            return url
-        case .split(let videoURL, let audioURL, let duration):
-            return StreamFallback.combineVideoAndAudio(
-                videoURL: videoURL,
-                audioURL: audioURL,
-                duration: duration
-            )
-        }
-    }
-
-    /// Returns the muxed/video stream URL for video mode, preferring the cached one.
-    func resolveMuxedURL(videoId: String) async throws -> String {
-        if let cached = await StreamCache.shared.get(videoId: videoId),
-           let muxed = cached.muxedStreamUrl {
-            return muxed
-        }
-        return try await resolveVideoStream(videoId: videoId)
-    }
-
-    func resolveVideoOnlyURL(videoId: String) async throws -> String {
-        let request = StreamResolveRequest(videoId: videoId)
-        switch try await StreamFallback.resolveVideo(
-            request,
-            using: InnerTubeClient.tropShared,
-            providers: .tropLive
-        ) {
-        case .muxed(let url):
-            return url
-        case .split(let videoURL, _, _):
-            return videoURL
-        }
+    private func publishMusicVideoType(_ type: String?) async {
+        await MainActor.run { NowPlaying.shared.musicVideoType = type }
     }
 
     /// Stable per-launch session id for PoToken minting.

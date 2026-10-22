@@ -32,7 +32,9 @@ struct PlayerTrackSwipeGesture: UIGestureRecognizerRepresentable {
         func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
             guard let pan = gestureRecognizer as? UIPanGestureRecognizer else { return false }
             let velocity = pan.velocity(in: pan.view)
-            return abs(velocity.x) > abs(velocity.y)
+            // Only a clearly sideways swipe changes track; anything steeper
+            // than ~27° is left to the pull-down dismiss.
+            return abs(velocity.x) > 2 * abs(velocity.y)
         }
     }
 }

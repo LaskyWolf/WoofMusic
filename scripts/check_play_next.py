@@ -63,12 +63,20 @@ assert(q.queueIndex == 0)
 q.queueIndex = 2
 q.enqueueNext(SongItem("after-consumed"))
 expect(["new", "new", "new", "after-consumed", "normal"])
+q.setQueue([SongItem("a"), SongItem("b"), SongItem("c"), SongItem("d")], startIndex: 3)
+q.enqueueNext(SongItem("x"))
+q.moveQueueIndex(to: 0)
+q.enqueueNext(SongItem("y"))
+expect(["a", "y", "b", "c", "d", "x"])
+q.moveQueueIndex(to: 1)
+q.enqueueNext(SongItem("z"))
+expect(["a", "y", "z", "b", "c", "d", "x"])
 q.setQueue([], startIndex: 0)
 assert(QueueCheck().queueSongs.isEmpty)
 q.enqueueNext(SongItem("empty-first"))
 q.enqueueNext(SongItem("empty-second"))
 expect(["empty-first", "empty-second"])
-print("PASS: FIFO, advancement, removal, persistence, radio completion, reset, duplicates and empty queue")
+print("PASS: FIFO, advancement, removal, persistence, radio completion, jumps, reset, duplicates and empty queue")
 '''
 with tempfile.TemporaryDirectory() as directory:
     path = Path(directory) / "main.swift"

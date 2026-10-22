@@ -26,7 +26,6 @@ struct FullPlayerView: View {
     @State private var showLyrics = false
     @State private var showQueue = false
     @State private var pendingRoute: DetailRoute?
-    @State private var showSongMenu = false
     @State private var isOpeningArtist = false
     @State private var artistUnavailable = false
     @State private var artworkEntryOffset: CGFloat = 0
@@ -35,11 +34,7 @@ struct FullPlayerView: View {
     @State private var lastTitleQueueIndex = NowPlaying.shared.queueIndex
     private let titleLineHeight: CGFloat = 30
     @State private var currentLyrics: [LyricLine] = []
-    @State private var canvasDominantColors: [Color]?
-
-    private var playerBackgroundColors: [Color] {
-        canvasDominantColors ?? np.dominantColors
-    }
+    private var playerBackgroundColors: [Color] { np.dominantColors }
 
     private var activeLyricText: String? {
         let synchronizedLines = currentLyrics.filter {
@@ -58,10 +53,7 @@ struct FullPlayerView: View {
     var body: some View {
         GeometryReader { geometry in
             ZStack {
-                if np.isVideoMode && np.hasVideo {
-                    Color.black
-                        .ignoresSafeArea()
-                } else if settings.playerBackgroundStyle == .solid {
+                if settings.playerBackgroundStyle == .solid {
                     Color.black
                         .ignoresSafeArea()
                 } else {
@@ -85,79 +77,74 @@ struct FullPlayerView: View {
                         .ignoresSafeArea()
                 }
 
-                if !np.isVideoMode {
-                    artwork
-                        .frame(maxWidth: .infinity)
-                        .frame(height: (geometry.size.height + artworkTopInset) * 0.58)
-                        .compositingGroup()
-                        .clipped()
-                        .mask {
-                            LinearGradient(
-                                stops: [
-                                    .init(color: .white, location: 0),
-                                    .init(color: .white, location: 0.62),
-                                    .init(color: .clear, location: 1)
-                                ],
-                                startPoint: .top,
-                                endPoint: .bottom
-                            )
-                        }
-                        .offset(y: -artworkTopInset)
-                        .frame(maxHeight: .infinity, alignment: .top)
-                }
+                artwork
+                    .frame(maxWidth: .infinity)
+                    .frame(height: (geometry.size.height + artworkTopInset) * 0.58)
+                    .compositingGroup()
+                    .clipped()
+                    .mask {
+                        LinearGradient(
+                            stops: [
+                                .init(color: .white, location: 0),
+                                .init(color: .white, location: 0.62),
+                                .init(color: .clear, location: 1)
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    }
+                    .offset(y: -artworkTopInset)
+                    .frame(maxHeight: .infinity, alignment: .top)
 
                 VStack(spacing: 0) {
                     playerHandle
 
-                    if np.isVideoMode && np.hasVideo {
-                        musicVideoContent
-                    } else {
-                        VStack(spacing: 0) {
-                            Spacer(minLength: 0)
+                    VStack(spacing: 0) {
+                        Spacer(minLength: 0)
 
-                            titleAndActionsRow
-                                .padding(.horizontal, 32)
-                                .padding(.top, 20)
-                                .padding(.bottom, 16)
-
-                            lyricPreview
-                        }
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .contentShape(Rectangle())
-                        .gesture(playerSwipe())
-                        .overlay {
-                            playerPanel
-                                .padding(.horizontal, 20)
-                                .padding(.bottom, 12)
-                        }
-
-                        progressSlider
-                            .padding(.top, 4)
+                        titleAndActionsRow
+                            .padding(.horizontal, 32)
+                            .padding(.top, 20)
                             .padding(.bottom, 16)
 
-                        Color.clear.frame(height: 8)
-
-                        PlaybackControlsRow(
-                            isPlaying: np.isPlaying,
-                            hasPrevious: np.hasPrevious,
-                            hasNext: np.hasNext,
-                            onPrevious: { np.playPrevious() },
-                            onPlayPause: { player.togglePlayPause() },
-                            onNext: { np.playNext() }
-                        )
-                        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: np.isPlaying)
-                        .padding(.bottom, 8)
-
-                        Color.clear.frame(height: 12)
-
-                        SecondaryActionsRow(
-                            showQueue: $showQueue,
-                            isRepeatOn: $np.isRepeatOn,
-                            showLyrics: $showLyrics
-                        )
-
-                        Color.clear.frame(height: 8)
+                        lyricPreview
                     }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .contentShape(Rectangle())
+                    .gesture(playerSwipe())
+                    .overlay {
+                        playerPanel
+                            .padding(.horizontal, 20)
+                            .padding(.bottom, 12)
+                    }
+
+                    progressSlider
+                        .padding(.top, 4)
+                        .padding(.bottom, 16)
+
+                    Color.clear.frame(height: 8)
+
+                    PlaybackControlsRow(
+                        isPlaying: np.isPlaying,
+                        hasPrevious: np.hasPrevious,
+                        hasNext: np.hasNext,
+                        onPrevious: { np.playPrevious() },
+                        onPlayPause: { player.togglePlayPause() },
+                        onNext: { np.playNext() }
+                    )
+                    .padding(.bottom, 8)
+
+                    PlayerVolumeSlider()
+
+                    Color.clear.frame(height: 4)
+
+                    SecondaryActionsRow(
+                        showQueue: $showQueue,
+                        isRepeatOn: $np.isRepeatOn,
+                        showLyrics: $showLyrics
+                    )
+
+                    Color.clear.frame(height: 8)
                 }
             }
             .animation(.easeInOut(duration: reduceMotion ? 0.15 : 0.25), value: showQueue)
@@ -168,7 +155,6 @@ struct FullPlayerView: View {
                     titleChangeTrigger &+= 1
                 }
                 lastTitleQueueIndex = np.queueIndex
-                np.isVideoMode = false
                 showLyrics = false
                 preloadLyrics()
             }
@@ -194,11 +180,6 @@ struct FullPlayerView: View {
                 Button("OK", role: .cancel) {}
             } message: {
                 Text("The artist page could not be found. Try again when connected.")
-            }
-            .sheet(isPresented: $showSongMenu) {
-                if let song = np.queueSongs.indices.contains(np.queueIndex) ? np.queueSongs[np.queueIndex] : nil {
-                    PlayerMenuSheet(song: song, onCollapseRequest: { onCollapse() }, showsQueueActions: false)
-                }
             }
             .interactiveDismissDisabled(showQueue || showLyrics)
             .background(
@@ -241,16 +222,12 @@ struct FullPlayerView: View {
                     QueueView(
                         showQueue: $showQueue,
                         isShuffleOn: $np.isShuffleOn,
-                        isRepeatOn: $np.isRepeatOn,
-                        editingProgress: $editingProgress,
-                        isEditingSlider: $isEditingSlider,
-                        pendingRoute: $pendingRoute,
-                        progressSlider: { progressSlider },
-                        isOverlay: true
+                        isRepeatOn: $np.isRepeatOn
                     )
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .clipShape(RoundedRectangle(cornerRadius: 24))
             .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 24))
             .environment(\.colorScheme, .dark)
             .transition(reduceMotion ? .opacity : .scale(scale: 0.95).combined(with: .opacity))
@@ -328,9 +305,8 @@ struct FullPlayerView: View {
             PlayerTitleBlock(
                 title: np.title,
                 artist: np.displayArtist,
-                spacing: 4,
+                spacing: 1,
                 titleFont: .title2.weight(.bold),
-                titleHeight: titleLineHeight,
                 onArtistTap: { openCurrentArtist() }
             )
             .disabled(isOpeningArtist)
@@ -350,8 +326,12 @@ struct FullPlayerView: View {
                 }
 
                 if np.queueSongs.indices.contains(np.queueIndex) {
-                    PlayerOptionsButton {
-                        showSongMenu = true
+                    SongActionsMenu(
+                        song: np.queueSongs[np.queueIndex],
+                        showsQueueActions: false,
+                        onCollapseRequest: { onCollapse() }
+                    ) {
+                        PlayerOptionsGlyph()
                     }
                 }
             }
@@ -393,93 +373,9 @@ struct FullPlayerView: View {
         }
     }
 
-    private var musicVideoContent: some View {
-        VStack(spacing: 0) {
-            HStack {
-                Button {
-                    withAnimation(.easeInOut(duration: 0.3)) {
-                        np.isVideoMode = false
-                        showQueue = false
-                    }
-                } label: {
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 18, weight: .medium))
-                        .foregroundStyle(.white)
-                        .frame(width: 44, height: 44)
-                        .background(.black.opacity(0.48), in: Circle())
-                }
-                .accessibilityLabel("Return to artwork player")
-
-                Spacer()
-            }
-            .padding(.horizontal, 20)
-            .padding(.bottom, 8)
-
-            musicVideoStage
-
-            QueueView(
-                showQueue: $showQueue,
-                isShuffleOn: $np.isShuffleOn,
-                isRepeatOn: $np.isRepeatOn,
-                editingProgress: $editingProgress,
-                isEditingSlider: $isEditingSlider,
-                pendingRoute: $pendingRoute,
-                progressSlider: { progressSlider },
-                isVideoMode: true
-            )
-            .frame(maxHeight: .infinity)
-        }
-    }
-
-    private var musicVideoStage: some View {
-        artwork
-            .gesture(playerSwipe())
-            .aspectRatio(16 / 9, contentMode: .fit)
-            .frame(maxWidth: .infinity)
-            .clipped()
-    }
-
-    @ViewBuilder
     private var artwork: some View {
-        Group {
-            if np.isVideoMode, np.hasVideo {
-                ZStack {
-                    VideoPlayerView()
-                        .mask {
-                            LinearGradient(
-                                stops: [
-                                    .init(color: .clear, location: 0),
-                                    .init(color: .white, location: 0.12),
-                                    .init(color: .white, location: 0.95),
-                                    .init(color: .clear, location: 1)
-                                ],
-                                startPoint: .top,
-                                endPoint: .bottom
-                            )
-                        }
-                    if !np.isVideoReady {
-                        artworkImage
-                            .transition(.opacity)
-                    }
-                }
-                .aspectRatio(16 / 9, contentMode: .fit)
-                .animation(.easeOut(duration: 0.2), value: np.isVideoReady)
-            } else {
-                ZStack {
-                    artworkImage
-                    CanvasVideoView(
-                        videoId: np.videoId,
-                        title: np.title,
-                        artist: np.artist,
-                        album: np.albumTitle.isEmpty ? nil : np.albumTitle,
-                        isPlaying: np.isPlaying,
-                        enabled: settings.canvasEnabled,
-                        onDominantColorsChange: { canvasDominantColors = $0 }
-                    )
-                }
-            }
-        }
-        .offset(x: artworkEntryOffset)
+        artworkImage
+            .offset(x: artworkEntryOffset)
     }
 
     /// Song artwork (or placeholder), filling its container.
@@ -514,13 +410,8 @@ struct FullPlayerView: View {
                 accentColor: np.dominantColors.first ?? .white,
                 isPlaying: np.isPlaying,
                 onEditingChanged: { editing in
-                    if editing {
-                        editingProgress = np.progress
-                    } else {
-                        let target = TimeInterval(editingProgress) * np.duration
-                        player.seek(to: target)
-                        np.currentTime = target
-                        player.updateNowPlayingProgress()
+                    if !editing {
+                        player.seek(to: TimeInterval(editingProgress) * np.duration)
                     }
                     isEditingSlider = editing
                 }

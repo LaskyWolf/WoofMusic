@@ -7,17 +7,22 @@ import SwiftUI
 
 struct DownloadsView: View {
     @Environment(SettingsStore.self) private var settings
-    @State private var viewModel = DownloadsViewModel()
-    @Environment(\.downloadManager) private var downloadManager
+    @ObservedObject private var downloadManager = DownloadManager.shared
     @State private var pendingRoute: DetailRoute?
     @State private var showMoreSheet = false
 
+    private var tracks: [DownloadedTrackEntity] { downloadManager.tracks }
+    private var songs: [SongItem] { tracks.map { SongItem(entity: $0) } }
+    private var activeDownloads: [(videoId: String, progress: Double)] {
+        downloadManager.activeDownloads
+    }
+
     var body: some View {
         Group {
-            if viewModel.isLoading {
+            if !downloadManager.isLoaded {
                 LoadingStateView("Loading downloads…")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if viewModel.tracks.isEmpty && viewModel.activeDownloads.isEmpty {
+            } else if tracks.isEmpty && activeDownloads.isEmpty {
                 emptyView
             } else {
                 contentView
@@ -26,11 +31,11 @@ struct DownloadsView: View {
         .background(Color(.systemGroupedBackground))
         .navigationTitle("Downloads")
         .navigationBarTitleDisplayMode(.inline)
-        .refreshable { await viewModel.load() }
-        .task { await viewModel.load() }
-        .onChange(of: downloadManager.downloads) { old, new in
-            guard DownloadManager.shouldRefreshPersistedLibrary(old: old, new: new) else { return }
-            Task { await viewModel.refreshTracks() }
+        .refreshable { await downloadManager.reload() }
+        .task {
+            if !downloadManager.isLoaded {
+                await downloadManager.reload()
+            }
         }
         .detailRouteSheet(item: $pendingRoute)
     }
@@ -59,16 +64,16 @@ struct DownloadsView: View {
                 header
                     .padding(.bottom, 8)
 
-                if !viewModel.activeDownloads.isEmpty {
+                if !activeDownloads.isEmpty {
                     activeDownloadsSection
                 }
 
-                if !viewModel.tracks.isEmpty {
+                if !songs.isEmpty {
                     songList
                 }
             }
         }
-        .scrollDisabled(viewModel.isLoading)
+        .scrollDisabled(!downloadManager.isLoaded)
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
         .miniPlayerTracksScroll()
@@ -77,16 +82,16 @@ struct DownloadsView: View {
     private var header: some View {
         PlaylistHeaderView(
             title: "Downloads",
-            thumbnails: viewModel.thumbnailUrls,
-            songCount: viewModel.tracks.count,
-            duration: viewModel.totalDuration,
+            thumbnails: Array(tracks.prefix(4).compactMap(\.thumbnailUrl)),
+            songCount: tracks.count,
+            duration: tracks.reduce(0) { $0 + $1.duration },
             accentColor: settings.accentColor,
             onPlay: playAll,
             onShuffle: shufflePlay,
             onMore: { showMoreSheet = true }
         )
         .sheet(isPresented: $showMoreSheet) {
-            DownloadsMoreSheet(songs: viewModel.songs)
+            DownloadsMoreSheet(songs: songs)
         }
     }
 
@@ -95,7 +100,7 @@ struct DownloadsView: View {
             SectionLabel(title: "Downloading", systemImage: "arrow.down.circle")
                 .padding(.horizontal, 16)
                 .padding(.bottom, 8)
-            ForEach(viewModel.activeDownloads, id: \.videoId) { item in
+            ForEach(activeDownloads, id: \.videoId) { item in
                 ActiveDownloadRow(videoId: item.videoId, progress: item.progress)
                     .padding(.horizontal, 16)
                     .padding(.vertical, 4)
@@ -106,7 +111,7 @@ struct DownloadsView: View {
 
     private var songList: some View {
         VStack(spacing: 0) {
-            ForEach(Array(viewModel.songs.enumerated()), id: \.offset) { index, song in
+            ForEach(Array(songs.enumerated()), id: \.offset) { index, song in
                 SongRowView(
                     song: song,
                     artSize: 48,
@@ -115,7 +120,7 @@ struct DownloadsView: View {
                     onNavigate: { pendingRoute = $0 }
                 )
 
-                if index < viewModel.songs.count - 1 {
+                if index < songs.count - 1 {
                     Divider()
                         .padding(.leading, 76)
                 }
@@ -124,7 +129,7 @@ struct DownloadsView: View {
     }
 
     private func playAll() {
-        let songs = viewModel.songs
+        let songs = songs
         guard !songs.isEmpty else { return }
         NowPlaying.shared.setQueue(songs, startIndex: 0)
         NowPlaying.shared.update(with: songs[0])
@@ -132,7 +137,7 @@ struct DownloadsView: View {
     }
 
     private func shufflePlay() {
-        let songs = viewModel.songs.shuffled()
+        let songs = songs.shuffled()
         guard !songs.isEmpty else { return }
         NowPlaying.shared.setQueue(songs, startIndex: 0)
         NowPlaying.shared.update(with: songs[0])
@@ -140,7 +145,7 @@ struct DownloadsView: View {
     }
 
     private func playSong(_ song: SongItem) {
-        let songs = viewModel.songs
+        let songs = songs
         if let index = songs.firstIndex(where: { $0.videoId == song.videoId }) {
             NowPlaying.shared.setQueue(songs, startIndex: index)
         } else {
@@ -151,7 +156,7 @@ struct DownloadsView: View {
     }
 
     private func playLocal(_ song: SongItem) async {
-        guard let localURL = await DownloadManager.shared.localURL(for: song.videoId) else { return }
+        guard let localURL = await downloadManager.localURL(for: song.videoId) else { return }
         let artists = song.artists
         let displayArtist = artists.map(\.name).joined(separator: ", ")
         await PlayerController.shared.play(
@@ -162,32 +167,5 @@ struct DownloadsView: View {
             duration: TimeInterval(song.duration),
             artists: artists
         )
-        await MainActor.run {
-            NowPlaying.shared.updateVideoAvailability()
-        }
-    }
-}
-
-@MainActor
-@Observable
-final class DownloadsViewModel {
-    var tracks: [DownloadedTrackEntity] = []
-    var isLoading = true
-
-    private let downloadManager = DownloadManager.shared
-
-    var songs: [SongItem] { tracks.map { SongItem(entity: $0) } }
-    var activeDownloads: [(videoId: String, progress: Double)] { downloadManager.activeDownloads }
-    var totalDuration: Int { tracks.reduce(0) { $0 + $1.duration } }
-    var thumbnailUrls: [String] { tracks.prefix(4).compactMap(\.thumbnailUrl) }
-
-    func load() async {
-        isLoading = true
-        await refreshTracks()
-        isLoading = false
-    }
-
-    func refreshTracks() async {
-        tracks = await downloadManager.fetchAllSorted()
     }
 }

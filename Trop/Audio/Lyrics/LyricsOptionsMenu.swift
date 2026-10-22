@@ -1,5 +1,5 @@
 //
-//  LyricsMenuSheet.swift
+//  LyricsOptionsMenu.swift
 //  Trop
 //
 //  Created by 686udjie on 24/08/2026.
@@ -7,94 +7,77 @@
 
 import SwiftUI
 
-/// Shown from the lyrics page's ⋮ button.
-struct LyricsMenuSheet: View {
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-    @Environment(\.dismiss) private var dismiss
+/// The lyrics panel's "⋯" menu: a native pull-down menu. Edit, search and
+/// offset open their own sheet after the menu closes.
+struct LyricsOptionsMenu<MenuLabel: View>: View {
+    @ViewBuilder var label: () -> MenuLabel
+
     @Environment(\.settingsStore) private var settings
     private let np = NowPlaying.shared
 
-    @State private var showOffsetEditor = false
-    @State private var showEditSheet = false
-    @State private var showSearchSheet = false
+    private enum Sheet: Identifiable {
+        case edit, search, offset
+        var id: Self { self }
+    }
+
+    @State private var sheet: Sheet?
 
     var body: some View {
         @Bindable var settings = settings
 
-        NavigationStack {
-            List {
-                Section {
-                    actionGrid
-                        .disabled(np.videoId == nil)
-                }
+        Menu {
+            Section {
+                Button("Edit Lyrics…", systemImage: "square.and.pencil") { sheet = .edit }
+                Button("Search Lyrics…", systemImage: "magnifyingglass") { sheet = .search }
+                Button("Refetch Lyrics", systemImage: "arrow.clockwise", action: refetchLyrics)
+                Button("Copy Lyrics", systemImage: "doc.on.doc", action: copyLyrics)
+            }
+            .disabled(np.videoId == nil)
 
-                Section("Timing") {
-                    offsetRow
+            Section {
+                Button { sheet = .offset } label: {
+                    Label("Lyric Offset…", systemImage: "forward")
+                    Text(offsetDescription)
                 }
-
-                Section {
-                    SettingsToggleRow("Show Interval Indicator", icon: "text.quote",
-                                      isOn: $settings.showIntervalIndicator)
-                    SettingsToggleRow("Romanize Current Track", icon: "globe",
-                                      isOn: $settings.romanizeCurrentTrack)
-                } header: {
-                    Text("Display")
-                } footer: {
-                    Text("The interval indicator shows a progress ring during long instrumental gaps.")
+                Toggle(isOn: $settings.showIntervalIndicator) {
+                    Label("Show Interval Indicator", systemImage: "text.quote")
+                }
+                Toggle(isOn: $settings.romanizeCurrentTrack) {
+                    Label("Romanize Current Track", systemImage: "globe")
                 }
             }
-            .listStyle(.insetGrouped)
-            .tint(settings.accentColor)
-            .navigationTitle("Lyrics Options")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { dismiss() }
-                }
+        } label: {
+            label()
+        }
+        .sheet(item: $sheet) { sheet in
+            switch sheet {
+            case .offset:
+                LyricsOffsetSheet()
+            case .edit:
+                EditLyricsSheet(videoId: np.videoId ?? "", songTitle: np.title)
+            case .search:
+                SearchLyricsSheet(
+                    videoId: np.videoId ?? "",
+                    defaultTitle: np.title,
+                    defaultArtist: np.displayArtist,
+                    duration: np.duration
+                )
             }
-        }
-        .appSheetChrome()
-        .sheet(isPresented: $showOffsetEditor) {
-            LyricsOffsetSheet()
-        }
-        .sheet(isPresented: $showEditSheet) {
-            EditLyricsSheet(videoId: np.videoId ?? "", songTitle: np.title)
-        }
-        .sheet(isPresented: $showSearchSheet) {
-            SearchLyricsSheet(
-                videoId: np.videoId ?? "",
-                defaultTitle: np.title,
-                defaultArtist: np.displayArtist,
-                duration: np.duration
-            )
         }
     }
 
-    // MARK: - Actions (Edit / Refetch / Search / Copy)
-
-    private var actionGrid: some View {
-        let layout = dynamicTypeSize.isAccessibilitySize
-            ? AnyLayout(VStackLayout(spacing: 8))
-            : AnyLayout(HStackLayout(spacing: 0))
-        return layout {
-            MenuShortcutButton(title: "Edit", icon: "square.and.pencil") {
-                showEditSheet = true
-            }
-            if !dynamicTypeSize.isAccessibilitySize { Divider().frame(height: 32) }
-            MenuShortcutButton(title: "Refetch", icon: "arrow.triangle.2.circlepath",
-                               action: refetchLyrics)
-            if !dynamicTypeSize.isAccessibilitySize { Divider().frame(height: 32) }
-            MenuShortcutButton(title: "Search", icon: "magnifyingglass") {
-                showSearchSheet = true
-            }
-            if !dynamicTypeSize.isAccessibilitySize { Divider().frame(height: 32) }
-            MenuShortcutButton(title: "Copy", icon: "doc.on.doc", action: copyLyrics)
-        }
+    /// "Off", or a signed value like "+1.5s".
+    private var offsetDescription: String {
+        let v = settings.lyricsOffsetSeconds
+        guard v != 0 else { return "Off" }
+        var s = String(format: "%.2f", abs(v))
+        while s.hasSuffix("0") { s.removeLast() }
+        if s.hasSuffix(".") { s.removeLast() }
+        return "\(v < 0 ? "-" : "+")\(s)s"
     }
 
     private func refetchLyrics() {
         guard let videoId = np.videoId else { return }
-        dismiss()
         Task { await LyricsService.shared.refetch(videoId: videoId) }
     }
 
@@ -105,76 +88,6 @@ struct LyricsMenuSheet: View {
                 UIPasteboard.general.string = text
             }
         }
-    }
-
-    // MARK: - Offset Row
-
-    private var offsetRow: some View {
-        Button {
-            showOffsetEditor = true
-        } label: {
-            HStack {
-                Label {
-                    Text("Lyric Offset").foregroundStyle(.primary)
-                } icon: {
-                    Image(systemName: "forward").foregroundStyle(settings.accentColor)
-                }
-                Spacer()
-                offsetValueLabel
-                    .font(.subheadline)
-                    .lineLimit(1)
-                Image(systemName: "chevron.right")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.tertiary)
-            }
-            .contentShape(Rectangle())
-        }
-    }
-
-    /// Signed value like "+1.5s"; the decimal part is accent-colored when
-    /// the offset is under a second. Shows "Off" when unset.
-    @ViewBuilder
-    private var offsetValueLabel: some View {
-        let v = settings.lyricsOffsetSeconds
-        if v == 0 {
-            Text("Off")
-                .foregroundStyle(.secondary)
-        } else {
-            formattedOffset(v)
-        }
-    }
-
-    private func formattedOffset(_ v: Double) -> Text {
-        let magnitude = trimmedDecimalString(abs(v))
-        let sign = v < 0 ? "-" : "+"
-
-        if abs(v) < 1, let dotIndex = magnitude.firstIndex(of: ".") {
-            var attributed = AttributedString()
-
-            var whole = AttributedString("\(sign)\(magnitude[..<dotIndex])")
-            whole.foregroundColor = .secondary
-            attributed.append(whole)
-
-            var fraction = AttributedString(String(magnitude[dotIndex...]))
-            fraction.foregroundColor = settings.accentColor
-            attributed.append(fraction)
-
-            var unit = AttributedString("s")
-            unit.foregroundColor = .secondary
-            attributed.append(unit)
-
-            return Text(attributed)
-        }
-
-        return Text("\(sign)\(magnitude)s")
-            .foregroundStyle(.secondary)
-    }
-
-    private func trimmedDecimalString(_ v: Double) -> String {
-        var s = String(format: "%.2f", v)
-        while s.hasSuffix("0") { s.removeLast() }
-        if s.hasSuffix(".") { s.removeLast() }
-        return s
     }
 }
 

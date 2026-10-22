@@ -7,8 +7,8 @@
 
 import UIKit
 
-/// Presents a `UIActivityViewController` from the key window. Consolidates
-/// the copy-pasted window lookup in SongMenuSheet and PlaylistMoreSheet.
+/// Presents a `UIActivityViewController` above whatever is on screen. Consolidates
+/// the window lookup used by every share button.
 /// Pass `afterDismiss` when the sheet must close first (presentation is then
 /// deferred slightly so the dismiss animation wins the window).
 @MainActor
@@ -17,7 +17,14 @@ func presentShareSheet(items: [Any], afterDismiss dismiss: (() -> Void)? = nil) 
           let window = scene.windows.first(where: { $0.isKeyWindow }),
           let root = window.rootViewController else { return }
     let present = {
-        root.present(
+        // Present from the top-most screen: the root is usually already
+        // presenting the full player, and UIKit silently refuses a second
+        // presentation from the same controller.
+        var top = root
+        while let next = top.presentedViewController, !next.isBeingDismissed {
+            top = next
+        }
+        top.present(
             UIActivityViewController(activityItems: items, applicationActivities: nil),
             animated: true
         )

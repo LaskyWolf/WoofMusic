@@ -22,11 +22,11 @@ struct LibraryView: View {
     @State private var playlistSongCounts: [String: Int] = [:]
 
     @ObservedObject private var router = AppRouter.shared
-    @Environment(\.downloadManager) private var downloadManager
+    @ObservedObject private var downloadManager = DownloadManager.shared
 
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
-    @State private var accountState = AccountSheetState()
+    private let accountState = AccountState.shared
 
     private var gridColumns: [GridItem] {
         let count = horizontalSizeClass == .regular ? 3 : 2
@@ -35,9 +35,9 @@ struct LibraryView: View {
     private var autoPlaylists: [AutoPlaylistInfo] {
         [
             AutoPlaylistInfo(id: "liked", title: "Liked Songs", icon: "heart.fill", subtitle: "\(likedSongCount) songs", route: .likedSongs),
+            AutoPlaylistInfo(id: "top100", title: "My Top 100", icon: "trophy.fill", subtitle: "Top 100", route: .topSongs(limit: 100)),
             AutoPlaylistInfo(id: "downloads", title: "Downloads", icon: "arrow.down.circle.fill",
-                             subtitle: downloadsSubtitle, route: nil, detailRoute: .downloads),
-            AutoPlaylistInfo(id: "top100", title: "My Top 100", icon: "trophy.fill", subtitle: "Top 100", route: .topSongs(limit: 100))
+                             subtitle: downloadsSubtitle, route: nil, detailRoute: .downloads)
         ]
     }
 
@@ -62,7 +62,7 @@ struct LibraryView: View {
                     accountIsLoggedIn: accountState.isLoggedIn,
                     accountImageUrl: accountState.accountImageUrl,
                     onHistory: { router.libraryPath.append(DetailRoute.history) },
-                    onAccount: { accountState.isAccountSheetPresented = true }
+                    onAccount: { router.libraryPath.append(DetailRoute.settings) }
                 )
 
                 Group {
@@ -99,15 +99,10 @@ struct LibraryView: View {
                 }
             }
             .animation(.spring(response: 0.4, dampingFraction: 0.8), value: showCreateDialog)
-            .accountSheets(state: accountState) {
-                router.libraryPath.append(DetailRoute.settings)
-            }
             .task {
                 await loadContent()
-                accountState.restoreSession()
-                await accountState.fetchAccountInfo()
                 Task {
-                    await SyncBridge.forceFullSync()
+                    await SyncBridge.checkAndSyncIfStale()
                     await loadContent()
                 }
             }
@@ -158,6 +153,7 @@ struct LibraryView: View {
     private var feedContent: some View {
         ScrollView {
             LazyVStack(spacing: 0) {
+                shortcutRow
                 filterBar
 
                 switch selectedFilter {
@@ -185,20 +181,6 @@ struct LibraryView: View {
 
     private var playlistsSection: some View {
         librarySection(title: "Playlists", count: playlists.count) {
-            ForEach(autoPlaylists) { info in
-                if let detailRoute = info.detailRoute {
-                    NavigationLink(value: detailRoute) {
-                        autoPlaylistCell(info: info)
-                    }
-                    .buttonStyle(.plain)
-                } else if let route = info.route {
-                    NavigationLink(value: DetailRoute.autoPlaylist(route)) {
-                        autoPlaylistCell(info: info)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-
             ForEach(playlists, id: \.id) { playlist in
                 NavigationLink(value: DetailRoute.playlist(playlistId: playlist.id)) {
                     itemCell(
@@ -219,6 +201,47 @@ struct LibraryView: View {
                 }
             }
         }
+    }
+
+    // MARK: - Shortcuts
+
+    /// Liked Songs, My Top 100 and Downloads, always above the filters.
+    private var shortcutRow: some View {
+        HStack(spacing: 10) {
+            ForEach(autoPlaylists) { info in
+                NavigationLink(value: info.detailRoute ?? info.route.map(DetailRoute.autoPlaylist)) {
+                    shortcutTile(info: info)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, DesignTokens.screenHPadding)
+        .padding(.top, 4)
+        .padding(.bottom, 12)
+    }
+
+    private func shortcutTile(info: AutoPlaylistInfo) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Image(systemName: info.icon)
+                .font(.title3)
+            Spacer(minLength: 12)
+            Text(info.title)
+                .font(.subheadline.weight(.semibold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
+            if let subtitle = info.subtitle {
+                Text(subtitle)
+                    .font(.caption)
+                    .opacity(0.8)
+                    .lineLimit(1)
+            }
+        }
+        .foregroundStyle(.white)
+        .padding(12)
+        .frame(maxWidth: .infinity, minHeight: 92, alignment: .leading)
+        .background(autoPlaylistGradient(), in: .rect(cornerRadius: 14, style: .continuous))
+        .contentShape(.rect(cornerRadius: 14, style: .continuous))
+        .accessibilityElement(children: .combine)
     }
 
     // MARK: - Artists
@@ -307,31 +330,6 @@ struct LibraryView: View {
         .padding(.bottom, 4)
     }
 
-    private func autoPlaylistCell(info: AutoPlaylistInfo) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(autoPlaylistGradient())
-                    .aspectRatio(1, contentMode: .fill)
-                Image(systemName: info.icon)
-                    .font(.largeTitle)
-                    .foregroundColor(.white)
-                    .shadow(color: .black.opacity(0.2), radius: 2, y: 1)
-            }
-            .clipShape(RoundedRectangle(cornerRadius: 12))
-            .shadow(color: .black.opacity(0.2), radius: 4, y: 2)
-
-            Text(info.title)
-                .lineLimit(1)
-                .font(.callout)
-            if let subtitle = info.subtitle {
-                Text(subtitle)
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            }
-        }
-    }
-
     private func autoPlaylistGradient() -> LinearGradient {
         let accent = settings.accentColor
         return LinearGradient(
@@ -396,6 +394,10 @@ struct LibraryView: View {
 
     // MARK: - Data Loading
 
+    /// YouTube Music's built-in "Episodes for Later" list ("SE", or "VLSE" as a
+    /// browse id). Trop has no use for it, so the library hides it.
+    private static let hiddenPlaylistIds: Set<String> = ["SE", "VLSE"]
+
     private func loadContent() async {
         do {
             async let artistsFetch = DatabaseService.shared.fetchAll(
@@ -410,9 +412,9 @@ struct LibraryView: View {
             async let podcastsFetch = DatabaseService.shared.fetchAllPodcasts()
             async let countFetch = DatabaseService.shared.fetchAllLikedSongCount()
             artists = try await artistsFetch
-            playlists = try await playlistsFetch
+            playlists = try await playlistsFetch.filter { !Self.hiddenPlaylistIds.contains($0.id) }
             albums = try await albumsFetch
-            podcasts = try await podcastsFetch
+            podcasts = try await podcastsFetch.filter { !Self.hiddenPlaylistIds.contains($0.id) }
             likedSongCount = try await countFetch
 
             let rows: [(String, Int)] = try await DatabaseService.shared.read { db in
