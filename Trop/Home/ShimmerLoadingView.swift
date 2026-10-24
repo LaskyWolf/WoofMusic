@@ -157,8 +157,7 @@ struct ShimmerLoadingView: View {
         .padding(.top, 8)
     }
 
-    /// Square cards in the layout chosen in Settings: 3x3, or 2x3 centered
-    /// with cards of the same size.
+    /// Square cards in the layout chosen in Settings: 3x3 or 3x2.
     private var quickPicksSection: some View {
         let size = SettingsStore.shared.quickPicksSize
         return section {
@@ -167,11 +166,7 @@ struct ShimmerLoadingView: View {
                     ShimmerFill(radius: 8).aspectRatio(1, contentMode: .fit)
                 }
             }
-            .containerRelativeFrame(.horizontal) { width, _ in
-                let page = width - DesignTokens.screenHPadding * 2
-                return size == .grid3x3 ? page : (page - 16) / 3 * 2 + 8
-            }
-            .frame(maxWidth: .infinity)
+            .padding(.horizontal, DesignTokens.screenHPadding)
         }
     }
 

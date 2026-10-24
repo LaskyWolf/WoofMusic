@@ -207,7 +207,7 @@ struct HomeScreenView: View {
         if combinedQueue.isEmpty {
             EmptyView()
         } else {
-            // Pages of 2x3 or 3x3 (a setting): pinned songs first, then the picks.
+            // Pages of 3x2 or 3x3 (a setting): pinned songs first, then the picks.
             let size = settings.quickPicksSize
             let cards = Array((pinnedSongs.map { ($0, true) } + quickSongs.map { ($0, false) }).prefix(size.count))
             let pages = stride(from: 0, to: cards.count, by: size.perPage).map { Array(cards[$0..<min($0 + size.perPage, cards.count)]) }
@@ -217,15 +217,8 @@ struct HomeScreenView: View {
                     // Spacing equals the side margin, so the next page stays off screen.
                     LazyHStack(alignment: .top, spacing: DesignTokens.screenHPadding) {
                         ForEach(pages.indices, id: \.self) { page in
-                            // The page is as wide as the scroll area and its cards sit in the middle.
-                            // A 2x3 page is two cards of the 3x3 page wide, so cards keep one size.
-                            ZStack {
-                                quickPicksPage(pages[page], queue: combinedQueue, columns: size.columns)
-                                    .containerRelativeFrame(.horizontal) { width, _ in
-                                        size == .grid3x3 ? width : (width - 16) / 3 * 2 + 8
-                                    }
-                            }
-                            .containerRelativeFrame(.horizontal)
+                            quickPicksPage(pages[page], queue: combinedQueue, columns: size.columns)
+                                .containerRelativeFrame(.horizontal)
                         }
                     }
                     .scrollTargetLayout()
