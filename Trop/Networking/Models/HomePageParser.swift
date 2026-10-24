@@ -211,6 +211,9 @@ extension HomePageParser {
             return ExploreSection(title: title, kind: .moods, items: [], moods: moods)
         }
 
+        // Video shelf: videos aren't supported.
+        if headerBrowseId == "FEmusic_new_releases_videos" { return nil }
+
         let items = parseItems(from: rawItems)
         if let first = rawItems.first {
             Log.explore.debug("Explore section[\(index)] first item keys=\(first.keys.sorted()) parsed=\(items.count)")
@@ -222,11 +225,10 @@ extension HomePageParser {
         }
         guard !items.isEmpty else { return nil }
 
-        // Videos and chart shelves have machine-readable header browseIds;
+        // Chart shelves have machine-readable header browseIds;
         // anything song-only renders as rows, mixed content as cards.
         let kind: ExploreSection.Kind
-        if headerBrowseId == "FEmusic_new_releases_videos"
-            || headerBrowseId?.hasPrefix("VLPL") == true
+        if headerBrowseId?.hasPrefix("VLPL") == true
             || headerBrowseId?.hasPrefix("VLOLA") == true
             || items.allSatisfy({ if case .song = $0 { true } else { false } }) {
             kind = .rows

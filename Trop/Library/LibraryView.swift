@@ -184,6 +184,7 @@ struct LibraryView: View {
                     } label: {
                         Label(playlist.isEditable ? "Delete" : "Remove from Library", systemImage: "trash")
                     }
+                    .tint(.red)
                 }
             }
         }

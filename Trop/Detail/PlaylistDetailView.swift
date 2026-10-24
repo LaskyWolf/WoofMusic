@@ -384,9 +384,28 @@ extension PlaylistDetailViewModel {
         // --- Songs ---
         // Rows were collected across every continuation page by the caller;
         // continuation markers are already stripped.
+        let ownerAvatarUrl = (headerRenderer?["facepile"] as? [String: Any])
+            .flatMap { $0["avatarStackViewModel"] as? [String: Any] }
+            .flatMap { ($0["avatars"] as? [[String: Any]])?.first }
+            .flatMap { $0["avatarViewModel"] as? [String: Any] }
+            .flatMap { ($0["image"] as? [String: Any])?["sources"] as? [[String: Any]] }
+            .flatMap { $0.first?["url"] as? String }
+        let panelParams = (((headerRenderer?["facepile"] as? [String: Any])?["avatarStackViewModel"] as? [String: Any])?["rendererContext"] as? [String: Any])
+            .flatMap { $0["commandContext"] as? [String: Any] }
+            .flatMap { $0["onTap"] as? [String: Any] }
+            .flatMap { $0["innertubeCommand"] as? [String: Any] }
+            .flatMap { $0["showEngagementPanelEndpoint"] as? [String: Any] }
+            .flatMap { $0["globalConfiguration"] as? [String: Any] }
+            .flatMap { $0["params"] as? String }
+        let avatarUrls = ((headerRenderer?["facepile"] as? [String: Any])?["avatarStackViewModel"] as? [String: Any])
+            .flatMap { $0["avatars"] as? [[String: Any]] }?
+            .compactMap { avatar in
+                ((((avatar["avatarViewModel"] as? [String: Any])?["image"] as? [String: Any])?["sources"] as? [[String: Any]])?.first)?["url"] as? String
+            } ?? []
         for itemDict in rows {
             if let renderer = itemDict["musicResponsiveListItemRenderer"] as? [String: Any],
-               let song = SongItem.from(renderer) {
+               var song = SongItem.from(renderer) {
+                song.addedBy = PlaylistContributor.from(renderer, ownerAvatarUrl: ownerAvatarUrl)
                 songs.append(song)
             }
         }
@@ -409,6 +428,8 @@ extension PlaylistDetailViewModel {
             thumbnailUrl: thumbnailUrl,
             playlistId: playlistId,
             songs: songs,
+            collaboratorAvatarUrls: avatarUrls.count > 1 ? avatarUrls : [],
+            collaboratorsPanelParams: panelParams,
             isEditable: firstTabSection?["musicEditablePlaylistDetailHeaderRenderer"] != nil
                 || (json["header"] as? [String: Any])?["musicEditablePlaylistDetailHeaderRenderer"] != nil
         )
@@ -566,8 +587,11 @@ struct PlaylistDetailView: View {
                     .foregroundStyle(.tertiary)
             }
 
-            // Author row: avatar + name, clickable → artist detail
-            if let authorName = playlist.authorName {
+            // Shared playlist: the people on it, like the YouTube Music web page.
+            if !playlist.collaboratorAvatarUrls.isEmpty {
+                CollaboratorBadge(avatarUrls: playlist.collaboratorAvatarUrls, panelParams: playlist.collaboratorsPanelParams)
+            } else if let authorName = playlist.authorName {
+                // Author row: avatar + name, clickable → artist detail
                 Group {
                     if let authorId = playlist.authorBrowseId {
                         NavigationLink(value: DetailRoute.artist(browseId: authorId)) {
@@ -681,6 +705,7 @@ struct PlaylistDetailView: View {
                         } label: {
                             Label("Remove from Playlist", systemImage: "minus.circle")
                         }
+                        .tint(.red)
                     }
                 }
 
@@ -837,5 +862,73 @@ struct AddSongToPlaylistView: View {
             Log.addSong.error("Failed to add song: \(error)")
         }
         addingIds.remove(song.id)
+    }
+}
+
+// MARK: - Shared playlist badge
+
+/// Overlapping avatars of a shared playlist. Tapping opens a native pop-up
+/// listing the people by name. The "••" circle only shows with more than 3 people.
+private struct CollaboratorBadge: View {
+    let avatarUrls: [String]
+    let panelParams: String?
+
+    @State private var people: [PlaylistCollaborator] = []
+    @State private var avatars: [String: UIImage] = [:]
+
+    private var total: Int { max(people.count, avatarUrls.count) }
+
+    var body: some View {
+        Menu {
+            Section("Collaborators") {
+                ForEach(people, id: \.self) { person in
+                    Button {} label: {
+                        Text(person.name)
+                        if person.isOwner { Text("Playlist owner") }
+                        if let url = person.avatarUrl, let image = avatars[url] {
+                            Image(uiImage: image).renderingMode(.original)
+                        } else {
+                            Image(systemName: "person.crop.circle.fill")
+                        }
+                    }
+                }
+            }
+        } label: {
+            HStack(spacing: -8) {
+                ForEach(Array(avatarUrls.prefix(3).enumerated()), id: \.offset) { _, url in
+                    AsyncImageView(url: url)
+                        .frame(width: 28, height: 28)
+                        .clipShape(Circle())
+                        .overlay(Circle().stroke(Color(.systemBackground), lineWidth: 2))
+                }
+                if total > 3 {
+                    Image(systemName: "ellipsis")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(.white)
+                        .frame(width: 28, height: 28)
+                        .background(Circle().fill(Color(.systemGray3)))
+                        .overlay(Circle().stroke(Color(.systemBackground), lineWidth: 2))
+                }
+            }
+        }
+        .accessibilityLabel("Shared playlist, \(total) people")
+        .task(id: panelParams) {
+            guard let panelParams else { return }
+            people = await PlaylistCollaborators.fetch(params: panelParams)
+            for url in people.compactMap(\.avatarUrl) {
+                guard avatars[url] == nil, let imageUrl = URL(string: url),
+                      let image = try? await ArtworkLoader.image(for: imageUrl) else { continue }
+                avatars[url] = Self.circle(image)
+            }
+        }
+    }
+
+    /// Round 36 pt picture for the menu row.
+    private static func circle(_ image: UIImage) -> UIImage {
+        let size = CGSize(width: 36, height: 36)
+        return UIGraphicsImageRenderer(size: size).image { _ in
+            UIBezierPath(ovalIn: CGRect(origin: .zero, size: size)).addClip()
+            image.draw(in: CGRect(origin: .zero, size: size))
+        }
     }
 }

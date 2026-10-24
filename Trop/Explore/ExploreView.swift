@@ -157,18 +157,40 @@ struct ExploreSectionsList: View {
     // MARK: - Moods grid
 
     private func moodsGrid(_ section: ExploreSection) -> some View {
-        HorizontalSection(title: section.title) {
+        let entries = MoodFamily.entries(for: section.moods)
+        return HorizontalSection(title: "Moods") {
             // Two-row grid scrolling horizontally: all 50+ moods reachable
             // without a dominating vertical wall.
             LazyHGrid(
                 rows: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)],
                 spacing: 10
             ) {
-                ForEach(section.moods) { mood in
-                    NavigationLink(value: mood) {
-                        MoodCard(mood: mood)
+                ForEach(entries) { entry in
+                    switch entry.kind {
+                    case .group(let family, let members):
+                        // Native pop-up: pick the sub-genre without leaving the page.
+                        Menu {
+                            let icons = MoodFamily.uniqueIcons(for: members)
+                            ForEach(members) { mood in
+                                Button { router.explorePath.append(mood) } label: {
+                                    Label(mood.title, systemImage: icons[mood.id] ?? "music.note")
+                                }
+                            }
+                        } label: {
+                            MoodCard(
+                                title: family,
+                                color: MoodCard.swatch(family: family, title: family),
+                                subtitle: "\(members.count) genres",
+                                trailingSymbol: "chevron.up.chevron.down"
+                            )
+                        }
+                        .buttonStyle(.plain)
+                    case .mood(let mood, let family):
+                        NavigationLink(value: mood) {
+                            MoodCard(title: mood.title, color: MoodCard.swatch(family: family, title: mood.title))
+                        }
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
                 }
             }
         }
@@ -187,21 +209,88 @@ struct ExploreSectionsList: View {
 
 // MARK: - Mood card
 
-/// A colored Moods & Genres tile, like Apple Music's category cards. The
-/// color comes from YouTube Music when it sends one, otherwise from the title,
-/// so a category keeps its color between launches.
+/// Genres that share a family (Hip-Hop, Brazilian Hip-Hop...) share a color, and
+/// the family collapses into one card that opens to show its genres.
+private enum MoodFamily {
+    struct Entry: Identifiable {
+        enum Kind {
+            case group(family: String, members: [MoodItem])
+            case mood(MoodItem, family: String?)
+        }
+        let id: String
+        let kind: Kind
+    }
+
+    private static let families: [(name: String, words: [String])] = [
+        ("Hip-Hop", ["hip-hop", "hip hop", "rap", "trap"]),
+        ("Metal", ["metal"]),
+        ("Rock", ["rock", "punk", "grunge"]),
+        ("R&B & Soul", ["r&b", "soul"]),
+        ("Dance & Electronic", ["dance", "electronic", "edm", "house", "techno"]),
+        ("Latin", ["latin", "reggaeton", "salsa", "bachata"]),
+        ("Reggae", ["reggae", "dancehall"]),
+        ("Jazz & Blues", ["jazz", "blues"]),
+        ("Classical", ["classical"]),
+        ("Country & Folk", ["country", "folk", "bluegrass"]),
+        ("Pop", ["pop"])
+    ]
+
+    static var names: [String] { families.map(\.name) }
+
+    static func family(of title: String) -> String? {
+        let title = title.lowercased()
+        return families.first { $0.words.contains { title.contains($0) } }?.name
+    }
+
+    /// An icon per sub-genre from its title. Two genres never share one: the
+    /// second falls back to the next free icon of the family's set.
+    static func uniqueIcons(for members: [MoodItem]) -> [UUID: String] {
+        let spare = ["music.note", "music.note.list", "headphones", "speaker.wave.2.fill", "star.fill", "heart.fill", "bolt.fill", "sparkles", "globe", "flame.fill"]
+        var used = Set<String>()
+        var icons: [UUID: String] = [:]
+        for mood in members {
+            var icon = MoodCard.symbol(for: mood.title)
+            if used.contains(icon) { icon = spare.first { !used.contains($0) } ?? icon }
+            used.insert(icon)
+            icons[mood.id] = icon
+        }
+        return icons
+    }
+
+    /// Families with two or more genres become one group card that opens a
+    /// pop-up with its genres. Everything else keeps its place.
+    static func entries(for moods: [MoodItem]) -> [Entry] {
+        var members: [String: [MoodItem]] = [:]
+        for mood in moods { if let f = family(of: mood.title) { members[f, default: []].append(mood) } }
+        var seen = Set<String>()
+        var result: [Entry] = []
+        for mood in moods {
+            guard let f = family(of: mood.title), let group = members[f], group.count > 1 else {
+                result.append(Entry(id: "mood-\(mood.id)", kind: .mood(mood, family: nil)))
+                continue
+            }
+            if seen.insert(f).inserted {
+                result.append(Entry(id: "group-\(f)", kind: .group(family: f, members: group)))
+            }
+        }
+        return result
+    }
+}
+
+/// A colored mood tile, like Apple Music's category cards. The color is a
+/// Pantone color, picked from the family (or the title) so a category keeps its
+/// color between launches. YouTube Music's own colors are muddy, so unused.
 private struct MoodCard: View {
-    let mood: MoodItem
+    let title: String
+    let color: Color
+    var subtitle: String?
+    var trailingSymbol: String?
 
     var body: some View {
-        let hue = Self.hue(for: mood)
         let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
         ZStack(alignment: .bottomLeading) {
             LinearGradient(
-                colors: [
-                    Color(hue: hue, saturation: 0.7, brightness: 0.62),
-                    Color(hue: (hue + 0.06).truncatingRemainder(dividingBy: 1), saturation: 0.8, brightness: 0.42)
-                ],
+                colors: [color.mix(with: .white, by: 0.3), color],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
@@ -209,31 +298,71 @@ private struct MoodCard: View {
             LinearGradient(colors: [.white.opacity(0.16), .clear], startPoint: .top, endPoint: .center)
 
             // Larger than the card and tilted left, so the card edge crops it.
-            Image(systemName: Self.symbol(for: mood.title))
+            Image(systemName: Self.symbol(for: title))
                 .font(.system(size: 84, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.3))
+                .foregroundStyle(.white.opacity(0.45))
                 .rotationEffect(.degrees(-18))
                 .offset(x: 24, y: 12)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
                 .accessibilityHidden(true)
 
-            Text(mood.title)
-                .font(.headline.weight(.bold))
-                .foregroundStyle(.white)
-                .lineLimit(2)
-                .multilineTextAlignment(.leading)
-                .padding(12)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.subheadline.weight(.bold))
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.7)
+                    .multilineTextAlignment(.leading)
+                if let subtitle {
+                    Text(subtitle)
+                        .font(.caption2.weight(.semibold))
+                        .opacity(0.85)
+                }
+            }
+            // Dark text: white is unreadable on pastel colors.
+            .foregroundStyle(.black.opacity(0.75))
+            // Keeps the text inside the card and off the cropped icon.
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.leading, 12)
+            .padding(.trailing, 36)
+            .padding(.bottom, 12)
+
+            if let trailingSymbol {
+                Image(systemName: trailingSymbol)
+                    .font(.title3)
+                    .foregroundStyle(.black.opacity(0.55))
+                    .padding(10)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+            }
         }
         .frame(width: 172, height: 100)
         .clipShape(shape)
-        .shadow(color: Color(hue: hue, saturation: 0.8, brightness: 0.3).opacity(0.35), radius: 6, y: 4)
+        .shadow(color: color.opacity(0.4), radius: 6, y: 4)
     }
 
     /// An SF Symbol for the category, matched on words in its title. The
     /// more specific words come first ("K-Pop" before "Pop").
-    private static func symbol(for title: String) -> String {
+    fileprivate static func symbol(for title: String) -> String {
         let title = title.lowercased()
         let symbols: [(words: [String], symbol: String)] = [
+            // Styles and places inside a family come first, so sub-genres differ.
+            (["brazil", "brasil", "samba", "bossa", "sertanejo", "funk"], "sun.max.fill"),
+            (["latin", "reggaeton", "salsa", "bachata", "tango"], "figure.dance"),
+            (["korean"], "sparkles"),
+            (["japanese", "j-rock", "anime"], "moon.stars.fill"),
+            (["old school", "oldies", "classic", "retro", "90s", "80s", "70s", "60s"], "clock.arrow.circlepath"),
+            (["trap", "drill", "grime"], "bolt.fill"),
+            (["gangsta", "hardcore", "punk", "grunge"], "flame.fill"),
+            (["underground", "lo-fi", "lofi", "bedroom"], "headphones"),
+            (["conscious", "boom bap", "spoken"], "text.book.closed.fill"),
+            (["house", "techno", "trance", "club"], "waveform"),
+            (["singer", "songwriter", "unplugged"], "guitars"),
+            (["opera", "orchestra", "baroque", "symphon"], "pianokeys"),
+            (["swing", "bebop", "smooth"], "music.quarternote.3"),
+            (["dancehall", "ska", "dub"], "beach.umbrella.fill"),
+            (["western", "bluegrass", "honky"], "sun.horizon.fill"),
+            (["african", "afro"], "globe.africa.fill"),
+            (["arab", "middle east"], "globe.europe.africa.fill"),
+            (["indian", "bollywood"], "globe.asia.australia.fill"),
             (["k-pop", "j-pop", "mandopop", "cantopop"], "sparkles"),
             (["hip-hop", "hip hop", "rap"], "music.mic"),
             (["r&b", "soul"], "music.mic.circle.fill"),
@@ -269,22 +398,31 @@ private struct MoodCard: View {
         return symbols.first { entry in entry.words.contains { title.contains($0) } }?.symbol ?? "music.note"
     }
 
-    /// Only the hue is kept: saturation and brightness are fixed so white
-    /// text stays readable on every card.
-    private static func hue(for mood: MoodItem) -> Double {
-        if let rgb = mood.color {
-            var hue: CGFloat = 0, saturation: CGFloat = 0, brightness: CGFloat = 0
-            UIColor(
-                red: CGFloat((rgb >> 16) & 0xFF) / 255,
-                green: CGFloat((rgb >> 8) & 0xFF) / 255,
-                blue: CGFloat(rgb & 0xFF) / 255,
-                alpha: 1
-            ).getHue(&hue, saturation: &saturation, brightness: &brightness, alpha: nil)
-            if saturation > 0.15 { return Double(hue) }
-        }
-        // `hashValue` changes every launch; a sum of the letters doesn't.
-        let sum = mood.title.unicodeScalars.reduce(0) { $0 &+ Int($1.value) &* 31 }
-        return Double((sum % 360 + 360) % 360) / 360
+    /// Pastel Pantone colors (name, code, sRGB value as published by Pantone),
+    /// ordered so that neighboring families differ in hue.
+    private static let pantone: [(name: String, code: String, rgb: Int)] = [
+        ("Rose Quartz", "13-1520", 0xF7CAC9),
+        ("Aqua Sky", "14-4811", 0x7BC4C4),
+        ("Mimosa", "14-0848", 0xEFC050),
+        ("Serenity", "15-3919", 0x92A8D1),
+        ("Greenery", "15-0343", 0x88B04B),
+        ("Radiant Orchid", "18-3224", 0xB163A3),
+        ("Peach Fuzz", "13-1023", 0xFFBE98),
+        ("Cerulean", "15-4020", 0x9BB7D4),
+        ("Illuminating", "13-0647", 0xF5DF4D),
+        ("Turquoise", "15-5519", 0x45B5AA),
+        ("Living Coral", "16-1546", 0xFF6F61)
+    ]
+
+    /// A family's genres share its color. The sum of the letters is stable
+    /// between launches; `hashValue` is not.
+    static func swatch(family: String?, title: String) -> Color {
+        let key = family ?? MoodFamily.family(of: title)
+        // Each family gets its own color; other genres are spread by their title.
+        let index = key.flatMap { MoodFamily.names.firstIndex(of: $0) }
+            ?? title.unicodeScalars.reduce(0) { $0 &+ Int($1.value) &* 31 }
+        let rgb = pantone[(index % pantone.count + pantone.count) % pantone.count].rgb
+        return Color(red: Double((rgb >> 16) & 0xFF) / 255, green: Double((rgb >> 8) & 0xFF) / 255, blue: Double(rgb & 0xFF) / 255)
     }
 }
 

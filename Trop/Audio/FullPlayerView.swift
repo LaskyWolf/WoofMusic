@@ -460,7 +460,7 @@ private struct PlayerSongMenu: View, Equatable {
     }
 
     var body: some View {
-        SongActionsMenu(song: song, showsQueueActions: false, onCollapseRequest: onCollapse) {
+        SongActionsMenu(song: song, showsQueueActions: false, showsSleepTimer: true, onCollapseRequest: onCollapse) {
             PlayerOptionsGlyph()
         }
     }

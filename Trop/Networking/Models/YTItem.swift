@@ -260,6 +260,29 @@ enum YTItem {
     }
 }
 
+/// Who added a song to a shared playlist.
+struct PlaylistContributor: Codable, Hashable {
+    var name: String
+    var isOwner: Bool
+    var avatarUrl: String?
+
+    /// `contributorsAvatars` of a playlist row. The owner is the first avatar of
+    /// the playlist header; avatars are matched on the image URL without its
+    /// size suffix, which is the same in the header and in the rows.
+    static func from(_ renderer: [String: Any], ownerAvatarUrl: String?) -> PlaylistContributor? {
+        guard let stack = (renderer["contributorsAvatars"] as? [String: Any])?["avatarStackViewModel"] as? [String: Any],
+              let avatar = ((stack["avatars"] as? [[String: Any]])?.first)?["avatarViewModel"] as? [String: Any],
+              let name = avatar["accessibilityText"] as? String, !name.isEmpty else { return nil }
+        let url = (((avatar["image"] as? [String: Any])?["sources"] as? [[String: Any]])?.first)?["url"] as? String
+        let isOwner = ownerAvatarUrl != nil && url.map(imageKey) == ownerAvatarUrl.map(imageKey)
+        return PlaylistContributor(name: name, isOwner: isOwner, avatarUrl: url)
+    }
+
+    static func imageKey(_ url: String) -> String {
+        String(url.prefix { $0 != "=" })
+    }
+}
+
 struct SongItem: Codable, Hashable {
     var videoId: String
     var title: String
@@ -280,6 +303,8 @@ struct SongItem: Codable, Hashable {
     /// art-tracks), when the row carried one. Nil for stored rows parsed
     /// before this existed — previously persisted queues keep decoding.
     var musicVideoType: String?
+    /// Set on rows of a shared playlist.
+    var addedBy: PlaylistContributor?
 
     /// True for music-video results (subtitle starts with "Video").
     var isMusicVideo: Bool { isVideo == true }

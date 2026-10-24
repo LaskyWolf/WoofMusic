@@ -11,6 +11,7 @@ A free and open source YouTube Music client for iOS, built on [Trop](https://git
 - **Skip non-music parts** of music videos (intros, skits) with SponsorBlock
 - Pull down anywhere on the player to close it
 - Equalizer presets with a curve preview for each one
+- **Sleep timer** in the player's ⋯ menu: 5 to 60 minutes, or the end of the song
 
 ### Library
 
@@ -23,7 +24,7 @@ A free and open source YouTube Music client for iOS, built on [Trop](https://git
 ### Integrations
 
 - **ListenBrainz** scrobbling, next to Last.fm
-- **Siri and Shortcuts:** shuffle liked songs, play/pause, next song ("Shuffle my liked songs in Woof Music")
+- **Siri and Shortcuts:** shuffle liked songs, play/pause, next song ("Shuffle my liked songs in Woof Music"), play some music, and search and play a song or artist ("Play a song in Woof Music", then say the name)
 - **Home Screen quick actions:** Search, Shuffle Liked Songs, Downloads, Resume
 
 ### Interface

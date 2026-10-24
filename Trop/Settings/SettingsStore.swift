@@ -280,8 +280,8 @@ final class SettingsStore {
         didSet { Self.defaults.set(showQuickPicks, forKey: Keys.showQuickPicks) }
     }
 
-    var topListsLength: Int {
-        didSet { Self.defaults.set(topListsLength, forKey: Keys.topListsLength) }
+    var quickPicksSize: QuickPicksSize {
+        didSet { Self.defaults.set(quickPicksSize.rawValue, forKey: Keys.quickPicksSize) }
     }
 
     var contentCountry: String {
@@ -377,7 +377,7 @@ final class SettingsStore {
         static let skipNonMusic = "settings.skipNonMusic"
         static let hideExplicit = "settings.hideExplicit"
         static let showQuickPicks = "settings.showQuickPicks"
-        static let topListsLength = "settings.topListsLength"
+        static let quickPicksSize = "settings.quickPicksSize"
         static let contentCountry = "settings.contentCountry"
         static let disabledLyricsProviders = "settings.disabledLyricsProviders"
         static let trackSearchHistory = "settings.trackSearchHistory"
@@ -443,7 +443,7 @@ final class SettingsStore {
         skipNonMusic = Self.load(Keys.skipNonMusic, default: true)
         hideExplicit = Self.load(Keys.hideExplicit, default: false)
         showQuickPicks = Self.load(Keys.showQuickPicks, default: true)
-        topListsLength = Self.load(Keys.topListsLength, default: 8)
+        quickPicksSize = Self.loadEnum(Keys.quickPicksSize, default: .grid3x3)
         contentCountry = Self.loadString(Keys.contentCountry, default: "US")
         disabledLyricsProviders = Set(d.stringArray(forKey: Keys.disabledLyricsProviders) ?? [])
         trackSearchHistory = Self.load(Keys.trackSearchHistory, default: true)
@@ -471,4 +471,17 @@ extension EnvironmentValues {
         get { self[SettingsStoreKey.self] }
         set { self[SettingsStoreKey.self] = newValue }
     }
+}
+
+
+/// Layout of the Quick Picks pages on Home.
+enum QuickPicksSize: String, CaseIterable, Identifiable {
+    case grid2x2 = "2x2"
+    case grid3x3 = "3x3"
+
+    var id: String { rawValue }
+    var columns: Int { self == .grid2x2 ? 2 : 3 }
+    var perPage: Int { columns * columns }
+    /// How many songs Quick Picks holds: 4 pages of 2x2, 2 pages of 3x3.
+    var count: Int { self == .grid2x2 ? 16 : 18 }
 }

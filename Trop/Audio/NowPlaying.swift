@@ -375,6 +375,11 @@ final class NowPlaying {
            duration >= 600 || musicVideoType == "MUSIC_VIDEO_TYPE_PODCAST_EPISODE" {
             Task { await EpisodePlaybackStore.shared.markPlayed(videoId: finishedId) }
         }
+        if SleepTimer.shared.stopsAtSongEnd {
+            SleepTimer.shared.cancel()
+            pauseAfterLastSong()
+            return
+        }
         if isRepeatOn {
             repeatCurrent()
             return
@@ -384,12 +389,17 @@ final class NowPlaying {
         } else if SettingsStore.shared.autoplaySimilar, let endedVideoId = videoId {
             autoplaySimilar(from: endedVideoId)
         } else {
-            // End of queue, pause but keep the last song shown in the player.
-            isPlaying = false
-            stopTimer()
-            PlayerController.shared.updateNowPlayingProgress()
-            Task { await PlaybackStateService.shared.stopTracking() }
+            pauseAfterLastSong()
         }
+    }
+
+    /// Pauses but keeps the last song shown in the player: end of queue, or the
+    /// sleep timer set to stop at the end of the song.
+    private func pauseAfterLastSong() {
+        isPlaying = false
+        stopTimer()
+        PlayerController.shared.updateNowPlayingProgress()
+        Task { await PlaybackStateService.shared.stopTracking() }
     }
 
     /// Continues playback with a radio queue built from the last song when the

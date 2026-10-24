@@ -48,6 +48,10 @@ struct PlaylistDetailInfo {
     var thumbnailUrl: String?
     var playlistId: String
     var songs: [SongItem]
+    /// Avatars of the people on a shared playlist, owner first. Empty otherwise.
+    var collaboratorAvatarUrls: [String] = []
+    /// Token for the request that lists them by name.
+    var collaboratorsPanelParams: String?
     /// The signed-in account owns this playlist (YouTube sends an editable header).
     var isEditable = false
 }

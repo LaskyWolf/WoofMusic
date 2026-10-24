@@ -12,6 +12,8 @@ import SwiftUI
 struct SongActionsMenu<MenuLabel: View>: View {
     let song: SongItem
     var showsQueueActions = true
+    /// The full player's menu also offers the sleep timer.
+    var showsSleepTimer = false
     /// Collapses the full player so a pushed page is visible underneath.
     var onCollapseRequest: (() -> Void)?
     var onNavigate: ((DetailRoute) -> Void)?
@@ -29,6 +31,16 @@ struct SongActionsMenu<MenuLabel: View>: View {
     @State private var showArtistPicker = false
     @State private var confirmRemoveDownload = false
     @State private var isResolvingArtist = false
+    @State private var adderAvatar: UIImage?
+
+    /// Round 36 pt picture for the menu row.
+    private static func circle(_ image: UIImage) -> UIImage {
+        let size = CGSize(width: 36, height: 36)
+        return UIGraphicsImageRenderer(size: size).image { _ in
+            UIBezierPath(ovalIn: CGRect(origin: .zero, size: size)).addClip()
+            image.draw(in: CGRect(origin: .zero, size: size))
+        }
+    }
 
     var body: some View {
         Menu {
@@ -46,6 +58,21 @@ struct SongActionsMenu<MenuLabel: View>: View {
                 }
             }
             .controlGroupStyle(.compactMenu)
+
+            if let adder = song.addedBy {
+                Section {
+                    // A menu shows the picture at icon size and the second Text as a subtitle.
+                    Button {} label: {
+                        Text("Added by \(adder.name)")
+                        if adder.isOwner { Text("Playlist owner") }
+                        if let avatar = adderAvatar {
+                            Image(uiImage: avatar).renderingMode(.original)
+                        } else {
+                            Image(systemName: "person.crop.circle.fill")
+                        }
+                    }
+                }
+            }
 
             if showsQueueActions {
                 Section {
@@ -65,6 +92,10 @@ struct SongActionsMenu<MenuLabel: View>: View {
                 }
             }
 
+            if showsSleepTimer {
+                sleepTimerMenu
+            }
+
             Menu("Go To", systemImage: "arrow.forward.circle") {
                 if !song.artists.filter({ !$0.name.isEmpty }).isEmpty {
                     Button("Artist", systemImage: "music.mic", action: handleViewArtist)
@@ -82,6 +113,10 @@ struct SongActionsMenu<MenuLabel: View>: View {
             label()
         }
         .menuOrder(.fixed)
+        .task(id: song.addedBy?.avatarUrl) {
+            guard let url = song.addedBy?.avatarUrl.flatMap(URL.init) else { return }
+            adderAvatar = (try? await ArtworkLoader.image(for: url)).map(Self.circle)
+        }
         .confirmationDialog("Go to Artist", isPresented: $showArtistPicker, titleVisibility: .visible) {
             ForEach(song.artists.filter { !$0.name.isEmpty }, id: \.self) { artist in
                 Button(artist.name) { openArtist(artist) }
@@ -132,6 +167,28 @@ struct SongActionsMenu<MenuLabel: View>: View {
         .task { await pin.load(videoId: song.videoId) }
     }
 
+    private var sleepTimerMenu: some View {
+        let timer = SleepTimer.shared
+        return Menu {
+            Button("End of Song", systemImage: "music.note") { timer.stopAtSongEnd() }
+            ForEach(SleepTimer.presetMinutes, id: \.self) { minutes in
+                Button(minutes == 60 ? "1 Hour" : "\(minutes) Minutes", systemImage: "timer") {
+                    timer.start(minutes: minutes)
+                }
+            }
+            if timer.isActive {
+                Section {
+                    Button("Turn Off", systemImage: "moon.zzz") { timer.cancel() }
+                }
+            }
+        } label: {
+            Label(
+                timer.summary.map { "Sleep Timer · \($0)" } ?? "Sleep Timer",
+                systemImage: timer.isActive ? "moon.zzz.fill" : "moon.zzz"
+            )
+        }
+    }
+
     @ViewBuilder
     private var downloadButton: some View {
         switch downloadManager.state(for: song.videoId) {
@@ -139,6 +196,7 @@ struct SongActionsMenu<MenuLabel: View>: View {
             Button("Remove Download", systemImage: "trash", role: .destructive) {
                 confirmRemoveDownload = true
             }
+            .tint(.red)
         case .downloading:
             Button("Downloading…", systemImage: "arrow.down.circle") {}
                 .disabled(true)

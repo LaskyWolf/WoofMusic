@@ -29,7 +29,7 @@ final class HomeViewModel {
     }
 
     private var isHomeDataLoaded = false
-    private var isLoadingMore = false
+    private(set) var isLoadingMore = false
     private var loadGeneration = 0
     private var previousHomePage: HomePage?
     private let cookieStore = CookieStore()
@@ -66,7 +66,7 @@ final class HomeViewModel {
             guard let self else { return }
             let settings = SettingsStore.shared
             async let qp: HomeSection = settings.showQuickPicks
-                ? await personalization.buildQuickPicks(limit: settings.topListsLength)
+                ? await personalization.buildQuickPicks(limit: settings.quickPicksSize.count)
                 : .quickPicks(items: [])
             async let kl: HomeSection = await personalization.buildKeepListening()
             async let ff: HomeSection = await personalization.buildForgottenFavorites()
@@ -242,7 +242,7 @@ final class HomeViewModel {
     private func storeLocalSections() async {
         let settings = SettingsStore.shared
         async let qp: HomeSection = settings.showQuickPicks
-            ? personalization.buildQuickPicks(limit: settings.topListsLength)
+            ? personalization.buildQuickPicks(limit: settings.quickPicksSize.count)
             : .quickPicks(items: [])
         async let kl: HomeSection = personalization.buildKeepListening()
         async let ff: HomeSection = personalization.buildForgottenFavorites()
@@ -371,6 +371,10 @@ final class HomeViewModel {
 
     private func orderSections(_ sections: [HomeSection]) -> [HomeSection] {
         let filtered = sections.compactMap { section -> HomeSection? in
+            // Videos aren't supported, so YouTube's video shelves are dropped.
+            if case .homePageSection(let data, _) = section, data.title.lowercased().contains("music video") {
+                return nil
+            }
             let f = applyFilters(section)
             if case .quickPicks = f { return f }
             return f.items.isEmpty ? nil : f
@@ -437,7 +441,7 @@ final class HomeViewModel {
         case .keepListening: return 80
         case .forgottenFavorites: return 60
         case .homePageSection(_, let index): return 40 - index
-        case .dailyDiscover: return 50
+        case .dailyDiscover: return 70
         case .similarRecommendation: return 35
         case .accountPlaylists: return 30
         case .fromTheCommunity: return 25
