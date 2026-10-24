@@ -142,7 +142,7 @@ struct HomeScreenView: View {
             viewModel.syncSettings()
             Task { await viewModel.refresh() }
         }
-        .onChange(of: settings.topListsLength) { _, _ in
+        .onChange(of: settings.quickPicksSize) { _, _ in
             Task { await viewModel.refresh() }
         }
         .onChange(of: settings.contentCountry) { _, _ in
@@ -206,16 +206,22 @@ struct HomeScreenView: View {
         if combinedQueue.isEmpty {
             EmptyView()
         } else {
-            // Pages of 2x2: pinned songs first, then the picks. The next page peeks in from the right.
-            let cards = pinnedSongs.map { ($0, true) } + quickSongs.map { ($0, false) }
-            let pages = stride(from: 0, to: cards.count, by: 4).map { Array(cards[$0..<min($0 + 4, cards.count)]) }
+            // Pages of 2x2 or 3x3 (a setting): pinned songs first, then the picks. The next page peeks in from the right.
+            let size = settings.quickPicksSize
+            let cards = Array((pinnedSongs.map { ($0, true) } + quickSongs.map { ($0, false) }).prefix(size.count))
+            let pages = stride(from: 0, to: cards.count, by: size.perPage).map { Array(cards[$0..<min($0 + size.perPage, cards.count)]) }
             VStack(alignment: .leading, spacing: 8) {
                 NavigationTitleView(title: section.displayTitle)
                 ScrollView(.horizontal, showsIndicators: false) {
                     LazyHStack(alignment: .top, spacing: 12) {
                         ForEach(pages.indices, id: \.self) { page in
-                            quickPicksPage(pages[page], queue: combinedQueue)
-                                .containerRelativeFrame(.horizontal) { width, _ in width - DesignTokens.screenHPadding * 2 - 12 }
+                            quickPicksPage(pages[page], queue: combinedQueue, columns: size.columns)
+                                .containerRelativeFrame(.horizontal) { width, _ in
+                                    // A 2x2 page is two cards of the 3x3 page wide, so cards keep one size.
+                                    let page3 = width - DesignTokens.screenHPadding * 2 - 12
+                                    let card = (page3 - 20) / 3
+                                    return size == .grid3x3 ? page3 : card * 2 + 10
+                                }
                         }
                     }
                     .scrollTargetLayout()
@@ -226,8 +232,8 @@ struct HomeScreenView: View {
         }
     }
 
-    private func quickPicksPage(_ cards: [(SongItem, Bool)], queue: [SongItem]) -> some View {
-        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 2), spacing: 10) {
+    private func quickPicksPage(_ cards: [(SongItem, Bool)], queue: [SongItem], columns: Int) -> some View {
+        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: columns), spacing: 10) {
             ForEach(Array(cards.enumerated()), id: \.offset) { _, card in
                 let (song, isPinned) = card
                 QuickPickCard(song: song, isPinned: isPinned) {
@@ -342,7 +348,7 @@ private struct QuickPickCard: View {
                 .overlay { AsyncImageView(url: song.thumbnailUrl).scaledToFill() }
                 .overlay(alignment: .bottom) {
                     Text(song.title)
-                        .font(.footnote.weight(.semibold))
+                        .font(.caption.weight(.semibold))
                         .foregroundStyle(.white)
                         .lineLimit(2)
                         .multilineTextAlignment(.leading)

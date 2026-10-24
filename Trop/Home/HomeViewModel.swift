@@ -66,7 +66,7 @@ final class HomeViewModel {
             guard let self else { return }
             let settings = SettingsStore.shared
             async let qp: HomeSection = settings.showQuickPicks
-                ? await personalization.buildQuickPicks(limit: settings.topListsLength)
+                ? await personalization.buildQuickPicks(limit: settings.quickPicksSize.count)
                 : .quickPicks(items: [])
             async let kl: HomeSection = await personalization.buildKeepListening()
             async let ff: HomeSection = await personalization.buildForgottenFavorites()
@@ -242,7 +242,7 @@ final class HomeViewModel {
     private func storeLocalSections() async {
         let settings = SettingsStore.shared
         async let qp: HomeSection = settings.showQuickPicks
-            ? personalization.buildQuickPicks(limit: settings.topListsLength)
+            ? personalization.buildQuickPicks(limit: settings.quickPicksSize.count)
             : .quickPicks(items: [])
         async let kl: HomeSection = personalization.buildKeepListening()
         async let ff: HomeSection = personalization.buildForgottenFavorites()
