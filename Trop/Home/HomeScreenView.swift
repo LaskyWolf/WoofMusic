@@ -206,32 +206,46 @@ struct HomeScreenView: View {
         if combinedQueue.isEmpty {
             EmptyView()
         } else {
-            // 3x3: pinned songs first, then the picks, nine cards in all.
-            let cards = (pinnedSongs.map { ($0, true) } + quickSongs.map { ($0, false) }).prefix(9)
+            // Pages of 3x3: pinned songs first, then the picks. The next page peeks in from the right.
+            let cards = pinnedSongs.map { ($0, true) } + quickSongs.map { ($0, false) }
+            let pages = stride(from: 0, to: cards.count, by: 9).map { Array(cards[$0..<min($0 + 9, cards.count)]) }
             VStack(alignment: .leading, spacing: 8) {
                 NavigationTitleView(title: section.displayTitle)
-                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 3), spacing: 10) {
-                    ForEach(Array(cards.enumerated()), id: \.offset) { _, card in
-                        let (song, isPinned) = card
-                        QuickPickCard(song: song, isPinned: isPinned) {
-                            handleSongTap(song, in: combinedQueue)
-                        }
-                        .contextMenu {
-                            if isPinned {
-                                Button(role: .destructive) {
-                                    Task {
-                                        try? await DatabaseService.shared.removeFromSpeedDial(videoId: song.videoId)
-                                        await reloadSpeedDial()
-                                    }
-                                } label: {
-                                    Label("Unpin", systemImage: "pin.slash")
-                                }
-                                .tint(.red)
-                            }
+                ScrollView(.horizontal, showsIndicators: false) {
+                    LazyHStack(alignment: .top, spacing: 12) {
+                        ForEach(pages.indices, id: \.self) { page in
+                            quickPicksPage(pages[page], queue: combinedQueue)
+                                .containerRelativeFrame(.horizontal) { width, _ in width - DesignTokens.screenHPadding * 2 - 12 }
                         }
                     }
+                    .scrollTargetLayout()
                 }
-                .padding(.horizontal, DesignTokens.screenHPadding)
+                .contentMargins(.horizontal, DesignTokens.screenHPadding, for: .scrollContent)
+                .scrollTargetBehavior(.viewAligned)
+            }
+        }
+    }
+
+    private func quickPicksPage(_ cards: [(SongItem, Bool)], queue: [SongItem]) -> some View {
+        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 3), spacing: 10) {
+            ForEach(Array(cards.enumerated()), id: \.offset) { _, card in
+                let (song, isPinned) = card
+                QuickPickCard(song: song, isPinned: isPinned) {
+                    handleSongTap(song, in: queue)
+                }
+                .contextMenu {
+                    if isPinned {
+                        Button(role: .destructive) {
+                            Task {
+                                try? await DatabaseService.shared.removeFromSpeedDial(videoId: song.videoId)
+                                await reloadSpeedDial()
+                            }
+                        } label: {
+                            Label("Unpin", systemImage: "pin.slash")
+                        }
+                        .tint(.red)
+                    }
+                }
             }
         }
     }
