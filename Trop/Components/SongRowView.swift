@@ -66,6 +66,7 @@ struct SongRowView: View {
         .background(DownloadCellProgressView(song: song))
         .contentShape(Rectangle())
         .onTapGesture(perform: onTap)
+        .rowPressFeedback()
         .task { await durations.resolve(videoId: song.videoId, knownDuration: song.duration) }
         .onReceive(NotificationCenter.default.publisher(for: .durationDidUpdate)) { notification in
             durations.handleUpdate(notification, videoId: song.videoId)

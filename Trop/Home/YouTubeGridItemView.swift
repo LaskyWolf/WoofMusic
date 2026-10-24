@@ -59,7 +59,7 @@ struct YouTubeGridItemView: View {
             }
             .frame(width: artworkSize, height: 220, alignment: .top)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(ZoomPressStyle())
         .task {
             guard let vid = videoId else { return }
             let known: Int

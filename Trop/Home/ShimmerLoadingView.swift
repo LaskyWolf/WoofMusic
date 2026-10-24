@@ -127,8 +127,11 @@ struct ShimmerChips: View {
 // MARK: - ShimmerLoadingView
 
 struct ShimmerLoadingView: View {
-    private enum Section: Hashable { case list, squares }
-    private let sections: [Section] = [.list, .squares, .squares, .squares]
+    private enum Section: Hashable { case quickPicks, squares, list }
+
+    private var sections: [Section] {
+        (SettingsStore.shared.showQuickPicks ? [.quickPicks] : []) + [.squares, .list, .squares]
+    }
 
     var body: some View {
         ScrollView {
@@ -136,8 +139,9 @@ struct ShimmerLoadingView: View {
                 chipsRow
                 ForEach(sections.indices, id: \.self) { index in
                     switch sections[index] {
-                    case .list: listSection
+                    case .quickPicks: quickPicksSection
                     case .squares: squaresSection
+                    case .list: listSection
                     }
                 }
             }
@@ -151,6 +155,24 @@ struct ShimmerLoadingView: View {
             content()
         }
         .padding(.top, 8)
+    }
+
+    /// Square cards in the layout chosen in Settings: 3x3, or 2x3 centered
+    /// with cards of the same size.
+    private var quickPicksSection: some View {
+        let size = SettingsStore.shared.quickPicksSize
+        return section {
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: size.columns), spacing: 8) {
+                ForEach(0..<size.perPage, id: \.self) { _ in
+                    ShimmerFill(radius: 8).aspectRatio(1, contentMode: .fit)
+                }
+            }
+            .containerRelativeFrame(.horizontal) { width, _ in
+                let page = width - DesignTokens.screenHPadding * 2
+                return size == .grid3x3 ? page : (page - 16) / 3 * 2 + 8
+            }
+            .frame(maxWidth: .infinity)
+        }
     }
 
     private var squaresSection: some View {
