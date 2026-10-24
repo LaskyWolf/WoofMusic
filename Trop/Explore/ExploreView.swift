@@ -159,7 +159,7 @@ struct ExploreSectionsList: View {
 
     private func moodsGrid(_ section: ExploreSection) -> some View {
         let entries = MoodFamily.entries(for: section.moods, expanded: expandedFamilies)
-        return HorizontalSection(title: section.title) {
+        return HorizontalSection(title: "Moods") {
             // Two-row grid scrolling horizontally: all 50+ moods reachable
             // without a dominating vertical wall.
             LazyHGrid(
@@ -177,7 +177,7 @@ struct ExploreSectionsList: View {
                         } label: {
                             MoodCard(
                                 title: family,
-                                hue: MoodCard.hue(family: family, title: family),
+                                color: MoodCard.swatch(family: family, title: family),
                                 subtitle: "\(count) genres",
                                 trailingSymbol: isOpen ? "chevron.left.circle.fill" : "chevron.right.circle.fill"
                             )
@@ -185,7 +185,7 @@ struct ExploreSectionsList: View {
                         .buttonStyle(.plain)
                     case .mood(let mood, let family):
                         NavigationLink(value: mood) {
-                            MoodCard(title: mood.title, hue: MoodCard.hue(family: family, title: mood.title))
+                            MoodCard(title: mood.title, color: MoodCard.swatch(family: family, title: mood.title))
                         }
                         .buttonStyle(.plain)
                     }
@@ -233,6 +233,8 @@ private enum MoodFamily {
         ("Pop", ["pop"])
     ]
 
+    static var names: [String] { families.map(\.name) }
+
     static func family(of title: String) -> String? {
         let title = title.lowercased()
         return families.first { $0.words.contains { title.contains($0) } }?.name
@@ -261,25 +263,20 @@ private enum MoodFamily {
     }
 }
 
-/// A colored Moods & Genres tile, like Apple Music's category cards. The color
-/// comes from a bright palette, picked from the family (or the title) so a
-/// category keeps its color between launches. YouTube Music's own colors are
-/// muddy, so unused.
+/// A colored mood tile, like Apple Music's category cards. The color is a
+/// Pantone color, picked from the family (or the title) so a category keeps its
+/// color between launches. YouTube Music's own colors are muddy, so unused.
 private struct MoodCard: View {
     let title: String
-    let hue: Double
+    let color: Color
     var subtitle: String?
     var trailingSymbol: String?
 
     var body: some View {
-        let accent = Color(hue: hue, saturation: 0.9, brightness: 0.55)
         let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
         ZStack(alignment: .bottomLeading) {
             LinearGradient(
-                colors: [
-                    Color(hue: hue, saturation: 0.78, brightness: 0.95),
-                    Color(hue: (hue + 0.07).truncatingRemainder(dividingBy: 1), saturation: 0.92, brightness: 0.72)
-                ],
+                colors: [color, color.mix(with: .black, by: 0.3)],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
@@ -325,7 +322,7 @@ private struct MoodCard: View {
         }
         .frame(width: 172, height: 100)
         .clipShape(shape)
-        .shadow(color: accent.opacity(0.4), radius: 6, y: 4)
+        .shadow(color: color.opacity(0.4), radius: 6, y: 4)
     }
 
     /// An SF Symbol for the category, matched on words in its title. The
@@ -368,15 +365,32 @@ private struct MoodCard: View {
         return symbols.first { entry in entry.words.contains { title.contains($0) } }?.symbol ?? "music.note"
     }
 
-    /// Evenly spread hues, so neighboring cards rarely look alike.
-    private static let hues: [Double] = [0.0, 0.07, 0.12, 0.30, 0.42, 0.50, 0.58, 0.66, 0.75, 0.83, 0.92]
+    /// Pantone colors (name, code, sRGB value as published by Pantone).
+    private static let pantone: [(name: String, code: String, rgb: Int)] = [
+        ("Classic Blue", "19-4052", 0x0F4C81),
+        ("Living Coral", "16-1546", 0xFF6F61),
+        ("Ultra Violet", "18-3838", 0x5F4B8B),
+        ("Radiant Orchid", "18-3224", 0xB163A3),
+        ("Marsala", "18-1438", 0x955251),
+        ("Emerald", "17-5641", 0x009473),
+        ("Tangerine Tango", "17-1463", 0xDD4124),
+        ("Honeysuckle", "18-2120", 0xD94F70),
+        ("Blue Iris", "18-3943", 0x5A5B9F),
+        ("Viva Magenta", "18-1750", 0xBE3455),
+        ("Very Peri", "17-3938", 0x6667AB),
+        ("Greenery", "15-0343", 0x88B04B),
+        ("Turquoise", "15-5519", 0x45B5AA)
+    ]
 
-    /// The sum of the letters is stable between launches; `hashValue` is not.
-    /// A family's genres all use the family's name, so they share one color.
-    static func hue(family: String?, title: String) -> Double {
-        let key = family ?? MoodFamily.family(of: title) ?? title
-        let sum = key.unicodeScalars.reduce(0) { $0 &+ Int($1.value) &* 31 }
-        return hues[(sum % hues.count + hues.count) % hues.count]
+    /// A family's genres share its color. The sum of the letters is stable
+    /// between launches; `hashValue` is not.
+    static func swatch(family: String?, title: String) -> Color {
+        let key = family ?? MoodFamily.family(of: title)
+        // Each family gets its own color; other genres are spread by their title.
+        let index = key.flatMap { MoodFamily.names.firstIndex(of: $0) }
+            ?? title.unicodeScalars.reduce(0) { $0 &+ Int($1.value) &* 31 }
+        let rgb = pantone[(index % pantone.count + pantone.count) % pantone.count].rgb
+        return Color(red: Double((rgb >> 16) & 0xFF) / 255, green: Double((rgb >> 8) & 0xFF) / 255, blue: Double(rgb & 0xFF) / 255)
     }
 }
 

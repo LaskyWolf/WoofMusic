@@ -206,9 +206,9 @@ struct HomeScreenView: View {
         if combinedQueue.isEmpty {
             EmptyView()
         } else {
-            // Pages of 3x3: pinned songs first, then the picks. The next page peeks in from the right.
+            // Pages of 2x2: pinned songs first, then the picks. The next page peeks in from the right.
             let cards = pinnedSongs.map { ($0, true) } + quickSongs.map { ($0, false) }
-            let pages = stride(from: 0, to: cards.count, by: 9).map { Array(cards[$0..<min($0 + 9, cards.count)]) }
+            let pages = stride(from: 0, to: cards.count, by: 4).map { Array(cards[$0..<min($0 + 4, cards.count)]) }
             VStack(alignment: .leading, spacing: 8) {
                 NavigationTitleView(title: section.displayTitle)
                 ScrollView(.horizontal, showsIndicators: false) {
@@ -227,7 +227,7 @@ struct HomeScreenView: View {
     }
 
     private func quickPicksPage(_ cards: [(SongItem, Bool)], queue: [SongItem]) -> some View {
-        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 3), spacing: 10) {
+        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 2), spacing: 10) {
             ForEach(Array(cards.enumerated()), id: \.offset) { _, card in
                 let (song, isPinned) = card
                 QuickPickCard(song: song, isPinned: isPinned) {
@@ -342,7 +342,7 @@ private struct QuickPickCard: View {
                 .overlay { AsyncImageView(url: song.thumbnailUrl).scaledToFill() }
                 .overlay(alignment: .bottom) {
                     Text(song.title)
-                        .font(.caption.weight(.semibold))
+                        .font(.footnote.weight(.semibold))
                         .foregroundStyle(.white)
                         .lineLimit(2)
                         .multilineTextAlignment(.leading)
