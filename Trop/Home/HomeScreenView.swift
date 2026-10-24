@@ -15,6 +15,7 @@ struct HomeScreenView: View {
 
     @State private var pendingRoute: DetailRoute?
     @State private var speedDialEntries: [SpeedDialEntry] = []
+    @State private var quickPicksPage: Int? = 0
 
     var body: some View {
         NavigationStack(path: $router.homePath) {
@@ -218,7 +219,8 @@ struct HomeScreenView: View {
                             quickPicksPage(pages[page], queue: combinedQueue, columns: size.columns)
                                 .containerRelativeFrame(.horizontal) { width, _ in
                                     // A 2x2 page is two cards of the 3x3 page wide, so cards keep one size.
-                                    let page3 = width - DesignTokens.screenHPadding * 2 - 12
+                                    // Leaves about 40 pt of the next page showing.
+                                    let page3 = width - DesignTokens.screenHPadding - 12 - 40
                                     let card = (page3 - 20) / 3
                                     return size == .grid3x3 ? page3 : card * 2 + 10
                                 }
@@ -228,6 +230,21 @@ struct HomeScreenView: View {
                 }
                 .contentMargins(.horizontal, DesignTokens.screenHPadding, for: .scrollContent)
                 .scrollTargetBehavior(.viewAligned)
+                .scrollPosition(id: $quickPicksPage)
+
+                if pages.count > 1 {
+                    HStack(spacing: 6) {
+                        ForEach(pages.indices, id: \.self) { page in
+                            Circle()
+                                .fill(page == (quickPicksPage ?? 0) ? Color.primary : Color.secondary.opacity(0.35))
+                                .frame(width: 6, height: 6)
+                        }
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 2)
+                    .animation(.smooth(duration: 0.2), value: quickPicksPage)
+                    .accessibilityHidden(true)
+                }
             }
         }
     }
