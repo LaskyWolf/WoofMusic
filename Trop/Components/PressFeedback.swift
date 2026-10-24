@@ -8,9 +8,9 @@ import SwiftUI
 /// How long the feedback stays after the finger lifts, so a quick tap still shows it.
 private let pressLinger: Duration = .milliseconds(200)
 
-/// Zooms a card in while it is pressed, also on a quick tap.
+/// Shrinks a card while it is pressed, also on a quick tap.
 struct ZoomPressStyle: ButtonStyle {
-    var scale: CGFloat = 1.06
+    var scale: CGFloat = 0.94
 
     func makeBody(configuration: Configuration) -> some View {
         ZoomPressLabel(configuration: configuration, scale: scale)
@@ -40,7 +40,7 @@ private struct ZoomPressLabel: View {
 }
 
 extension View {
-    /// Lights up the row's background and zooms it in slightly while it is touched.
+    /// Lights up the row's background and shrinks it slightly while it is touched.
     func rowPressFeedback() -> some View { modifier(RowPressFeedback()) }
 }
 
@@ -55,7 +55,7 @@ private struct RowPressFeedback: ViewModifier {
                     .fill(Color.primary.opacity(isLit ? 0.14 : 0))
                     .padding(.horizontal, 6)
             )
-            .scaleEffect(isLit ? 1.03 : 1)
+            .scaleEffect(isLit ? 0.97 : 1)
             .animation(.spring(duration: 0.2, bounce: 0.3), value: isLit)
             // Never fires: it only reports the touch, and the tap still goes through.
             .onLongPressGesture(minimumDuration: .infinity, maximumDistance: 16, pressing: { pressing in
