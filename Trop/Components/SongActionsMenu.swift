@@ -49,6 +49,18 @@ struct SongActionsMenu<MenuLabel: View>: View {
             }
             .controlGroupStyle(.compactMenu)
 
+            if let adder = song.addedBy {
+                Section("Added by \(adder.name)") {
+                    Button {} label: {
+                        Label(
+                            adder.isOwner ? "Playlist owner" : "Not the playlist owner",
+                            systemImage: adder.isOwner ? "crown.fill" : "person.fill"
+                        )
+                    }
+                    .disabled(true)
+                }
+            }
+
             if showsQueueActions {
                 Section {
                     Button("Play Next", systemImage: "text.insert") {

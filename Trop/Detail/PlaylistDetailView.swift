@@ -384,9 +384,16 @@ extension PlaylistDetailViewModel {
         // --- Songs ---
         // Rows were collected across every continuation page by the caller;
         // continuation markers are already stripped.
+        let ownerAvatarUrl = (headerRenderer?["facepile"] as? [String: Any])
+            .flatMap { $0["avatarStackViewModel"] as? [String: Any] }
+            .flatMap { ($0["avatars"] as? [[String: Any]])?.first }
+            .flatMap { $0["avatarViewModel"] as? [String: Any] }
+            .flatMap { ($0["image"] as? [String: Any])?["sources"] as? [[String: Any]] }
+            .flatMap { $0.first?["url"] as? String }
         for itemDict in rows {
             if let renderer = itemDict["musicResponsiveListItemRenderer"] as? [String: Any],
-               let song = SongItem.from(renderer) {
+               var song = SongItem.from(renderer) {
+                song.addedBy = PlaylistContributor.from(renderer, ownerAvatarUrl: ownerAvatarUrl)
                 songs.append(song)
             }
         }

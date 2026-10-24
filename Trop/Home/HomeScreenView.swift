@@ -27,15 +27,22 @@ struct HomeScreenView: View {
                     onAccount: { router.homePath.append(DetailRoute.settings) }
                 )
 
-                if viewModel.isLoading {
-                    Spacer()
-                    ShimmerLoadingView()
-                    Spacer()
-                } else if let error = viewModel.error {
-                    errorView(error)
-                } else {
-                    homescreenContent
+                Group {
+                    if viewModel.isLoading {
+                        VStack {
+                            Spacer()
+                            ShimmerLoadingView()
+                            Spacer()
+                        }
+                        .transition(.opacity)
+                    } else if let error = viewModel.error {
+                        errorView(error)
+                    } else {
+                        homescreenContent
+                            .transition(.opacity)
+                    }
                 }
+                .animation(.smooth(duration: 0.35), value: viewModel.isLoading)
             }
             .frame(maxHeight: .infinity, alignment: .top)
             .toolbar(.hidden, for: .navigationBar)
@@ -91,10 +98,17 @@ struct HomeScreenView: View {
                 if viewModel.isChipLoading {
                     ShimmerLoadingView()
                 } else {
-                    ForEach(viewModel.homeSections.indices, id: \.self) { index in
-                        let section = viewModel.homeSections[index]
+                    // Keyed by section id, so a new section fades in instead of popping in.
+                    ForEach(viewModel.homeSections) { section in
                         sectionView(for: section)
+                            .transition(.opacity.combined(with: .offset(y: 24)))
+                            .onAppear { loadMoreWhenNearEnd(section) }
                     }
+                }
+
+                if viewModel.isLoadingMore {
+                    loadingMorePlaceholder
+                        .transition(.opacity)
                 }
 
                 GeometryReader { _ in
@@ -111,6 +125,8 @@ struct HomeScreenView: View {
                 }
                 .frame(height: 1)
             }
+            .animation(.smooth(duration: 0.4), value: viewModel.homeSections.map(\.id))
+            .animation(.smooth(duration: 0.3), value: viewModel.isLoadingMore)
         }
         .scrollIndicators(.automatic)
         .miniPlayerTracksScroll()
@@ -132,6 +148,28 @@ struct HomeScreenView: View {
         .onChange(of: settings.contentCountry) { _, _ in
             Task { await viewModel.refresh() }
         }
+    }
+
+    /// Starts the next page when one of the last sections shows up, so it is
+    /// usually there before the user reaches the bottom.
+    private func loadMoreWhenNearEnd(_ section: HomeSection) {
+        let sections = viewModel.homeSections
+        guard let index = sections.firstIndex(where: { $0.id == section.id }) else { return }
+        viewModel.loadMoreIfNeeded(currentIndex: index, total: sections.count)
+    }
+
+    /// Same shape as a card section, shown while the next page loads.
+    private var loadingMorePlaceholder: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ShimmerSectionTitle(width: 180)
+            HStack(alignment: .top, spacing: 12) {
+                ForEach(0..<3, id: \.self) { _ in ShimmerCard() }
+            }
+            .padding(.horizontal, DesignTokens.screenHPadding)
+            .padding(.vertical, 4)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .clipped()
     }
 
     @ViewBuilder

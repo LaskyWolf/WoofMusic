@@ -29,7 +29,7 @@ final class HomeViewModel {
     }
 
     private var isHomeDataLoaded = false
-    private var isLoadingMore = false
+    private(set) var isLoadingMore = false
     private var loadGeneration = 0
     private var previousHomePage: HomePage?
     private let cookieStore = CookieStore()
