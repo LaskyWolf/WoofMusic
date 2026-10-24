@@ -31,6 +31,16 @@ struct SongActionsMenu<MenuLabel: View>: View {
     @State private var showArtistPicker = false
     @State private var confirmRemoveDownload = false
     @State private var isResolvingArtist = false
+    @State private var adderAvatar: UIImage?
+
+    /// Round 36 pt picture for the menu row.
+    private static func circle(_ image: UIImage) -> UIImage {
+        let size = CGSize(width: 36, height: 36)
+        return UIGraphicsImageRenderer(size: size).image { _ in
+            UIBezierPath(ovalIn: CGRect(origin: .zero, size: size)).addClip()
+            image.draw(in: CGRect(origin: .zero, size: size))
+        }
+    }
 
     var body: some View {
         Menu {
@@ -50,14 +60,17 @@ struct SongActionsMenu<MenuLabel: View>: View {
             .controlGroupStyle(.compactMenu)
 
             if let adder = song.addedBy {
-                Section("Added by \(adder.name)") {
+                Section {
+                    // A menu shows the picture at icon size and the second Text as a subtitle.
                     Button {} label: {
-                        Label(
-                            adder.isOwner ? "Playlist owner" : "Not the playlist owner",
-                            systemImage: adder.isOwner ? "crown.fill" : "person.fill"
-                        )
+                        Text("Added by \(adder.name)")
+                        if adder.isOwner { Text("Playlist owner") }
+                        if let avatar = adderAvatar {
+                            Image(uiImage: avatar).renderingMode(.original)
+                        } else {
+                            Image(systemName: "person.crop.circle.fill")
+                        }
                     }
-                    .disabled(true)
                 }
             }
 
@@ -100,6 +113,10 @@ struct SongActionsMenu<MenuLabel: View>: View {
             label()
         }
         .menuOrder(.fixed)
+        .task(id: song.addedBy?.avatarUrl) {
+            guard let url = song.addedBy?.avatarUrl.flatMap(URL.init) else { return }
+            adderAvatar = (try? await ArtworkLoader.image(for: url)).map(Self.circle)
+        }
         .confirmationDialog("Go to Artist", isPresented: $showArtistPicker, titleVisibility: .visible) {
             ForEach(song.artists.filter { !$0.name.isEmpty }, id: \.self) { artist in
                 Button(artist.name) { openArtist(artist) }

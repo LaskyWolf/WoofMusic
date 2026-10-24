@@ -264,6 +264,7 @@ enum YTItem {
 struct PlaylistContributor: Codable, Hashable {
     var name: String
     var isOwner: Bool
+    var avatarUrl: String?
 
     /// `contributorsAvatars` of a playlist row. The owner is the first avatar of
     /// the playlist header; avatars are matched on the image URL without its
@@ -274,7 +275,7 @@ struct PlaylistContributor: Codable, Hashable {
               let name = avatar["accessibilityText"] as? String, !name.isEmpty else { return nil }
         let url = (((avatar["image"] as? [String: Any])?["sources"] as? [[String: Any]])?.first)?["url"] as? String
         let isOwner = ownerAvatarUrl != nil && url.map(imageKey) == ownerAvatarUrl.map(imageKey)
-        return PlaylistContributor(name: name, isOwner: isOwner)
+        return PlaylistContributor(name: name, isOwner: isOwner, avatarUrl: url)
     }
 
     static func imageKey(_ url: String) -> String {
