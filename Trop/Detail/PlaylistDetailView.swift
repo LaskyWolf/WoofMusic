@@ -390,6 +390,11 @@ extension PlaylistDetailViewModel {
             .flatMap { $0["avatarViewModel"] as? [String: Any] }
             .flatMap { ($0["image"] as? [String: Any])?["sources"] as? [[String: Any]] }
             .flatMap { $0.first?["url"] as? String }
+        let avatarUrls = ((headerRenderer?["facepile"] as? [String: Any])?["avatarStackViewModel"] as? [String: Any])
+            .flatMap { $0["avatars"] as? [[String: Any]] }?
+            .compactMap { avatar in
+                ((((avatar["avatarViewModel"] as? [String: Any])?["image"] as? [String: Any])?["sources"] as? [[String: Any]])?.first)?["url"] as? String
+            } ?? []
         for itemDict in rows {
             if let renderer = itemDict["musicResponsiveListItemRenderer"] as? [String: Any],
                var song = SongItem.from(renderer) {
@@ -416,6 +421,7 @@ extension PlaylistDetailViewModel {
             thumbnailUrl: thumbnailUrl,
             playlistId: playlistId,
             songs: songs,
+            collaboratorAvatarUrls: avatarUrls.count > 1 ? avatarUrls : [],
             isEditable: firstTabSection?["musicEditablePlaylistDetailHeaderRenderer"] != nil
                 || (json["header"] as? [String: Any])?["musicEditablePlaylistDetailHeaderRenderer"] != nil
         )
@@ -573,8 +579,11 @@ struct PlaylistDetailView: View {
                     .foregroundStyle(.tertiary)
             }
 
-            // Author row: avatar + name, clickable → artist detail
-            if let authorName = playlist.authorName {
+            // Shared playlist: the people on it, like the YouTube Music web page.
+            if !playlist.collaboratorAvatarUrls.isEmpty {
+                collaboratorBadge(playlist.collaboratorAvatarUrls)
+            } else if let authorName = playlist.authorName {
+                // Author row: avatar + name, clickable → artist detail
                 Group {
                     if let authorId = playlist.authorBrowseId {
                         NavigationLink(value: DetailRoute.artist(browseId: authorId)) {
@@ -614,6 +623,26 @@ struct PlaylistDetailView: View {
             )
         }
         .padding(.vertical, 16)
+    }
+
+    /// Overlapping avatars followed by a "••" circle.
+    private func collaboratorBadge(_ urls: [String]) -> some View {
+        HStack(spacing: -8) {
+            ForEach(Array(urls.prefix(4).enumerated()), id: \.offset) { _, url in
+                AsyncImageView(url: url)
+                    .frame(width: 28, height: 28)
+                    .clipShape(Circle())
+                    .overlay(Circle().stroke(Color(.systemBackground), lineWidth: 2))
+            }
+            Image(systemName: "ellipsis")
+                .font(.system(size: 11, weight: .bold))
+                .foregroundStyle(.white)
+                .frame(width: 28, height: 28)
+                .background(Circle().fill(Color(.systemGray3)))
+                .overlay(Circle().stroke(Color(.systemBackground), lineWidth: 2))
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Shared playlist")
     }
 
     @ViewBuilder
