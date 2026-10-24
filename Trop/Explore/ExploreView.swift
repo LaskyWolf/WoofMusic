@@ -94,7 +94,6 @@ struct ExploreSectionsList: View {
     @ObservedObject private var router = AppRouter.shared
     var sections: [ExploreSection]
     var pendingRoute: Binding<DetailRoute?>
-    @State private var expandedFamilies: Set<String> = []
 
     var body: some View {
         LazyVStack(alignment: .leading, spacing: 2) {
@@ -158,7 +157,7 @@ struct ExploreSectionsList: View {
     // MARK: - Moods grid
 
     private func moodsGrid(_ section: ExploreSection) -> some View {
-        let entries = MoodFamily.entries(for: section.moods, expanded: expandedFamilies)
+        let entries = MoodFamily.entries(for: section.moods)
         return HorizontalSection(title: "Moods") {
             // Two-row grid scrolling horizontally: all 50+ moods reachable
             // without a dominating vertical wall.
@@ -168,18 +167,18 @@ struct ExploreSectionsList: View {
             ) {
                 ForEach(entries) { entry in
                     switch entry.kind {
-                    case .group(let family, let count):
-                        let isOpen = expandedFamilies.contains(family)
-                        Button {
-                            withAnimation(.smooth(duration: 0.3)) {
-                                if isOpen { expandedFamilies.remove(family) } else { expandedFamilies.insert(family) }
+                    case .group(let family, let members):
+                        // Native pop-up: pick the sub-genre without leaving the page.
+                        Menu {
+                            ForEach(members) { mood in
+                                Button(mood.title) { router.explorePath.append(mood) }
                             }
                         } label: {
                             MoodCard(
                                 title: family,
                                 color: MoodCard.swatch(family: family, title: family),
-                                subtitle: "\(count) genres",
-                                trailingSymbol: isOpen ? "chevron.left.circle.fill" : "chevron.right.circle.fill"
+                                subtitle: "\(members.count) genres",
+                                trailingSymbol: "chevron.up.chevron.down"
                             )
                         }
                         .buttonStyle(.plain)
@@ -212,7 +211,7 @@ struct ExploreSectionsList: View {
 private enum MoodFamily {
     struct Entry: Identifiable {
         enum Kind {
-            case group(family: String, count: Int)
+            case group(family: String, members: [MoodItem])
             case mood(MoodItem, family: String?)
         }
         let id: String
@@ -240,23 +239,20 @@ private enum MoodFamily {
         return families.first { $0.words.contains { title.contains($0) } }?.name
     }
 
-    /// Families with two or more genres become one group card, followed by
-    /// its genres when expanded. Everything else keeps its place.
-    static func entries(for moods: [MoodItem], expanded: Set<String>) -> [Entry] {
-        var counts: [String: Int] = [:]
-        for mood in moods { if let f = family(of: mood.title) { counts[f, default: 0] += 1 } }
+    /// Families with two or more genres become one group card that opens a
+    /// pop-up with its genres. Everything else keeps its place.
+    static func entries(for moods: [MoodItem]) -> [Entry] {
+        var members: [String: [MoodItem]] = [:]
+        for mood in moods { if let f = family(of: mood.title) { members[f, default: []].append(mood) } }
         var seen = Set<String>()
         var result: [Entry] = []
         for mood in moods {
-            guard let f = family(of: mood.title), let count = counts[f], count > 1 else {
+            guard let f = family(of: mood.title), let group = members[f], group.count > 1 else {
                 result.append(Entry(id: "mood-\(mood.id)", kind: .mood(mood, family: nil)))
                 continue
             }
             if seen.insert(f).inserted {
-                result.append(Entry(id: "group-\(f)", kind: .group(family: f, count: count)))
-            }
-            if expanded.contains(f) {
-                result.append(Entry(id: "mood-\(mood.id)", kind: .mood(mood, family: f)))
+                result.append(Entry(id: "group-\(f)", kind: .group(family: f, members: group)))
             }
         }
         return result
