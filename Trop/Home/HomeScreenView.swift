@@ -219,10 +219,10 @@ struct HomeScreenView: View {
                             quickPicksPage(pages[page], queue: combinedQueue, columns: size.columns)
                                 .containerRelativeFrame(.horizontal) { width, _ in
                                     // A 2x2 page is two cards of the 3x3 page wide, so cards keep one size.
-                                    // Leaves about 40 pt of the next page showing.
-                                    let page3 = width - DesignTokens.screenHPadding - 12 - 40
-                                    let card = (page3 - 20) / 3
-                                    return size == .grid3x3 ? page3 : card * 2 + 10
+                                    // Leaves about 24 pt of the next page showing.
+                                    let page3 = width - DesignTokens.screenHPadding - 12 - 24
+                                    let card = (page3 - 16) / 3
+                                    return size == .grid3x3 ? page3 : card * 2 + 8
                                 }
                         }
                     }
@@ -250,7 +250,7 @@ struct HomeScreenView: View {
     }
 
     private func quickPicksPage(_ cards: [(SongItem, Bool)], queue: [SongItem], columns: Int) -> some View {
-        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: columns), spacing: 10) {
+        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: columns), spacing: 8) {
             ForEach(Array(cards.enumerated()), id: \.offset) { _, card in
                 let (song, isPinned) = card
                 QuickPickCard(song: song, isPinned: isPinned) {
@@ -365,15 +365,14 @@ private struct QuickPickCard: View {
                 .overlay { AsyncImageView(url: song.thumbnailUrl).scaledToFill() }
                 .overlay(alignment: .bottom) {
                     Text(song.title)
-                        .font(.caption.weight(.semibold))
+                        .font(.footnote.weight(.semibold))
                         .foregroundStyle(.white)
-                        .lineLimit(2)
-                        .multilineTextAlignment(.leading)
+                        .lineLimit(1)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, 8)
-                        .padding(.bottom, 8)
-                        .padding(.top, 24)
-                        .background(LinearGradient(colors: [.clear, .black.opacity(0.75)], startPoint: .top, endPoint: .bottom))
+                        .padding(.bottom, 6)
+                        .padding(.top, 28)
+                        .background(LinearGradient(colors: [.clear, .black.opacity(0.7)], startPoint: .top, endPoint: .bottom))
                 }
                 .overlay(alignment: .topTrailing) {
                     if isPinned {
@@ -383,7 +382,7 @@ private struct QuickPickCard: View {
                             .padding(6)
                     }
                 }
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
         }
         .buttonStyle(.plain)
     }
