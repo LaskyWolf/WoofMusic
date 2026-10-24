@@ -75,17 +75,21 @@ struct PlaylistCoverPicker: View {
 struct PlaylistEditSheet: View {
     let playlist: PlaylistDetailInfo
     var onSaved: () -> Void
+    /// Called after a local playlist moved to YouTube Music: its id no longer exists.
+    var onUploaded: (() -> Void)?
 
     @Environment(\.dismiss) private var dismiss
+    @State private var isLocal = false
     @State private var name: String
     @State private var coverImage: UIImage?
     @State private var removesCover = false
     @State private var isSaving = false
     @State private var error: String?
 
-    init(playlist: PlaylistDetailInfo, onSaved: @escaping () -> Void) {
+    init(playlist: PlaylistDetailInfo, onSaved: @escaping () -> Void, onUploaded: (() -> Void)? = nil) {
         self.playlist = playlist
         self.onSaved = onSaved
+        self.onUploaded = onUploaded
         _name = State(initialValue: playlist.title)
     }
 
@@ -118,6 +122,15 @@ struct PlaylistEditSheet: View {
                         .submitLabel(.done)
                 }
 
+                if isLocal {
+                    Section {
+                        Button("Sync with YouTube Music", systemImage: "icloud.and.arrow.up", action: upload)
+                            .disabled(isSaving)
+                    } footer: {
+                        Text("Moves this playlist, its songs and cover into your YouTube Music account.")
+                    }
+                }
+
                 if let error {
                     Section {
                         Label(error, systemImage: "exclamationmark.circle")
@@ -143,6 +156,27 @@ struct PlaylistEditSheet: View {
             }
         }
         .interactiveDismissDisabled(isSaving)
+        .task {
+            if let stored = try? await SyncBridge.store.fetchPlaylist(id: playlist.playlistId) {
+                isLocal = stored.browseId == nil
+            }
+        }
+    }
+
+    private func upload() {
+        isSaving = true
+        error = nil
+        Task {
+            defer { isSaving = false }
+            do {
+                try await PlaylistUpload.upload(localId: playlist.playlistId)
+                onUploaded?()
+                dismiss()
+            } catch {
+                Log.playlistCover.error("Playlist upload failed: \(error)")
+                self.error = error.localizedDescription
+            }
+        }
     }
 
     private func save() {

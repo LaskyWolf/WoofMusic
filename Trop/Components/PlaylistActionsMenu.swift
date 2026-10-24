@@ -18,6 +18,7 @@ struct PlaylistActionsMenu<MenuLabel: View>: View {
     var onDelete: (() -> Void)?
     @ViewBuilder var label: () -> MenuLabel
 
+    @Environment(\.dismiss) private var dismissScreen
     @State private var showEdit = false
     @State private var showRemoveDownloads = false
     @State private var showDelete = false
@@ -60,7 +61,7 @@ struct PlaylistActionsMenu<MenuLabel: View>: View {
         }
         .menuOrder(.fixed)
         .sheet(isPresented: $showEdit) {
-            PlaylistEditSheet(playlist: playlist) { onSync?() }
+            PlaylistEditSheet(playlist: playlist, onSaved: { onSync?() }, onUploaded: { dismissScreen() })
         }
         .destructiveConfirm(
             "Remove Downloads?",
