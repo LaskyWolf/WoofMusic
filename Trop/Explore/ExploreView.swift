@@ -170,8 +170,11 @@ struct ExploreSectionsList: View {
                     case .group(let family, let members):
                         // Native pop-up: pick the sub-genre without leaving the page.
                         Menu {
+                            let icons = MoodFamily.uniqueIcons(for: members)
                             ForEach(members) { mood in
-                                Button(mood.title) { router.explorePath.append(mood) }
+                                Button { router.explorePath.append(mood) } label: {
+                                    Label(mood.title, systemImage: icons[mood.id] ?? "music.note")
+                                }
                             }
                         } label: {
                             MoodCard(
@@ -239,6 +242,21 @@ private enum MoodFamily {
         return families.first { $0.words.contains { title.contains($0) } }?.name
     }
 
+    /// An icon per sub-genre from its title. Two genres never share one: the
+    /// second falls back to the next free icon of the family's set.
+    static func uniqueIcons(for members: [MoodItem]) -> [UUID: String] {
+        let spare = ["music.note", "music.note.list", "headphones", "speaker.wave.2.fill", "star.fill", "heart.fill", "bolt.fill", "sparkles", "globe", "flame.fill"]
+        var used = Set<String>()
+        var icons: [UUID: String] = [:]
+        for mood in members {
+            var icon = MoodCard.symbol(for: mood.title)
+            if used.contains(icon) { icon = spare.first { !used.contains($0) } ?? icon }
+            used.insert(icon)
+            icons[mood.id] = icon
+        }
+        return icons
+    }
+
     /// Families with two or more genres become one group card that opens a
     /// pop-up with its genres. Everything else keeps its place.
     static func entries(for moods: [MoodItem]) -> [Entry] {
@@ -272,7 +290,7 @@ private struct MoodCard: View {
         let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
         ZStack(alignment: .bottomLeading) {
             LinearGradient(
-                colors: [color, color.mix(with: .black, by: 0.3)],
+                colors: [color.mix(with: .white, by: 0.3), color],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
@@ -282,7 +300,7 @@ private struct MoodCard: View {
             // Larger than the card and tilted left, so the card edge crops it.
             Image(systemName: Self.symbol(for: title))
                 .font(.system(size: 84, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.3))
+                .foregroundStyle(.white.opacity(0.45))
                 .rotationEffect(.degrees(-18))
                 .offset(x: 24, y: 12)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
@@ -300,8 +318,8 @@ private struct MoodCard: View {
                         .opacity(0.85)
                 }
             }
-            .foregroundStyle(.white)
-            .shadow(color: .black.opacity(0.3), radius: 2, y: 1)
+            // Dark text: white is unreadable on pastel colors.
+            .foregroundStyle(.black.opacity(0.75))
             // Keeps the text inside the card and off the cropped icon.
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.leading, 12)
@@ -311,7 +329,7 @@ private struct MoodCard: View {
             if let trailingSymbol {
                 Image(systemName: trailingSymbol)
                     .font(.title3)
-                    .foregroundStyle(.white.opacity(0.9))
+                    .foregroundStyle(.black.opacity(0.55))
                     .padding(10)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
             }
@@ -323,9 +341,28 @@ private struct MoodCard: View {
 
     /// An SF Symbol for the category, matched on words in its title. The
     /// more specific words come first ("K-Pop" before "Pop").
-    private static func symbol(for title: String) -> String {
+    fileprivate static func symbol(for title: String) -> String {
         let title = title.lowercased()
         let symbols: [(words: [String], symbol: String)] = [
+            // Styles and places inside a family come first, so sub-genres differ.
+            (["brazil", "brasil", "samba", "bossa", "sertanejo", "funk"], "sun.max.fill"),
+            (["latin", "reggaeton", "salsa", "bachata", "tango"], "figure.dance"),
+            (["korean"], "sparkles"),
+            (["japanese", "j-rock", "anime"], "moon.stars.fill"),
+            (["old school", "oldies", "classic", "retro", "90s", "80s", "70s", "60s"], "clock.arrow.circlepath"),
+            (["trap", "drill", "grime"], "bolt.fill"),
+            (["gangsta", "hardcore", "punk", "grunge"], "flame.fill"),
+            (["underground", "lo-fi", "lofi", "bedroom"], "headphones"),
+            (["conscious", "boom bap", "spoken"], "text.book.closed.fill"),
+            (["house", "techno", "trance", "club"], "waveform"),
+            (["singer", "songwriter", "unplugged"], "guitars"),
+            (["opera", "orchestra", "baroque", "symphon"], "pianokeys"),
+            (["swing", "bebop", "smooth"], "music.quarternote.3"),
+            (["dancehall", "ska", "dub"], "beach.umbrella.fill"),
+            (["western", "bluegrass", "honky"], "sun.horizon.fill"),
+            (["african", "afro"], "globe.africa.fill"),
+            (["arab", "middle east"], "globe.europe.africa.fill"),
+            (["indian", "bollywood"], "globe.asia.australia.fill"),
             (["k-pop", "j-pop", "mandopop", "cantopop"], "sparkles"),
             (["hip-hop", "hip hop", "rap"], "music.mic"),
             (["r&b", "soul"], "music.mic.circle.fill"),
@@ -361,21 +398,20 @@ private struct MoodCard: View {
         return symbols.first { entry in entry.words.contains { title.contains($0) } }?.symbol ?? "music.note"
     }
 
-    /// Pantone colors (name, code, sRGB value as published by Pantone).
+    /// Pastel Pantone colors (name, code, sRGB value as published by Pantone),
+    /// ordered so that neighboring families differ in hue.
     private static let pantone: [(name: String, code: String, rgb: Int)] = [
-        ("Classic Blue", "19-4052", 0x0F4C81),
-        ("Living Coral", "16-1546", 0xFF6F61),
-        ("Ultra Violet", "18-3838", 0x5F4B8B),
-        ("Radiant Orchid", "18-3224", 0xB163A3),
-        ("Marsala", "18-1438", 0x955251),
-        ("Emerald", "17-5641", 0x009473),
-        ("Tangerine Tango", "17-1463", 0xDD4124),
-        ("Honeysuckle", "18-2120", 0xD94F70),
-        ("Blue Iris", "18-3943", 0x5A5B9F),
-        ("Viva Magenta", "18-1750", 0xBE3455),
-        ("Very Peri", "17-3938", 0x6667AB),
+        ("Rose Quartz", "13-1520", 0xF7CAC9),
+        ("Aqua Sky", "14-4811", 0x7BC4C4),
+        ("Mimosa", "14-0848", 0xEFC050),
+        ("Serenity", "15-3919", 0x92A8D1),
         ("Greenery", "15-0343", 0x88B04B),
-        ("Turquoise", "15-5519", 0x45B5AA)
+        ("Radiant Orchid", "18-3224", 0xB163A3),
+        ("Peach Fuzz", "13-1023", 0xFFBE98),
+        ("Cerulean", "15-4020", 0x9BB7D4),
+        ("Illuminating", "13-0647", 0xF5DF4D),
+        ("Turquoise", "15-5519", 0x45B5AA),
+        ("Living Coral", "16-1546", 0xFF6F61)
     ]
 
     /// A family's genres share its color. The sum of the letters is stable
