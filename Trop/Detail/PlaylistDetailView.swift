@@ -869,12 +869,13 @@ struct AddSongToPlaylistView: View {
 
 /// Overlapping avatars of a shared playlist. Tapping opens a native pop-up
 /// listing the people by name. The "••" circle only shows with more than 3 people.
+/// The owner, always first, wears a tilted crown.
 private struct CollaboratorBadge: View {
     let avatarUrls: [String]
     let panelParams: String?
 
     @State private var people: [PlaylistCollaborator] = []
-    @State private var avatars: [String: UIImage] = [:]
+    @State private var icons: [String: UIImage] = [:]
 
     private var total: Int { max(people.count, avatarUrls.count) }
 
@@ -883,23 +884,33 @@ private struct CollaboratorBadge: View {
             Section("Collaborators") {
                 ForEach(people, id: \.self) { person in
                     Button {} label: {
-                        Text(person.name)
-                        if person.isOwner { Text("Playlist owner") }
-                        if let url = person.avatarUrl, let image = avatars[url] {
-                            Image(uiImage: image).renderingMode(.original)
-                        } else {
-                            Image(systemName: "person.crop.circle.fill")
+                        Label {
+                            Text(person.name)
+                            if person.isOwner { Text("Playlist owner") }
+                        } icon: {
+                            Image(uiImage: icons[person.name] ?? Self.icon(avatar: nil, crowned: person.isOwner))
+                                .renderingMode(.original)
                         }
+                        .labelStyle(.titleAndIcon)
                     }
                 }
             }
         } label: {
             HStack(spacing: -8) {
-                ForEach(Array(avatarUrls.prefix(3).enumerated()), id: \.offset) { _, url in
+                ForEach(Array(avatarUrls.prefix(3).enumerated()), id: \.offset) { index, url in
                     AsyncImageView(url: url)
                         .frame(width: 28, height: 28)
                         .clipShape(Circle())
                         .overlay(Circle().stroke(Color(.systemBackground), lineWidth: 2))
+                        .overlay(alignment: .topLeading) {
+                            if index == 0 {
+                                Image(systemName: "crown.fill")
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(.yellow)
+                                    .rotationEffect(.degrees(-28))
+                                    .offset(x: -5, y: -9)
+                            }
+                        }
                 }
                 if total > 3 {
                     Image(systemName: "ellipsis")
@@ -910,25 +921,42 @@ private struct CollaboratorBadge: View {
                         .overlay(Circle().stroke(Color(.systemBackground), lineWidth: 2))
                 }
             }
+            .padding(.top, 8)
         }
         .accessibilityLabel("Shared playlist, \(total) people")
         .task(id: panelParams) {
             guard let panelParams else { return }
             people = await PlaylistCollaborators.fetch(params: panelParams)
-            for url in people.compactMap(\.avatarUrl) {
-                guard avatars[url] == nil, let imageUrl = URL(string: url),
-                      let image = try? await ArtworkLoader.image(for: imageUrl) else { continue }
-                avatars[url] = Self.circle(image)
+            for person in people {
+                var avatar: UIImage?
+                if let url = person.avatarUrl.flatMap(URL.init) {
+                    avatar = try? await ArtworkLoader.image(for: url)
+                }
+                icons[person.name] = Self.icon(avatar: avatar, crowned: person.isOwner)
             }
         }
     }
 
-    /// Round 36 pt picture for the menu row.
-    private static func circle(_ image: UIImage) -> UIImage {
-        let size = CGSize(width: 36, height: 36)
-        return UIGraphicsImageRenderer(size: size).image { _ in
-            UIBezierPath(ovalIn: CGRect(origin: .zero, size: size)).addClip()
-            image.draw(in: CGRect(origin: .zero, size: size))
+    /// Round picture for a menu row; the owner gets a tilted gold crown on the top left.
+    private static func icon(avatar: UIImage?, crowned: Bool) -> UIImage {
+        let canvas = CGSize(width: 44, height: 44)
+        let face = CGRect(x: 5, y: 8, width: 34, height: 34)
+        return UIGraphicsImageRenderer(size: canvas).image { context in
+            context.cgContext.saveGState()
+            UIBezierPath(ovalIn: face).addClip()
+            if let avatar {
+                avatar.draw(in: face)
+            } else {
+                UIColor.systemGray3.setFill()
+                UIRectFill(face)
+            }
+            context.cgContext.restoreGState()
+            guard crowned,
+                  let crown = UIImage(systemName: "crown.fill")?.withTintColor(.systemYellow, renderingMode: .alwaysOriginal)
+            else { return }
+            context.cgContext.translateBy(x: 11, y: 8)
+            context.cgContext.rotate(by: -0.5)
+            crown.draw(in: CGRect(x: -10, y: -8, width: 20, height: 16))
         }
     }
 }
