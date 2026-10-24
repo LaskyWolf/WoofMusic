@@ -187,20 +187,21 @@ struct ExploreSectionsList: View {
 
 // MARK: - Mood card
 
-/// A colored Moods & Genres tile, like Apple Music's category cards. The
-/// color comes from YouTube Music when it sends one, otherwise from the title,
-/// so a category keeps its color between launches.
+/// A colored Moods & Genres tile, like Apple Music's category cards. The color
+/// comes from a bright palette, picked from the title so a category keeps its
+/// color between launches. YouTube Music's own colors are muddy, so unused.
 private struct MoodCard: View {
     let mood: MoodItem
 
     var body: some View {
         let hue = Self.hue(for: mood)
+        let accent = Color(hue: hue, saturation: 0.9, brightness: 0.55)
         let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
         ZStack(alignment: .bottomLeading) {
             LinearGradient(
                 colors: [
-                    Color(hue: hue, saturation: 0.7, brightness: 0.62),
-                    Color(hue: (hue + 0.06).truncatingRemainder(dividingBy: 1), saturation: 0.8, brightness: 0.42)
+                    Color(hue: hue, saturation: 0.78, brightness: 0.95),
+                    Color(hue: (hue + 0.07).truncatingRemainder(dividingBy: 1), saturation: 0.92, brightness: 0.72)
                 ],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
@@ -226,7 +227,7 @@ private struct MoodCard: View {
         }
         .frame(width: 172, height: 100)
         .clipShape(shape)
-        .shadow(color: Color(hue: hue, saturation: 0.8, brightness: 0.3).opacity(0.35), radius: 6, y: 4)
+        .shadow(color: accent.opacity(0.4), radius: 6, y: 4)
     }
 
     /// An SF Symbol for the category, matched on words in its title. The
@@ -269,22 +270,13 @@ private struct MoodCard: View {
         return symbols.first { entry in entry.words.contains { title.contains($0) } }?.symbol ?? "music.note"
     }
 
-    /// Only the hue is kept: saturation and brightness are fixed so white
-    /// text stays readable on every card.
+    /// Evenly spread hues, so neighboring cards rarely look alike.
+    private static let hues: [Double] = [0.0, 0.07, 0.12, 0.30, 0.42, 0.50, 0.58, 0.66, 0.75, 0.83, 0.92]
+
+    /// The sum of the letters is stable between launches; `hashValue` is not.
     private static func hue(for mood: MoodItem) -> Double {
-        if let rgb = mood.color {
-            var hue: CGFloat = 0, saturation: CGFloat = 0, brightness: CGFloat = 0
-            UIColor(
-                red: CGFloat((rgb >> 16) & 0xFF) / 255,
-                green: CGFloat((rgb >> 8) & 0xFF) / 255,
-                blue: CGFloat(rgb & 0xFF) / 255,
-                alpha: 1
-            ).getHue(&hue, saturation: &saturation, brightness: &brightness, alpha: nil)
-            if saturation > 0.15 { return Double(hue) }
-        }
-        // `hashValue` changes every launch; a sum of the letters doesn't.
         let sum = mood.title.unicodeScalars.reduce(0) { $0 &+ Int($1.value) &* 31 }
-        return Double((sum % 360 + 360) % 360) / 360
+        return hues[(sum % hues.count + hues.count) % hues.count]
     }
 }
 

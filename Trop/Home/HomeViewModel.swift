@@ -371,6 +371,10 @@ final class HomeViewModel {
 
     private func orderSections(_ sections: [HomeSection]) -> [HomeSection] {
         let filtered = sections.compactMap { section -> HomeSection? in
+            // Videos aren't supported, so YouTube's video shelves are dropped.
+            if case .homePageSection(let data, _) = section, data.title.lowercased().contains("music video") {
+                return nil
+            }
             let f = applyFilters(section)
             if case .quickPicks = f { return f }
             return f.items.isEmpty ? nil : f
@@ -437,7 +441,7 @@ final class HomeViewModel {
         case .keepListening: return 80
         case .forgottenFavorites: return 60
         case .homePageSection(_, let index): return 40 - index
-        case .dailyDiscover: return 50
+        case .dailyDiscover: return 70
         case .similarRecommendation: return 35
         case .accountPlaylists: return 30
         case .fromTheCommunity: return 25

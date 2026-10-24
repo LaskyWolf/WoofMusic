@@ -168,50 +168,32 @@ struct HomeScreenView: View {
         if combinedQueue.isEmpty {
             EmptyView()
         } else {
-            HorizontalSection(title: section.displayTitle, vSpacing: 8, contentVerticalPadding: 0) {
-                LazyHGrid(rows: Array(repeating: GridItem(.fixed(60)), count: 4), spacing: 12) {
-                    ForEach(speedDialEntries, id: \.videoId) { entry in
-                        let song = entry.toSongItem()
-                        YouTubeListItemView(
-                            item: .song(song),
-                            onTap: { handleSongTap(song, in: combinedQueue) },
-                            onNavigate: { pendingRoute = $0 }
-                        )
-                        .frame(width: 280)
-                        .overlay(alignment: .topTrailing) {
-                            Image(systemName: "pin.fill")
-                                .font(.system(size: 9, weight: .bold))
-                                .foregroundStyle(settings.accentColor)
-                                .padding(6)
+            // 3x3: pinned songs first, then the picks, nine cards in all.
+            let cards = (pinnedSongs.map { ($0, true) } + quickSongs.map { ($0, false) }).prefix(9)
+            VStack(alignment: .leading, spacing: 8) {
+                NavigationTitleView(title: section.displayTitle)
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 3), spacing: 10) {
+                    ForEach(Array(cards.enumerated()), id: \.offset) { _, card in
+                        let (song, isPinned) = card
+                        QuickPickCard(song: song, isPinned: isPinned) {
+                            handleSongTap(song, in: combinedQueue)
                         }
                         .contextMenu {
-                            Button(role: .destructive) {
-                                Task {
-                                    try? await DatabaseService.shared.removeFromSpeedDial(videoId: entry.videoId)
-                                    await reloadSpeedDial()
+                            if isPinned {
+                                Button(role: .destructive) {
+                                    Task {
+                                        try? await DatabaseService.shared.removeFromSpeedDial(videoId: song.videoId)
+                                        await reloadSpeedDial()
+                                    }
+                                } label: {
+                                    Label("Unpin", systemImage: "pin.slash")
                                 }
-                            } label: {
-                                Label("Unpin", systemImage: "pin.slash")
+                                .tint(.red)
                             }
-                            .tint(.red)
-                        }
-                    }
-
-                    ForEach(visibleItems.indices, id: \.self) { i in
-                        let item = visibleItems[i]
-                        if case .song(let s) = item {
-                            YouTubeListItemView(
-                                item: item,
-                                onTap: { handleSongTap(s, in: combinedQueue) },
-                                onNavigate: { pendingRoute = $0 }
-                            )
-                                .frame(width: 280)
-                        } else {
-                            YouTubeListItemView(item: item, onTap: { handleItemTap(item) }, onNavigate: { pendingRoute = $0 })
-                                .frame(width: 280)
                         }
                     }
                 }
+                .padding(.horizontal, DesignTokens.screenHPadding)
             }
         }
     }
@@ -292,4 +274,42 @@ struct HomeScreenView: View {
 
 #Preview {
     HomeScreenView()
+}
+
+/// Square cover with the title over a dark fade at the bottom.
+private struct QuickPickCard: View {
+    @Environment(SettingsStore.self) private var settings
+    let song: SongItem
+    let isPinned: Bool
+    let onTap: () -> Void
+
+    var body: some View {
+        Button(action: onTap) {
+            Color.clear
+                .aspectRatio(1, contentMode: .fit)
+                .overlay { AsyncImageView(url: song.thumbnailUrl).scaledToFill() }
+                .overlay(alignment: .bottom) {
+                    Text(song.title)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.leading)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 8)
+                        .padding(.bottom, 8)
+                        .padding(.top, 24)
+                        .background(LinearGradient(colors: [.clear, .black.opacity(0.75)], startPoint: .top, endPoint: .bottom))
+                }
+                .overlay(alignment: .topTrailing) {
+                    if isPinned {
+                        Image(systemName: "pin.fill")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundStyle(settings.accentColor)
+                            .padding(6)
+                    }
+                }
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        }
+        .buttonStyle(.plain)
+    }
 }
