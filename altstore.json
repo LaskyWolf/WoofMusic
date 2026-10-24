@@ -1,37 +1,37 @@
 {
-  "name": "Trop",
+  "name": "Woof Music",
   "subtitle": "YouTube Music client for iOS",
-  "description": "Free and open source YouTube Music client. Nightly builds from GitHub Actions \u2014 unsigned IPAs that Feather, AltStore, or SideStore re-sign with your Apple ID.",
-  "iconURL": "https://raw.githubusercontent.com/686udjie/Trop/main/.github/assets/icon.png",
-  "website": "https://github.com/686udjie/Trop",
+  "description": "Free and open source YouTube Music client. Unsigned IPAs that Feather, AltStore, or SideStore re-sign with your Apple ID.",
+  "iconURL": "https://raw.githubusercontent.com/LaskyWolf/WoofMusic/main/.github/assets/icon.png",
+  "website": "https://github.com/LaskyWolf/WoofMusic",
   "tintColor": "#007AFF",
   "featuredApps": [
-    "com.686udjie.Trop"
+    "com.laskywolf.Music"
   ],
   "apps": [
     {
-      "name": "Trop",
-      "bundleIdentifier": "com.686udjie.Trop",
-      "developerName": "686udjie",
+      "name": "Woof Music",
+      "bundleIdentifier": "com.laskywolf.Music",
+      "developerName": "LaskyWolf",
       "subtitle": "YouTube Music client for iOS",
-      "localizedDescription": "A free and open source YouTube Music client for iOS.\n\n\u2022 No ads\n\u2022 Stream songs and videos from YouTube Music\n\u2022 Background playback with lock screen controls\n\u2022 Equalizer & audio normalization\n\u2022 Video mode\n\u2022 Queue management & listening history\n\u2022 Discord status \u2013 show current song\n\u2022 Last.fm scrobbling\n\u2022 Synced lyrics (Musixmatch, Netease, Kugou, LRCLIB, Genius)\n\u2022 Library sync (playlists, albums, artists, podcasts)\n\u2022 Downloads\n\u2022 Custom app icons\n\nRequires iOS 26 or later and a YouTube Music account.",
-      "iconURL": "https://raw.githubusercontent.com/686udjie/Trop/main/.github/assets/icon.png",
+      "localizedDescription": "A free and open source YouTube Music client for iOS, built on Trop.\n\n• No ads\n• Stream songs and podcasts from YouTube Music\n• AutoMix and Smart Crossfade\n• Sleep timer\n• Siri and Shortcuts\n• Equalizer\n• Synced lyrics (Musixmatch, Netease, Kugou, LRCLIB, Genius)\n• Library sync (playlists, albums, artists, podcasts, liked songs)\n• Shared playlists\n• Downloads for offline listening\n• Last.fm and ListenBrainz scrobbling\n\nRequires iOS 26.2 or later and a YouTube Music account.",
+      "iconURL": "https://raw.githubusercontent.com/LaskyWolf/WoofMusic/main/.github/assets/icon.png",
       "tintColor": "#007AFF",
       "category": "entertainment",
       "screenshotURLs": [
-        "https://raw.githubusercontent.com/686udjie/Trop/main/.github/assets/1.jpg",
-        "https://raw.githubusercontent.com/686udjie/Trop/main/.github/assets/2.jpg",
-        "https://raw.githubusercontent.com/686udjie/Trop/main/.github/assets/3.jpg"
+        "https://raw.githubusercontent.com/LaskyWolf/WoofMusic/main/.github/assets/1.png",
+        "https://raw.githubusercontent.com/LaskyWolf/WoofMusic/main/.github/assets/2.png",
+        "https://raw.githubusercontent.com/LaskyWolf/WoofMusic/main/.github/assets/3.png"
       ],
       "versions": [
         {
-          "version": "0.0.1",
-          "buildVersion": "117",
-          "date": "2026-10-22T10:23:08Z",
-          "localizedDescription": "refactor(core): harden playback and download state management",
-          "downloadURL": "https://github.com/686udjie/Trop/releases/download/nightly/Trop.ipa",
-          "size": 47499865,
-          "minOSVersion": "26.0"
+          "version": "1.1.0",
+          "buildVersion": "31",
+          "date": "2026-10-24T15:38:11Z",
+          "localizedDescription": "Quick Picks pages, Moods colors, shared playlist collaborators, sleep timer, Siri.",
+          "downloadURL": "https://github.com/LaskyWolf/WoofMusic/releases/download/v1.1.0/WoofMusic-1.1.0.ipa",
+          "size": 47095404,
+          "minOSVersion": "26.2"
         }
       ]
     }
