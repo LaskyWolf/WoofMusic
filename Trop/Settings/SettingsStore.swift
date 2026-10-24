@@ -474,14 +474,15 @@ extension EnvironmentValues {
 }
 
 
-/// Layout of the Quick Picks pages on Home.
+/// Layout of the Quick Picks pages on Home: columns x rows of square cards.
 enum QuickPicksSize: String, CaseIterable, Identifiable {
-    case grid2x2 = "2x2"
+    case grid3x2 = "3x2"
     case grid3x3 = "3x3"
 
     var id: String { rawValue }
-    var columns: Int { self == .grid2x2 ? 2 : 3 }
-    var perPage: Int { columns * columns }
-    /// How many songs Quick Picks holds: 4 pages of 2x2, 2 pages of 3x3.
-    var count: Int { self == .grid2x2 ? 16 : 18 }
+    var columns: Int { 3 }
+    var rows: Int { self == .grid3x2 ? 2 : 3 }
+    var perPage: Int { columns * rows }
+    /// How many songs Quick Picks holds: 3 pages of 3x2, 2 pages of 3x3.
+    var count: Int { 18 }
 }

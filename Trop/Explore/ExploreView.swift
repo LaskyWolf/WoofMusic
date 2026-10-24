@@ -189,7 +189,7 @@ struct ExploreSectionsList: View {
                         NavigationLink(value: mood) {
                             MoodCard(title: mood.title, color: MoodCard.swatch(family: family, title: mood.title))
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(ZoomPressStyle())
                     }
                 }
             }
@@ -290,7 +290,7 @@ private struct MoodCard: View {
         let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
         ZStack(alignment: .bottomLeading) {
             LinearGradient(
-                colors: [color.mix(with: .white, by: 0.3), color],
+                colors: [color, color.mix(with: .black, by: 0.3)],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
@@ -300,7 +300,7 @@ private struct MoodCard: View {
             // Larger than the card and tilted left, so the card edge crops it.
             Image(systemName: Self.symbol(for: title))
                 .font(.system(size: 84, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.45))
+                .foregroundStyle(.white.opacity(0.3))
                 .rotationEffect(.degrees(-18))
                 .offset(x: 24, y: 12)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
@@ -318,8 +318,8 @@ private struct MoodCard: View {
                         .opacity(0.85)
                 }
             }
-            // Dark text: white is unreadable on pastel colors.
-            .foregroundStyle(.black.opacity(0.75))
+            .foregroundStyle(.white)
+            .shadow(color: .black.opacity(0.3), radius: 2, y: 1)
             // Keeps the text inside the card and off the cropped icon.
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.leading, 12)
@@ -329,7 +329,7 @@ private struct MoodCard: View {
             if let trailingSymbol {
                 Image(systemName: trailingSymbol)
                     .font(.title3)
-                    .foregroundStyle(.black.opacity(0.55))
+                    .foregroundStyle(.white.opacity(0.9))
                     .padding(10)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
             }
@@ -398,20 +398,21 @@ private struct MoodCard: View {
         return symbols.first { entry in entry.words.contains { title.contains($0) } }?.symbol ?? "music.note"
     }
 
-    /// Pastel Pantone colors (name, code, sRGB value as published by Pantone),
-    /// ordered so that neighboring families differ in hue.
+    /// Pantone colors (name, code, sRGB value as published by Pantone).
     private static let pantone: [(name: String, code: String, rgb: Int)] = [
-        ("Rose Quartz", "13-1520", 0xF7CAC9),
-        ("Aqua Sky", "14-4811", 0x7BC4C4),
-        ("Mimosa", "14-0848", 0xEFC050),
-        ("Serenity", "15-3919", 0x92A8D1),
-        ("Greenery", "15-0343", 0x88B04B),
+        ("Classic Blue", "19-4052", 0x0F4C81),
+        ("Living Coral", "16-1546", 0xFF6F61),
+        ("Ultra Violet", "18-3838", 0x5F4B8B),
         ("Radiant Orchid", "18-3224", 0xB163A3),
-        ("Peach Fuzz", "13-1023", 0xFFBE98),
-        ("Cerulean", "15-4020", 0x9BB7D4),
-        ("Illuminating", "13-0647", 0xF5DF4D),
-        ("Turquoise", "15-5519", 0x45B5AA),
-        ("Living Coral", "16-1546", 0xFF6F61)
+        ("Marsala", "18-1438", 0x955251),
+        ("Emerald", "17-5641", 0x009473),
+        ("Tangerine Tango", "17-1463", 0xDD4124),
+        ("Honeysuckle", "18-2120", 0xD94F70),
+        ("Blue Iris", "18-3943", 0x5A5B9F),
+        ("Viva Magenta", "18-1750", 0xBE3455),
+        ("Very Peri", "17-3938", 0x6667AB),
+        ("Greenery", "15-0343", 0x88B04B),
+        ("Turquoise", "15-5519", 0x45B5AA)
     ]
 
     /// A family's genres share its color. The sum of the letters is stable

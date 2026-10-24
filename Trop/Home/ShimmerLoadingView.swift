@@ -127,8 +127,11 @@ struct ShimmerChips: View {
 // MARK: - ShimmerLoadingView
 
 struct ShimmerLoadingView: View {
-    private enum Section: Hashable { case list, squares }
-    private let sections: [Section] = [.list, .squares, .squares, .squares]
+    private enum Section: Hashable { case quickPicks, squares, list }
+
+    private var sections: [Section] {
+        (SettingsStore.shared.showQuickPicks ? [.quickPicks] : []) + [.squares, .list, .squares]
+    }
 
     var body: some View {
         ScrollView {
@@ -136,8 +139,9 @@ struct ShimmerLoadingView: View {
                 chipsRow
                 ForEach(sections.indices, id: \.self) { index in
                     switch sections[index] {
-                    case .list: listSection
+                    case .quickPicks: quickPicksSection
                     case .squares: squaresSection
+                    case .list: listSection
                     }
                 }
             }
@@ -151,6 +155,19 @@ struct ShimmerLoadingView: View {
             content()
         }
         .padding(.top, 8)
+    }
+
+    /// Square cards in the layout chosen in Settings: 3x3 or 3x2.
+    private var quickPicksSection: some View {
+        let size = SettingsStore.shared.quickPicksSize
+        return section {
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: size.columns), spacing: 8) {
+                ForEach(0..<size.perPage, id: \.self) { _ in
+                    ShimmerFill(radius: 8).aspectRatio(1, contentMode: .fit)
+                }
+            }
+            .padding(.horizontal, DesignTokens.screenHPadding)
+        }
     }
 
     private var squaresSection: some View {
