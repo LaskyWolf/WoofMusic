@@ -480,40 +480,34 @@ private struct ExploreSkeletonView: View {
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 2) {
-                VStack(alignment: .leading, spacing: 0) {
-                    ShimmerSectionTitle(width: 220)
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(alignment: .top, spacing: 12) {
-                            ForEach(0..<5, id: \.self) { _ in
-                                ShimmerCard(showsSubtitle: false)
-                            }
+                // Card carousel: square cover, title and subtitle, like the real cards.
+                skeletonSection(titleWidth: 220) {
+                    HStack(alignment: .top, spacing: 12) {
+                        ForEach(0..<5, id: \.self) { _ in
+                            ShimmerCard()
                         }
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 4)
                     }
                 }
-                VStack(alignment: .leading, spacing: 0) {
-                    ShimmerSectionTitle(width: 160)
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        LazyHGrid(
-                            rows: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)],
-                            spacing: 10
-                        ) {
-                            ForEach(0..<10, id: \.self) { _ in
-                                ShimmerBlock(width: 150, height: 64, radius: 12)
-                            }
+                // Moods: two rows of 172 x 100 cards.
+                skeletonSection(titleWidth: 80) {
+                    LazyHGrid(
+                        rows: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)],
+                        spacing: 10
+                    ) {
+                        ForEach(0..<12, id: \.self) { _ in
+                            ShimmerBlock(width: 172, height: 100, radius: 14)
                         }
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 4)
                     }
                 }
-                VStack(alignment: .leading, spacing: 0) {
-                    ShimmerSectionTitle(width: 120)
-                    VStack(spacing: 0) {
-                        ForEach(0..<6, id: \.self) { _ in
+                // Song rows: four rows scrolling sideways, 320 wide.
+                skeletonSection(titleWidth: 120) {
+                    LazyHGrid(
+                        rows: Array(repeating: GridItem(.flexible(), spacing: 0), count: 4),
+                        spacing: 12
+                    ) {
+                        ForEach(0..<8, id: \.self) { _ in
                             ShimmerRow()
-                                .padding(.horizontal, 16)
-                                .padding(.vertical, 6)
+                                .frame(width: 320, alignment: .leading)
                         }
                     }
                 }
@@ -521,6 +515,22 @@ private struct ExploreSkeletonView: View {
             .padding(.bottom, 16)
         }
         .scrollIndicators(.hidden)
+        .allowsHitTesting(false)
+    }
+
+    /// Same structure as `HorizontalSection`: a title over a sideways-scrolling row.
+    private func skeletonSection<Content: View>(
+        titleWidth: CGFloat,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ShimmerSectionTitle(width: titleWidth)
+            ScrollView(.horizontal, showsIndicators: false) {
+                content()
+                    .padding(.horizontal, DesignTokens.screenHPadding)
+                    .padding(.vertical, 4)
+            }
+        }
     }
 }
 
