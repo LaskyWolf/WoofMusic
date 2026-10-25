@@ -24,9 +24,9 @@ struct FullPlayerView: View {
         return likeStore.isLiked(videoId: song.videoId)
     }
     private var currentLikeFlavor: LikeFlavor {
-        guard np.queueSongs.indices.contains(np.queueIndex) else { return .heart }
+        guard np.queueSongs.indices.contains(np.queueIndex) else { return .unknown }
         let song = np.queueSongs[np.queueIndex]
-        return LikeFlavor.guess(title: song.title, artists: song.artists.map(\.name), album: song.album, videoId: song.videoId)
+        return LikeFlavor.guess(title: song.title, artists: song.artists.map(\.name), album: song.album)
     }
     @State private var showLyrics = false
     @State private var showQueue = false
