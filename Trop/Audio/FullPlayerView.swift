@@ -37,7 +37,6 @@ struct FullPlayerView: View {
     @State private var titleChangeTrigger = 0
     @State private var titleChangeDirection: CGFloat = 1
     @State private var lastTitleQueueIndex = NowPlaying.shared.queueIndex
-    private let titleLineHeight: CGFloat = 30
     @State private var currentLyrics: [LyricLine] = []
     /// How far the player is pulled down by the dismiss gesture.
     @State private var pullDistance: CGFloat = 0
@@ -333,7 +332,7 @@ struct FullPlayerView: View {
     }
 
     private var titleAndActionsRow: some View {
-        HStack(alignment: .top) {
+        HStack(alignment: .center) {
             PlayerTitleBlock(
                 title: np.title,
                 artist: np.displayArtist,
@@ -361,9 +360,6 @@ struct FullPlayerView: View {
                     PlayerSongMenu(song: np.queueSongs[np.queueIndex], onCollapse: { onCollapse() })
                         .equatable()
                 }
-            }
-            .alignmentGuide(.top) { dimensions in
-                dimensions.height / 2 - titleLineHeight / 2
             }
         }
     }
