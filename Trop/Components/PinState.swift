@@ -27,8 +27,14 @@ final class PinState {
             } else {
                 try await DatabaseService.shared.removeFromSpeedDial(videoId: song.videoId)
             }
+            NotificationCenter.default.post(name: .speedDialDidChange, object: nil)
         } catch {
             isPinned = !target
         }
     }
+}
+
+extension Notification.Name {
+    /// A song was pinned to or unpinned from Quick Picks.
+    static let speedDialDidChange = Notification.Name("speedDialDidChange")
 }

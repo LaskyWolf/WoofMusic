@@ -80,7 +80,7 @@ struct AppearanceSettingsView: View {
             } header: {
                 Text("General")
             } footer: {
-                Text("Puts Search on the left, closer to your left thumb, and reverses the other tabs.")
+                Text("Puts Search on the left, closer to your left thumb. Home, Library and Explore keep their order.")
             }
         }
         .id(settings.accentName)

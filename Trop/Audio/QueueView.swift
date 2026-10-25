@@ -141,6 +141,7 @@ struct QueueView: View {
                 isCurrent: isCurrent,
                 isPlayed: index < np.queueIndex
             )
+            .background(QueueDragPreviewFix())
         }
         .buttonStyle(.plain)
         .listRowInsets(EdgeInsets())

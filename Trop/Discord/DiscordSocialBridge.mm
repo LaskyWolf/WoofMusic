@@ -44,7 +44,7 @@ static NSString *DiscordString(const std::string &value) {
     self = [super init];
     if (self) {
         _client = std::make_unique<Client>();
-        _client->SetApplicationId(1563551993652445258ULL);
+        _client->SetApplicationId(1563918327238107187ULL);
         _client->SetStatusChangedCallback([weakSelf = self](Client::Status status,
                                                               Client::Error,
                                                               int32_t errorDetail) {
@@ -76,12 +76,12 @@ static NSString *DiscordString(const std::string &value) {
         return;
     }
     discordpp::AuthorizationArgs args;
-    args.SetClientId(1563551993652445258ULL);
+    args.SetClientId(1563918327238107187ULL);
     args.SetScopes(Client::GetDefaultPresenceScopes());
     args.SetCodeChallenge(_verifier->Challenge());
-    args.SetCustomSchemeParam("discord-1563551993652445258");
+    args.SetCustomSchemeParam("discord-1563918327238107187");
 
-    NSLog(@"[DiscordSocialSDK] authorize scopes=%s redirect=discord-1563551993652445258:/authorize/callback",
+    NSLog(@"[DiscordSocialSDK] authorize scopes=%s redirect=discord-1563918327238107187:/authorize/callback",
           args.Scopes().c_str());
     _client->Authorize(std::move(args), [weakSelf = self](discordpp::ClientResult result,
                                                           std::string code,
@@ -94,7 +94,7 @@ static NSString *DiscordString(const std::string &value) {
         }
 
         NSLog(@"[DiscordSocialSDK] authorize returned code redirect=%s", redirectUri.c_str());
-        strongSelf->_client->GetToken(1563551993652445258ULL,
+        strongSelf->_client->GetToken(1563918327238107187ULL,
                                       code,
                                       strongSelf->_verifier->Verifier(),
                                       redirectUri,

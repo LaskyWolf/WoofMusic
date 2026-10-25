@@ -8,7 +8,7 @@
 import Foundation
 
 enum DiscordDefaults {
-    static let appId: String = "1563551993652445258"
+    static let appId: String = "1563918327238107187"
 
     static let oauthToken = "https://discord.com/api/v10/oauth2/token"
 
@@ -29,8 +29,8 @@ enum DiscordDefaults {
     static let youtubeWatchUrl = "https://music.youtube.com/watch?v="
     static let button1Label = "Listen on YouTube Music"
     static let button1UrlTemplate = "https://music.youtube.com/watch?v={song.id}"
-    static let button2Label = "Visit Trop"
-    static let button2Url = "https://github.com/686udjie/Trop"
+    static let button2Label = "Visit Woof Music"
+    static let button2Url = "https://github.com/LaskyWolf/WoofMusic"
     static let stateTemplate = "{artist.name}"
     static let detailsTemplate = "{song.name}"
     static let activityType = "2"

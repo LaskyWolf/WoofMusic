@@ -50,7 +50,41 @@ struct YouTubeGridItemView: View {
         }
     }
 
+    private var songItem: SongItem? {
+        switch item {
+        case .song(let s): return s
+        case .episode(let e): return e.toSongItem()
+        default: return nil
+        }
+    }
+
     var body: some View {
+        Group {
+            if let song = songItem {
+                // Long press opens the same menu as a song row's ⋯.
+                SongActionsMenu(song: song, onNavigate: { AppRouter.shared.open($0) }, asContextMenu: true) {
+                    card
+                }
+            } else {
+                card
+            }
+        }
+        .task {
+            guard let vid = videoId else { return }
+            let known: Int
+            switch item {
+            case .song(let s): known = s.duration
+            case .episode(let e): known = e.duration
+            default: known = 0
+            }
+            await durations.resolve(videoId: vid, knownDuration: known)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .durationDidUpdate)) { notification in
+            durations.handleUpdate(notification, videoId: videoId)
+        }
+    }
+
+    private var card: some View {
         Button(action: onTap) {
             VStack(alignment: isArtist ? .center : .leading, spacing: 4) {
                 AsyncImageView(url: item.thumbnailUrl)
@@ -78,19 +112,6 @@ struct YouTubeGridItemView: View {
         }
         .buttonStyle(ZoomPressStyle())
         .cardMenu(for: item)
-        .task {
-            guard let vid = videoId else { return }
-            let known: Int
-            switch item {
-            case .song(let s): known = s.duration
-            case .episode(let e): known = e.duration
-            default: known = 0
-            }
-            await durations.resolve(videoId: vid, knownDuration: known)
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .durationDidUpdate)) { notification in
-            durations.handleUpdate(notification, videoId: videoId)
-        }
     }
 }
 

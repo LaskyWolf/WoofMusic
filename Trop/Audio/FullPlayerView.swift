@@ -23,16 +23,21 @@ struct FullPlayerView: View {
         guard let song = np.queueSongs.indices.contains(np.queueIndex) ? np.queueSongs[np.queueIndex] : nil else { return false }
         return likeStore.isLiked(videoId: song.videoId)
     }
+    private var currentLikeFlavor: LikeFlavor {
+        guard np.queueSongs.indices.contains(np.queueIndex) else { return .unknown }
+        let song = np.queueSongs[np.queueIndex]
+        return LikeFlavor.guess(videoId: song.videoId, title: song.title, artists: song.artists.map(\.name), album: song.album)
+    }
     @State private var showLyrics = false
     @State private var showQueue = false
     @State private var pendingRoute: DetailRoute?
     @State private var isOpeningArtist = false
     @State private var artistUnavailable = false
     @State private var artworkEntryOffset: CGFloat = 0
+    private static let sleepOverlayBleed: CGFloat = 8
     @State private var titleChangeTrigger = 0
     @State private var titleChangeDirection: CGFloat = 1
     @State private var lastTitleQueueIndex = NowPlaying.shared.queueIndex
-    private let titleLineHeight: CGFloat = 30
     @State private var currentLyrics: [LyricLine] = []
     /// How far the player is pulled down by the dismiss gesture.
     @State private var pullDistance: CGFloat = 0
@@ -149,9 +154,21 @@ struct FullPlayerView: View {
                     Color.clear.frame(height: 8)
                 }
 
-                SleepEndedOverlay(
-                    coverHeight: (geometry.size.height + artworkTopInset) * 0.58 - artworkTopInset
+            }
+            // An overlay, so its taller-than-screen size does not push the player down.
+            // Sized and offset like the artwork, not with ignoresSafeArea: the safe
+            // area shrinks while the player is pulled down and would slide the
+            // animation away from the player.
+            // A few points wider than the player on each side, so no edge of the
+            // screen is left without the animation.
+            .overlay(alignment: .top) {
+                let sleepOverlaySize = CGSize(
+                    width: geometry.size.width + 2 * Self.sleepOverlayBleed,
+                    height: geometry.size.height + artworkTopInset
                 )
+                SleepEndedOverlay(size: sleepOverlaySize)
+                    .frame(width: sleepOverlaySize.width, height: sleepOverlaySize.height)
+                    .offset(y: -artworkTopInset)
             }
             .animation(.easeInOut(duration: reduceMotion ? 0.15 : 0.25), value: showQueue)
             .animation(.easeInOut(duration: reduceMotion ? 0.15 : 0.25), value: showLyrics)
@@ -322,7 +339,7 @@ struct FullPlayerView: View {
     }
 
     private var titleAndActionsRow: some View {
-        HStack(alignment: .top) {
+        HStack(alignment: .center) {
             PlayerTitleBlock(
                 title: np.title,
                 artist: np.displayArtist,
@@ -341,7 +358,7 @@ struct FullPlayerView: View {
             Spacer()
 
             HStack(spacing: 12) {
-                PlayerLikeButton(isLiked: isLiked) {
+                PlayerLikeButton(isLiked: isLiked, flavor: currentLikeFlavor) {
                     guard let song = np.queueSongs.indices.contains(np.queueIndex) ? np.queueSongs[np.queueIndex] : nil else { return }
                     Task { await likeStore.toggle(song: song) }
                 }
@@ -350,9 +367,6 @@ struct FullPlayerView: View {
                     PlayerSongMenu(song: np.queueSongs[np.queueIndex], onCollapse: { onCollapse() })
                         .equatable()
                 }
-            }
-            .alignmentGuide(.top) { dimensions in
-                dimensions.height / 2 - titleLineHeight / 2
             }
         }
     }

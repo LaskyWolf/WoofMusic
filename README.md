@@ -1,75 +1,108 @@
+<div align="center">
+
 # Woof Music
 
-A free and open source YouTube Music client for iOS, built on [Trop](https://github.com/686udjie/Trop) by 686udjie.
+**A free, open source YouTube Music client for iPhone.**
+No ads, native iOS design, DJ-style transitions.
 
-## What's new in Woof Music
+[![iOS 26+](https://img.shields.io/badge/iOS-26%2B-black?logo=apple)](#install)
+[![Swift](https://img.shields.io/badge/Swift-SwiftUI-F05138?logo=swift&logoColor=white)](Trop)
+[![License: GPLv3](https://img.shields.io/badge/license-GPLv3-blue)](LICENSE.txt)
+[![Release](https://img.shields.io/github/v/release/LaskyWolf/WoofMusic?include_prereleases&label=release)](https://github.com/LaskyWolf/WoofMusic/releases)
+
+<img src=".github/assets/1.png" width="30%" alt="Home" />&nbsp;
+<img src=".github/assets/2.png" width="30%" alt="Player" />&nbsp;
+<img src=".github/assets/3.png" width="30%" alt="Queue" />
+
+</div>
+
+## Highlights
+
+| | |
+|---|---|
+| 🎧 **AutoMix** | Beat-matched transitions: matches the tempo of both songs and swaps the bass on the bar. |
+| 🌊 **Smart Crossfade** | Fades into the next song where the current one winds down. |
+| 🌙 **Sleep timer** | 5 to 60 minutes or the end of the song, with a night-sky animation when it ends. |
+| 💜 **Like animations** | Five heart animations; songs with a known genre sometimes get a genre emoji. |
+| ✂️ **SponsorBlock** | Skips intros and skits in music videos. |
+| ✅ **Bulk select** | Select many songs and play, queue, like, download or add them to a playlist at once. |
+
+## Features
 
 ### Playback
-
-- **AutoMix:** beat-matched transitions that match the tempo of the two songs and swap the bass on the bar, like a DJ
-- **Smart Crossfade:** fades into the next song where the current one winds down
-- **Skip non-music parts** of music videos (intros, skits) with SponsorBlock
+- Stream songs and podcasts from YouTube Music, with no ads
+- Equalizer presets with a curve preview
+- Play Next queue, song radio and listening history
 - Pull down anywhere on the player to close it
-- Equalizer presets with a curve preview for each one
-- **Sleep timer** in the player's ⋯ menu: 5 to 60 minutes, or the end of the song
+- AirPlay and a system volume bar in the player
 
 ### Library
+- Sync of playlists, albums, artists, podcasts and liked songs with your account
+- Playlist editing: name and cover in one sheet, synced to YouTube Music
+- Downloads for offline listening, with full-size cover art and progress on each row
+- Liked Songs, My Top 100 and Downloads shortcuts at the top of the Library
+- Long-press menus on songs, albums, playlists, artists and Home cards
 
-- Playlist editing: name and cover in one sheet; covers sync to your YouTube Music account
-- Add a cover when creating a playlist
-- Library opens with Liked Songs, My Top 100 and Downloads shortcuts
-- Song rows show download progress
-- Colorful Moods & Genres cards in Explore
+### Lyrics
+- Synced lyrics from Musixmatch, Netease, Kugou, LRCLIB and Genius
+- Offset, editing and search
 
 ### Integrations
-
-- **ListenBrainz** scrobbling, next to Last.fm
-- **Siri and Shortcuts:** shuffle liked songs, play/pause, next song ("Shuffle my liked songs in Woof Music"), play some music, and search and play a song or artist ("Play a song in Woof Music", then say the name)
+- **Last.fm** and **ListenBrainz** scrobbling
+- **Discord Rich Presence** (needs the Discord Social SDK, see [below](#discord-social-sdk))
+- **Siri and Shortcuts:** "Shuffle my liked songs in Woof Music", play/pause, next song, search and play a song or artist
 - **Home Screen quick actions:** Search, Shuffle Liked Songs, Downloads, Resume
 
 ### Interface
+- Native iOS 26 menus and Liquid Glass controls
+- Custom app icons and themes
+- Left-handed tab bar option
 
-- Native iOS menus for songs, the player and lyrics
-- Account sign-in lives at the top of Settings
-- The player shows a short title (no "feat." or "Official Video" tags) and a system volume bar
-- Video mode and Spotify Canvas are removed
+## Install
 
-## Also from Trop
+You need iOS 26 or later and a YouTube Music account. You sign in through the in-app web view.
 
-- No ads
-- Stream songs and podcasts from YouTube Music
-- Synced lyrics (Musixmatch, Netease, Kugou, LRCLIB, Genius), with offset, editing and search
-- Library sync (playlists, albums, artists, podcasts, liked songs)
-- Downloads for offline listening, with full-size cover art
-- Play Next queue, song radio and listening history
-- Last.fm scrobbling and Discord Rich Presence
-- AirPlay, custom app icons and themes
+1. Get `Music.ipa`: build it yourself (below). Releases do not include an IPA.
+2. Sideload it with a tool that re-signs apps with your Apple ID: AltStore, SideStore, Feather or KravaSign. AltStore PAL is not supported.
+3. Open Woof Music and sign in from the top of Settings.
 
-## Installation
+## Build
 
-Requires iOS 26 or later and a YouTube Music account (sign in through the in-app web view).
+**GitHub Actions (no Mac needed)**
+1. Fork this repository.
+2. Open the **Actions** tab and run the **iPhone Build** workflow.
+3. Download the `Music-iOS` artifact from the finished run. It contains `Music.ipa`.
 
-The IPA is unsigned: sideload it with a tool that re-signs apps with your Apple ID, such as AltStore, SideStore, Feather or Kravasign. AltStore PAL is not supported.
+**macOS with Xcode**
 
-### Build the IPA
+```bash
+./build_ipa.sh
+```
 
-- **GitHub Actions:** fork this repo, then run the **iPhone Build** workflow from the Actions tab. The IPA is attached to the run as the `Music-iOS` artifact.
-- **Locally (macOS with Xcode):** run `./build_ipa.sh`. The output is `build/Music.ipa`.
+The IPA is written to `build/Music.ipa`.
 
 ### Discord Social SDK
 
-Discord Rich Presence uses Discord's Social SDK, a proprietary binary that is not in this repo. Without it the app builds and runs, and Discord login shows an error.
+Discord Rich Presence uses Discord's Social SDK, a proprietary binary that is not in this repository. Without it the app builds and runs, and Discord login shows an error.
 
-To enable it, download `discord_partner_sdk.xcframework` from the Discord Developer Portal, zip it, host the zip at a private URL and save the URL as the repository secret `DISCORD_SOCIAL_SDK_URL`. For a local build, put the xcframework in `build/discord/`.
+To enable it:
+1. Download `DiscordSocialSdk-<version>.zip` (the C++ one) from the Discord Developer Portal.
+2. Attach it to a release tagged `discord-sdk` in a private repository:
+   ```bash
+   gh release create discord-sdk --repo <owner>/<repo> DiscordSocialSdk-<version>.zip
+   ```
+   The workflow downloads it from there.
+3. For a local build, put `discord_partner_sdk.xcframework` in `build/discord/`.
 
-## Notable mentions
+## Credits
 
-- [Trop](https://github.com/686udjie/Trop) — the app Woof Music is based on
-- [SwiftyTube](https://github.com/686udjie/SwiftyTube) — Swift InnerTube client: YouTube Music requests, sign-in and session renewal
-- [InnerTubeX](https://github.com/MetrolistGroup/innertubex) — eXtended InnerTube API library for Kotlin
-- [zemer-cipher](https://github.com/ZemerTeam/zemer-cipher) — YouTube cipher deobfuscation and PoToken generation
-- [Metrolist](https://github.com/MetrolistGroup/Metrolist) — YouTube Music client for Android
+Woof Music is a fork of [Trop](https://github.com/686udjie/Trop) by 686udjie.
+
+- [SwiftyTube](https://github.com/686udjie/SwiftyTube): Swift InnerTube client for YouTube Music requests, sign-in and session renewal
+- [InnerTubeX](https://github.com/MetrolistGroup/innertubex): extended InnerTube API library for Kotlin
+- [zemer-cipher](https://github.com/ZemerTeam/zemer-cipher): YouTube cipher deobfuscation and PoToken generation
+- [Metrolist](https://github.com/MetrolistGroup/Metrolist): YouTube Music client for Android
 
 ## License
 
-This repo is licensed under [GPLv3](LICENSE.txt), like Trop. Woof Music is not affiliated with, endorsed, or sponsored by Google or YouTube.
+[GPLv3](LICENSE.txt), like Trop. Woof Music is not affiliated with, endorsed or sponsored by Google or YouTube.

@@ -30,12 +30,9 @@ struct HomeScreenView: View {
 
                 Group {
                     if viewModel.isLoading {
-                        VStack {
-                            Spacer()
-                            ShimmerLoadingView()
-                            Spacer()
-                        }
-                        .transition(.opacity)
+                        ShimmerLoadingView()
+                            .frame(maxHeight: .infinity, alignment: .top)
+                            .transition(.opacity)
                     } else if let error = viewModel.error {
                         errorView(error)
                     } else {
@@ -75,6 +72,9 @@ struct HomeScreenView: View {
                     await SyncBridge.checkAndSyncIfStale()
                 }
             }
+            .onReceive(NotificationCenter.default.publisher(for: .speedDialDidChange)) { _ in
+                Task { await reloadSpeedDial() }
+            }
             .task(id: viewModel.homeSections.count) {
                 let urls = viewModel.homeSections
                     .flatMap(\.items)
@@ -97,7 +97,7 @@ struct HomeScreenView: View {
                 }
 
                 if viewModel.isChipLoading {
-                    ShimmerLoadingView()
+                    ShimmerLoadingView(showsChips: false)
                 } else {
                     // Keyed by section id, so a new section fades in instead of popping in.
                     ForEach(viewModel.homeSections) { section in
@@ -248,20 +248,10 @@ struct HomeScreenView: View {
         LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: columns), spacing: 8) {
             ForEach(Array(cards.enumerated()), id: \.offset) { _, card in
                 let (song, isPinned) = card
-                QuickPickCard(song: song, isPinned: isPinned) {
-                    handleSongTap(song, in: queue)
-                }
-                .contextMenu {
-                    if isPinned {
-                        Button(role: .destructive) {
-                            Task {
-                                try? await DatabaseService.shared.removeFromSpeedDial(videoId: song.videoId)
-                                await reloadSpeedDial()
-                            }
-                        } label: {
-                            Label("Unpin", systemImage: "pin.slash")
-                        }
-                        .tint(.red)
+                // Long press: the song menu, which also pins and unpins.
+                SongActionsMenu(song: song, onNavigate: { AppRouter.shared.open($0) }, asContextMenu: true) {
+                    QuickPickCard(song: song, isPinned: isPinned) {
+                        handleSongTap(song, in: queue)
                     }
                 }
             }

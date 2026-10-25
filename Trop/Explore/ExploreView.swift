@@ -484,6 +484,7 @@ private struct MoodDetailView: View {
             return
         }
         MoodDetailCache.store(loaded, for: mood)
+        MoodGenreIndex.record(loaded, mood: mood.title)
         if sections.map(Self.signature) != Self.signature(loaded) { sections = loaded }
     }
 
