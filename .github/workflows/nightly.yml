@@ -68,16 +68,19 @@ jobs:
 
       - name: Download Discord Social SDK
         env:
-          GH_TOKEN: ${{ github.token }}
+          # The SDK must not be public: it lives in a private repo (DISCORD_SDK_REPO)
+          # read with DISCORD_SDK_TOKEN. Without them this repo's own release is tried.
+          GH_TOKEN: ${{ secrets.DISCORD_SDK_TOKEN || github.token }}
+          DISCORD_SDK_REPO: ${{ vars.DISCORD_SDK_REPO || github.repository }}
         run: |
           set -euo pipefail
           ARCHIVE_DIR="$RUNNER_TEMP/discord-social-sdk-archive"
           EXTRACT_PATH="$RUNNER_TEMP/discord-social-sdk"
           rm -rf "$ARCHIVE_DIR" "$EXTRACT_PATH" build/discord
           mkdir -p "$ARCHIVE_DIR" "$EXTRACT_PATH" build/discord
-          if ! gh release download discord-sdk --repo "$GITHUB_REPOSITORY" \
+          if ! gh release download discord-sdk --repo "$DISCORD_SDK_REPO" \
               --pattern 'DiscordSocialSdk-*.zip' --dir "$ARCHIVE_DIR"; then
-            echo "Release 'discord-sdk' not found - building without the Discord Social SDK."
+            echo "::warning::Release 'discord-sdk' not found in $DISCORD_SDK_REPO - building without the Discord Social SDK."
             exit 0
           fi
           unzip -q "$ARCHIVE_DIR"/DiscordSocialSdk-*.zip -d "$EXTRACT_PATH"

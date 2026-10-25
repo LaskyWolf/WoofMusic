@@ -84,12 +84,19 @@ Discord Rich Presence uses Discord's Social SDK, a proprietary binary that is no
 
 To enable it:
 1. Download `DiscordSocialSdk-<version>.zip` (the C++ one) from the Discord Developer Portal.
-2. Attach it to a release tagged `discord-sdk` in a private repository:
+2. Attach it to a release tagged `discord-sdk` in a **private** repository. A release in a public repository can be downloaded by anyone.
    ```bash
-   gh release create discord-sdk --repo <owner>/<repo> DiscordSocialSdk-<version>.zip
+   gh release create discord-sdk --repo <owner>/<private-repo> DiscordSocialSdk-<version>.zip
    ```
-   The workflow downloads it from there.
-3. For a local build, put `discord_partner_sdk.xcframework` in `build/discord/`.
+3. Create a fine-grained personal access token with read-only **Contents** access to that private repository, then add it and the repository name to this repository's Actions settings:
+   ```bash
+   gh secret set DISCORD_SDK_TOKEN --repo <owner>/<repo>
+   ```
+   ```bash
+   gh variable set DISCORD_SDK_REPO --repo <owner>/<repo> --body <owner>/<private-repo>
+   ```
+   The workflow downloads the SDK from there. If it can't, the build continues without it and shows a warning.
+4. For a local build, put `discord_partner_sdk.xcframework` in `build/discord/`.
 
 ## Credits
 
