@@ -626,6 +626,7 @@ struct ArtistDetailView: View {
                     )
                 }
                 .buttonStyle(ZoomPressStyle())
+                .albumCardMenu(browseId: album.browseId, artists: album.artists)
             }
         }
     }
@@ -644,6 +645,7 @@ struct ArtistDetailView: View {
                     )
                 }
                 .buttonStyle(ZoomPressStyle())
+                .albumCardMenu(browseId: single.browseId, artists: single.artists)
             }
         }
     }
@@ -690,6 +692,7 @@ struct ArtistDetailView: View {
                     )
                 }
                 .buttonStyle(ZoomPressStyle())
+                .playlistCardMenu(id: playlist.id)
             }
         }
     }
@@ -707,10 +710,14 @@ struct ArtistDetailView: View {
                         Text(related.name)
                             .lineLimit(1)
                             .font(.callout)
+                        Text("Artist")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
                     }
                     .frame(width: 120)
                 }
                 .buttonStyle(ZoomPressStyle())
+                .artistCardMenu(browseId: related.browseId)
             }
         }
     }

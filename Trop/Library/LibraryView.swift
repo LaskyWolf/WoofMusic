@@ -178,13 +178,15 @@ struct LibraryView: View {
                     )
                 }
                 .buttonStyle(ZoomPressStyle())
-                .contextMenu {
-                    Button(role: .destructive) {
-                        playlistToDelete = playlist
-                    } label: {
-                        Label(playlist.isEditable ? "Delete" : "Remove from Library", systemImage: "trash")
+                .playlistCardMenu(id: playlist.id) {
+                    Section {
+                        Button(role: .destructive) {
+                            playlistToDelete = playlist
+                        } label: {
+                            Label(playlist.isEditable ? "Delete" : "Remove from Library", systemImage: "trash")
+                        }
+                        .tint(.red)
                     }
-                    .tint(.red)
                 }
             }
         }
@@ -243,6 +245,7 @@ struct LibraryView: View {
                     )
                 }
                 .buttonStyle(ZoomPressStyle())
+                .artistCardMenu(browseId: artist.id)
             }
         }
     }
@@ -260,6 +263,7 @@ struct LibraryView: View {
                     )
                 }
                 .buttonStyle(ZoomPressStyle())
+                .albumCardMenu(browseId: album.id)
             }
         }
     }
@@ -273,7 +277,8 @@ struct LibraryView: View {
                     itemCell(
                         url: podcast.thumbnailUrl,
                         title: podcast.name,
-                        subtitle: nil
+                        subtitle: nil,
+                        opensPage: false
                     )
                 }
                 .buttonStyle(ZoomPressStyle())
@@ -326,13 +331,14 @@ struct LibraryView: View {
         )
     }
 
-    private func itemCell(url: String?, title: String, subtitle: String?) -> some View {
+    private func itemCell(url: String?, title: String, subtitle: String?, opensPage: Bool = true) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             AsyncImageView(url: url)
                 .frame(maxWidth: .infinity)
                 .aspectRatio(1, contentMode: .fit)
                 .clipShape(RoundedRectangle(cornerRadius: 12))
-            TitleWithChevron(title: title, font: .callout, lineLimit: 1)
+                .opensPageBadge(opensPage)
+            Text(title).lineLimit(1).font(.callout)
             if let subtitle {
                 Text(subtitle).font(.caption).foregroundColor(.secondary)
             }
@@ -344,7 +350,10 @@ struct LibraryView: View {
             AsyncImageView(url: url)
                 .frame(width: 120, height: 120)
                 .clipShape(Circle())
-            Text(name).lineLimit(1).font(.callout)
+            VStack(spacing: 2) {
+                Text(name).lineLimit(1).font(.callout)
+                Text("Artist").font(.caption).foregroundColor(.secondary)
+            }
         }
         .frame(maxWidth: .infinity)
     }

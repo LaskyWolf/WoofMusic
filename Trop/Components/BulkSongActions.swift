@@ -71,26 +71,33 @@ struct BulkSongActionsMenu: View {
                 Button("Add to Playlist…", systemImage: "text.badge.plus") { showPlaylistSheet = true }
             }
 
-            Section {
-                if !toDownload.isEmpty {
+            if !toDownload.isEmpty {
+                Section {
                     Button("Download", systemImage: "arrow.down.circle") {
                         let pending = toDownload
                         Task { for song in pending { await downloadManager.download(song: song) } }
                         finish()
                     }
                 }
-                if !downloaded.isEmpty {
-                    Button("Remove Download", systemImage: "trash", role: .destructive) {
-                        confirmRemoveDownloads = true
-                    }
-                }
             }
 
-            if onRemove != nil {
+            if onRemove != nil || !downloaded.isEmpty {
                 Section {
-                    Button("Remove from Playlist", systemImage: "minus.circle", role: .destructive) {
-                        confirmRemove = true
+                    Menu("Remove from…", systemImage: "minus.circle") {
+                        if onRemove != nil {
+                            Button("from Playlist", systemImage: "music.note.list", role: .destructive) {
+                                confirmRemove = true
+                            }
+                            .tint(.red)
+                        }
+                        if !downloaded.isEmpty {
+                            Button("from Downloads", systemImage: "arrow.down.circle", role: .destructive) {
+                                confirmRemoveDownloads = true
+                            }
+                            .tint(.red)
+                        }
                     }
+                    .tint(.red)
                 }
             }
         } label: {

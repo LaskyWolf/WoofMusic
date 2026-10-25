@@ -333,9 +333,13 @@ struct SearchView: View {
                                     .foregroundStyle(.primary)
                                     .lineLimit(1)
                                     .frame(width: 110)
+                                Text("Artist")
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
                             }
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(ZoomPressStyle())
+                        .artistCardMenu(browseId: artist.browseId)
                     }
                 }
             }
@@ -360,6 +364,7 @@ struct SearchView: View {
                             )
                         }
                         .buttonStyle(ZoomPressStyle())
+                        .albumCardMenu(browseId: album.browseId, artists: album.artists)
                     }
                 }
             }

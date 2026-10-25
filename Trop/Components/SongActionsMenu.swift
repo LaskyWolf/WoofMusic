@@ -106,11 +106,7 @@ struct SongActionsMenu<MenuLabel: View>: View {
                 Button("Select", systemImage: "checkmark.circle", action: onSelect)
             }
 
-            if let onRemove {
-                Section {
-                    Button("Remove from Playlist", systemImage: "minus.circle", role: .destructive, action: onRemove)
-                }
-            }
+            removeMenu
 
             Menu("Go To", systemImage: "arrow.forward.circle") {
                 if !song.artists.filter({ !$0.name.isEmpty }).isEmpty {
@@ -213,14 +209,34 @@ struct SongActionsMenu<MenuLabel: View>: View {
         }
     }
 
+    /// One compact entry for the destructive removals that apply to this song.
+    @ViewBuilder
+    private var removeMenu: some View {
+        let hasDownload = downloadManager.state(for: song.videoId) == .completed
+        if onRemove != nil || hasDownload {
+            Section {
+                Menu("Remove from…", systemImage: "minus.circle") {
+                    if let onRemove {
+                        Button("from Playlist", systemImage: "music.note.list", role: .destructive, action: onRemove)
+                            .tint(.red)
+                    }
+                    if hasDownload {
+                        Button("from Downloads", systemImage: "arrow.down.circle", role: .destructive) {
+                            confirmRemoveDownload = true
+                        }
+                        .tint(.red)
+                    }
+                }
+                .tint(.red)
+            }
+        }
+    }
+
     @ViewBuilder
     private var downloadButton: some View {
         switch downloadManager.state(for: song.videoId) {
         case .completed:
-            Button("Remove Download", systemImage: "trash", role: .destructive) {
-                confirmRemoveDownload = true
-            }
-            .tint(.red)
+            EmptyView()
         case .downloading:
             Button("Downloading…", systemImage: "arrow.down.circle") {}
                 .disabled(true)

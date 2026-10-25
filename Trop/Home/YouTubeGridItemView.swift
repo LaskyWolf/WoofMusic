@@ -29,8 +29,15 @@ struct YouTubeGridItemView: View {
         }
     }
 
+    private var isArtist: Bool {
+        if case .artist = item { return true }
+        return false
+    }
+
     private var subtitleText: String {
         switch item {
+        case .artist:
+            return "Artist"
         case .song(let s):
             return s.subtitleLine(duration: durations.effectiveDuration(known: s.duration))
         case .episode(let e):
@@ -45,21 +52,20 @@ struct YouTubeGridItemView: View {
 
     var body: some View {
         Button(action: onTap) {
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: isArtist ? .center : .leading, spacing: 4) {
                 AsyncImageView(url: item.thumbnailUrl)
                     .aspectRatio(1, contentMode: .fill)
                     .frame(width: artworkSize, height: artworkSize)
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    // Artists are round, albums and playlists are rounded squares.
+                    .clipShape(isArtist ? AnyShape(Circle()) : AnyShape(RoundedRectangle(cornerRadius: 8)))
+                    .opensPageBadge(opensPage)
 
-                if opensPage {
-                    TitleWithChevron(title: item.title)
-                } else {
-                    Text(item.title)
-                        .font(.caption)
-                        .fontWeight(.medium)
-                        .foregroundColor(.primary)
-                        .lineLimit(2)
-                }
+                Text(item.title)
+                    .font(.caption)
+                    .fontWeight(.medium)
+                    .foregroundColor(.primary)
+                    .lineLimit(2)
+                    .multilineTextAlignment(isArtist ? .center : .leading)
 
                 if !subtitleText.isEmpty {
                     Text(subtitleText)
@@ -71,6 +77,7 @@ struct YouTubeGridItemView: View {
             .frame(width: artworkSize, height: 220, alignment: .top)
         }
         .buttonStyle(ZoomPressStyle())
+        .cardMenu(for: item)
         .task {
             guard let vid = videoId else { return }
             let known: Int

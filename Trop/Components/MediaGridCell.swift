@@ -7,25 +7,27 @@
 
 import SwiftUI
 
-/// Card title followed by a small ">" that says the card opens a page.
-struct TitleWithChevron: View {
-    let title: String
-    var font: Font = .caption
-    var lineLimit = 2
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 3) {
-            Text(title)
-                .font(font)
-                .fontWeight(.medium)
-                .foregroundColor(.primary)
-                .lineLimit(lineLimit)
+/// Small ">" circle in the bottom right corner of a cover: the card opens a page.
+private struct OpensPageBadge: ViewModifier {
+    func body(content: Content) -> some View {
+        content.overlay(alignment: .bottomTrailing) {
             Image(systemName: "chevron.right")
-                .font(.system(size: 9, weight: .bold))
-                .foregroundStyle(.secondary)
-                .padding(.top, 3)
+                .font(.system(size: 10, weight: .bold))
+                .foregroundStyle(.white)
+                .frame(width: 22, height: 22)
+                .background(.black.opacity(0.55), in: Circle())
+                .overlay(Circle().strokeBorder(.white.opacity(0.35), lineWidth: 0.5))
+                .padding(6)
                 .accessibilityHidden(true)
         }
+    }
+}
+
+extension View {
+    /// Marks an album or playlist cover as a link to its page.
+    @ViewBuilder
+    func opensPageBadge(_ isOn: Bool = true) -> some View {
+        if isOn { modifier(OpensPageBadge()) } else { self }
     }
 }
 
@@ -44,8 +46,13 @@ struct MediaGridCell: View {
                 .aspectRatio(1, contentMode: .fill)
                 .frame(width: size, height: size)
                 .clipShape(RoundedRectangle(cornerRadius: DesignTokens.cardRadius))
+                .opensPageBadge()
 
-            TitleWithChevron(title: title)
+            Text(title)
+                .font(.caption)
+                .fontWeight(.medium)
+                .foregroundColor(.primary)
+                .lineLimit(2)
                 .frame(width: size, alignment: .leading)
 
             if let subtitle, !subtitle.isEmpty {
