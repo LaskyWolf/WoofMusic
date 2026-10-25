@@ -581,9 +581,10 @@ extension SongItem {
     /// "Artists • m:ss" subtitle line used by song rows.
     func subtitleLine(duration: Int) -> String {
         let durationStr = duration.formattedDuration
-        if artistNamesDisplay.isEmpty { return durationStr }
-        if durationStr.isEmpty { return artistNamesDisplay }
-        return "\(artistNamesDisplay) • \(durationStr)"
+        let artists = artistNamesDisplay
+        if artists.isEmpty { return durationStr }
+        if durationStr.isEmpty { return artists }
+        return "\(artists) • \(durationStr)"
     }
 
     var firstAlbumBrowseId: String? {

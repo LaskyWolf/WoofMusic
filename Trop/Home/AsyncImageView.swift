@@ -16,8 +16,10 @@ struct AsyncImageView: View {
 
     var body: some View {
         GeometryReader { geometry in
+            let request = imageRequest(targetSize: geometry.size)
             Group {
-                if let image = loadedImage {
+                // A memory-cache hit shows at once, so scrolling back doesn't flash the placeholder.
+                if let image = request.flatMap({ Self.cachedImage(for: $0) }) ?? loadedImage {
                     Image(uiImage: image)
                         .resizable()
                         .aspectRatio(contentMode: contentMode)
@@ -28,43 +30,49 @@ struct AsyncImageView: View {
                 }
             }
             .task(id: url) {
-                await loadImage(targetSize: geometry.size)
+                await loadImage(request)
             }
         }
     }
 
-    private func loadImage(targetSize: CGSize) async {
-        guard let urlString = url else {
-            loadedImage = nil
-            return
-        }
-        if let file = LocalPlaylistCover.fileURL(for: urlString) {
-            loadedImage = UIImage(contentsOfFile: file.path)
-            return
-        }
+    private static func cachedImage(for request: ImageRequest) -> UIImage? {
+        ImagePipeline.shared.cache.cachedImage(for: request, caches: .memory)?.image
+    }
+
+    private func imageRequest(targetSize: CGSize) -> ImageRequest? {
+        guard let urlString = url else { return nil }
         let scale = displayScale
-        // Prevent zero-size layout passes from causing degenerate image cache requests.
-        let minPixels: CGFloat = 120 * scale
-        let displaySize = CGSize(
-            width: max(targetSize.width * scale, minPixels),
-            height: max(targetSize.height * scale, minPixels)
+        // Zero-size layout passes would otherwise make degenerate cache requests.
+        let fallbackPixels: CGFloat = 120 * scale
+        let displaySize = targetSize.width > 0 && targetSize.height > 0
+            ? CGSize(width: targetSize.width * scale, height: targetSize.height * scale)
+            : CGSize(width: fallbackPixels, height: fallbackPixels)
+        let imageURL: URL
+        if let file = LocalPlaylistCover.fileURL(for: urlString) {
+            // Each saved cover gets a new file name, so caching by URL never goes stale.
+            imageURL = file
+        } else {
+            // Request the ladder rung covering this surface (BitChord-style),
+            // so rows, cards and headers each share one cache entry.
+            let rung = ArtworkURLs.rung(for: max(displaySize.width, displaySize.height))
+            guard let remote = URL(string: normalizeThumbnailURL(urlString, pixels: rung)) else { return nil }
+            imageURL = remote
+        }
+        guard contentMode == .fill else { return ImageRequest(url: imageURL) }
+        return ImageRequest(
+            url: imageURL,
+            processors: [.resize(size: displaySize, unit: .pixels, contentMode: .aspectFill)]
         )
-        // Request the ladder rung covering this surface (BitChord-style),
-        // so rows, cards and headers each share one cache entry.
-        let rung = ArtworkURLs.rung(for: max(displaySize.width, displaySize.height))
-        let normalized = normalizeThumbnailURL(urlString, pixels: rung)
-        guard let url = URL(string: normalized) else {
+    }
+
+    private func loadImage(_ request: ImageRequest?) async {
+        guard let request else {
             loadedImage = nil
             return
         }
-        let request: ImageRequest
-        if contentMode == .fill {
-            request = ImageRequest(
-                url: url,
-                processors: [.resize(size: displaySize, unit: .pixels, contentMode: .aspectFill)]
-            )
-        } else {
-            request = ImageRequest(url: url)
+        if let cached = Self.cachedImage(for: request) {
+            loadedImage = cached
+            return
         }
         do {
             let image = try await ImagePipeline.shared.image(for: request)
@@ -88,13 +96,19 @@ struct AsyncImageView: View {
     }
 }
 
+// Compiled once: `normalizeThumbnailURL` runs on every image render.
+private let thumbnailCropSuffixRegex = try? NSRegularExpression(pattern: "(?<=[sh]\\d+)-c")
+private let thumbnailSizeRegex = try? NSRegularExpression(pattern: "w(\\d+)-h(\\d+)")
+
 private func normalizeThumbnailURL(_ urlString: String, pixels: Int) -> String {
     var url = urlString
 
-    url = url.replacingOccurrences(of: "(?<=[sh]\\d+)-c", with: "", options: .regularExpression)
+    if let regex = thumbnailCropSuffixRegex {
+        url = regex.stringByReplacingMatches(in: url, range: NSRange(url.startIndex..., in: url), withTemplate: "")
+    }
 
     if url.contains("googleusercontent.com") || url.contains("ggpht.com") {
-        if let match = try? NSRegularExpression(pattern: "w(\\d+)-h(\\d+)"),
+        if let match = thumbnailSizeRegex,
            let result = match.firstMatch(in: url, range: NSRange(url.startIndex..., in: url)),
            let wRange = Range(result.range(at: 1), in: url),
            let hRange = Range(result.range(at: 2), in: url),
