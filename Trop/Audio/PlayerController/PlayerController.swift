@@ -50,6 +50,9 @@ final class PlayerController {
     /// Where to continue once a finished song is loaded again: the user moved
     /// the timeline after it ended and then pressed play.
     private var resumeAfterLoad: (videoId: String, time: TimeInterval)?
+    /// Bumped by every `play()`. A call that finds it changed after an await
+    /// was overtaken by a newer one and must not load its song.
+    private var playGeneration = 0
 
     var currentTime: TimeInterval {
         withMpv { mpv in
@@ -80,6 +83,7 @@ final class PlayerController {
     deinit {
         isRunning = false
         if let mpv = _mpv { mpv_wakeup(mpv) }
+        if let spare = _spare { mpv_wakeup(spare) }
     }
 
     nonisolated func withMpv<T: Sendable>(_ body: @escaping @Sendable (OpaquePointer) -> T) -> T? {
@@ -106,6 +110,8 @@ extension PlayerController {
         loudnessDb: Double? = nil,
         thumbnailUrl: String? = nil
     ) async {
+        playGeneration &+= 1
+        let generation = playGeneration
         Crossfade.shared.reset()
         currentLoudnessDb = loudnessDb
         guard let url = URL(string: url) else {
@@ -122,11 +128,15 @@ extension PlayerController {
 
         if isNewSong {
             await PlaybackStateService.shared.stopTracking()
+            guard generation == playGeneration else { return }
         }
         // With Persistent Play/Pause a paused player stays paused when the track changes.
         desiredPlaying = SettingsStore.shared.persistentPlayPause ? playState.value != .paused : true
         assertAudioSession()
-        if let videoId { await PlaybackStateService.shared.startTracking(videoId: videoId) }
+        if let videoId {
+            await PlaybackStateService.shared.startTracking(videoId: videoId)
+            guard generation == playGeneration else { return }
+        }
 
         let isReady = withMpv { _ in true } ?? false
         guard isReady else {
@@ -171,6 +181,8 @@ extension PlayerController {
             let result = mpv_set_property(mpv, "time-pos", MPV_FORMAT_DOUBLE, &val)
             if result < 0 { Log.player.error("seek failed: mpv error \(result)") }
         }
+        // The progress timer is stopped while paused.
+        updateNowPlayingProgress()
     }
 
     func setPaused(_ paused: Bool) {
@@ -352,7 +364,8 @@ extension PlayerController {
 
     nonisolated fileprivate func eventLoop(_ mpv: OpaquePointer) {
         while isRunning {
-            guard let event = mpv_wait_event(mpv, 0.2) else { continue }
+            // Blocks until an event; deinit calls mpv_wakeup to end the loop.
+            guard let event = mpv_wait_event(mpv, -1) else { continue }
             // The crossfade deck reports to the crossfade only.
             guard mpv == _mpv else {
                 handleDeckEvent(event)
@@ -547,8 +560,11 @@ extension PlayerController {
         currentVideoId = videoId
         pendingVideoId = nil
         currentLoudnessDb = loudness
+        let generation = playGeneration
         Task {
             await PlaybackStateService.shared.stopTracking()
+            // A song started meanwhile tracks itself.
+            guard generation == playGeneration else { return }
             await PlaybackStateService.shared.startTracking(videoId: videoId)
         }
     }
@@ -810,10 +826,7 @@ extension PlayerController {
             guard let event = event as? MPChangePlaybackPositionCommandEvent else { return .commandFailed }
             let position = event.positionTime
             Log.player.info("REMOTE_COMMAND seek fired to=\(position)")
-            Task { @MainActor [weak self] in
-                self?.seek(to: position)
-                self?.updateNowPlayingProgress()
-            }
+            Task { @MainActor [weak self] in self?.seek(to: position) }
             return .success
         }
 
