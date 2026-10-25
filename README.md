@@ -18,13 +18,9 @@ No ads, native iOS design, DJ-style transitions.
 
 ## Highlights
 
-| | |
-|---|---|
 | 🎧 **AutoMix** | Beat-matched transitions: matches the tempo of both songs and swaps the bass on the bar. |
 | 🌊 **Smart Crossfade** | Fades into the next song where the current one winds down. |
 | 🌙 **Sleep timer** | 5 to 60 minutes or the end of the song, with a night-sky animation when it ends. |
-| 💜 **Like animations** | Five heart animations; songs with a known genre sometimes get a genre emoji. |
-| ✂️ **SponsorBlock** | Skips intros and skits in music videos. |
 | ✅ **Bulk select** | Select many songs and play, queue, like, download or add them to a playlist at once. |
 
 ## Features
