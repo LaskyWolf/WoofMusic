@@ -389,7 +389,8 @@ struct ArtistDetailView: View {
                     .opacity(barProgress)
             }
             .frame(width: 40, height: 40)
-            .contentShape(Rectangle())
+            .glassEffect(.regular.interactive(), in: .circle)
+            .contentShape(Circle())
         })
         .buttonStyle(.plain)
         .accessibilityLabel(accessibilityLabel)
@@ -507,13 +508,9 @@ struct ArtistDetailView: View {
                             .foregroundStyle(artist.isSubscribed ? Color.white : Color.black)
                             .padding(.horizontal, 20)
                             .frame(height: 44)
-                            .background(
-                                Capsule()
-                                    .fill(artist.isSubscribed ? Color.clear : Color.white)
-                            )
-                            .overlay(
-                                Capsule()
-                                    .stroke(.white, lineWidth: artist.isSubscribed ? 1.5 : 0)
+                            .glassEffect(
+                                artist.isSubscribed ? .regular.interactive() : .regular.tint(.white.opacity(0.9)).interactive(),
+                                in: .capsule
                             )
                     })
                     .buttonStyle(.plain)
@@ -574,35 +571,11 @@ struct ArtistDetailView: View {
                 .padding(.top, 20)
 
             ForEach(Array(songs.enumerated()), id: \.offset) { index, song in
-                                Button(action: { playSong(song) }, label: {
-                    HStack(spacing: 12) {
-                        AsyncImageView(url: song.thumbnailUrl)
-                            .frame(width: 40, height: 40)
-                            .clipShape(RoundedRectangle(cornerRadius: 4))
-
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(song.title)
-                                .font(.subheadline)
-                                .fontWeight(.medium)
-                                .foregroundColor(.primary)
-                                .lineLimit(1)
-
-                            Text(song.artists.map(\.name).joined(separator: ", "))
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                                .lineLimit(1)
-                        }
-
-                        Spacer()
-
-                        Text(song.duration.formattedDuration)
-                            .font(.caption)
-                            .foregroundStyle(.tertiary)
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 6)
-                })
-                .buttonStyle(ZoomPressStyle())
+                SongRowView(
+                    song: song,
+                    onTap: { playSong(song) },
+                    onNavigate: { AppRouter.shared.open($0) }
+                )
 
                 if index < songs.count - 1 {
                     Divider()
