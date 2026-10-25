@@ -93,7 +93,7 @@ final class SearchViewModel {
 
     /// Latest play timestamp per videoId, for Recently Played sorting.
     /// Shared across instances — the search view model is recreated on tab
-    /// visits, and without this every visit refetched + relogged.
+    /// visits and sorts with the last map while a refetch runs.
     private static var sharedRecencyMap: [String: Date]?
     private static var recencyFetchInFlight = false
     private var recencyMap: [String: Date]? {
@@ -233,8 +233,10 @@ final class SearchViewModel {
         return map[id] ?? .distantPast
     }
 
+    /// Refetches play recency. The previous map stays in use until the new
+    /// one arrives, so plays since the last fetch show up without a flash.
     private func preloadRecencyMap() {
-        guard recencyMap == nil, !Self.recencyFetchInFlight else { return }
+        guard !Self.recencyFetchInFlight else { return }
         Self.recencyFetchInFlight = true
         Task { [weak self] in
             defer { Self.recencyFetchInFlight = false }
@@ -281,6 +283,9 @@ final class SearchViewModel {
 
         updateHistory(query: query)
         cancelTasks()
+        if sort == .recent {
+            preloadRecencyMap()
+        }
 
         fetchTask = Task { [weak self] in
             await self?.fetchResults(for: query)

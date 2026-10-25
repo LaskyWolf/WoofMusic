@@ -30,23 +30,19 @@ struct SongActionsMenu<MenuLabel: View>: View {
         var id: Self { self }
     }
 
-    @ObservedObject private var likeStore = LikeStore.shared
-    @ObservedObject private var downloadManager = DownloadManager.shared
+    // LikeStore, DownloadManager, the pin DB read and the avatar fetch live in
+    // the menu items below, so a row whose menu never opens observes nothing.
     @State private var pin = PinState()
     @State private var sheet: Sheet?
     @State private var showArtistPicker = false
     @State private var confirmRemoveDownload = false
     @State private var isResolvingArtist = false
-    @State private var adderAvatar: UIImage?
 
     var body: some View {
         host {
             // Compact icon row at the top, like Apple Music's song menu.
             ControlGroup {
-                let liked = likeStore.isLiked(videoId: song.videoId)
-                Button(liked ? "Unlike" : "Like", systemImage: liked ? "heart.fill" : "heart") {
-                    Task { await likeStore.toggle(song: song) }
-                }
+                LikeMenuButton(song: song)
                 Button("Add to Playlist", systemImage: "text.badge.plus") { sheet = .playlist }
                 if let url = URL(string: song.webUrl) {
                     ShareLink(item: url) {
@@ -58,18 +54,7 @@ struct SongActionsMenu<MenuLabel: View>: View {
 
             if let adder = song.addedBy {
                 Section {
-                    // A menu shows the picture at icon size and the second Text as a subtitle.
-                    Button {} label: {
-                        Text("Added by \(adder.name)")
-                        if adder.isOwner { Text("Playlist owner") }
-                        if let avatar = adderAvatar {
-                            Image(uiImage: avatar).renderingMode(.original)
-                        } else if adder.isOwner {
-                            Image(uiImage: CollaboratorIcon.make(avatar: nil, crowned: true)).renderingMode(.original)
-                        } else {
-                            Image(systemName: "person.crop.circle.fill")
-                        }
-                    }
+                    AddedByMenuItem(adder: adder)
                 }
             }
 
@@ -82,7 +67,7 @@ struct SongActionsMenu<MenuLabel: View>: View {
                 }
             }
 
-            downloadButton
+            DownloadMenuButton(song: song)
 
             if showsSleepTimer {
                 sleepTimerMenu
@@ -91,16 +76,13 @@ struct SongActionsMenu<MenuLabel: View>: View {
             // The rarer actions share one item, so the menu fits the screen without scrolling.
             Menu("More", systemImage: "ellipsis.circle") {
                 Button("Start Radio…", systemImage: "dot.radiowaves.left.and.right") { sheet = .radio }
-                Button(pin.isPinned ? "Unpin from Quick Picks" : "Pin to Quick Picks",
-                       systemImage: pin.isPinned ? "pin.slash" : "pin") {
-                    Task { await pin.toggle(song: song) }
-                }
+                PinMenuButton(song: song, pin: pin)
                 if let onSelect {
                     Button("Select", systemImage: "checkmark.circle", action: onSelect)
                 }
             }
 
-            removeMenu
+            RemoveMenuItems(song: song, onRemove: onRemove, confirmRemoveDownload: $confirmRemoveDownload)
 
             Menu("Go To", systemImage: "arrow.forward.circle") {
                 if !song.artists.filter({ !$0.name.isEmpty }).isEmpty {
@@ -116,11 +98,6 @@ struct SongActionsMenu<MenuLabel: View>: View {
                 Button("Song Details…", systemImage: "info.circle") { sheet = .details }
             }
         }
-        .task(id: song.addedBy?.avatarUrl) {
-            guard let url = song.addedBy?.avatarUrl.flatMap(URL.init) else { return }
-            let isOwner = song.addedBy?.isOwner ?? false
-            adderAvatar = (try? await ArtworkLoader.image(for: url)).map { CollaboratorIcon.make(avatar: $0, crowned: isOwner) }
-        }
         .confirmationDialog("Go to Artist", isPresented: $showArtistPicker, titleVisibility: .visible) {
             ForEach(song.artists.filter { !$0.name.isEmpty }, id: \.self) { artist in
                 Button(artist.name) { openArtist(artist) }
@@ -129,7 +106,7 @@ struct SongActionsMenu<MenuLabel: View>: View {
         .confirmationDialog("Remove this download?", isPresented: $confirmRemoveDownload,
                             titleVisibility: .visible) {
             Button("Remove Download", role: .destructive) {
-                Task { await downloadManager.delete(videoId: song.videoId) }
+                Task { await DownloadManager.shared.delete(videoId: song.videoId) }
             }
         }
         .sheet(item: $sheet) { sheet in
@@ -168,7 +145,6 @@ struct SongActionsMenu<MenuLabel: View>: View {
                 .appSheetChrome()
             }
         }
-        .task { await pin.load(videoId: song.videoId) }
     }
 
     /// The same items as a tap menu on the ⋯ button or as a long-press menu on a whole row.
@@ -201,44 +177,6 @@ struct SongActionsMenu<MenuLabel: View>: View {
                 timer.summary.map { "Sleep Timer · \($0)" } ?? "Sleep Timer",
                 systemImage: timer.isActive ? "moon.zzz.fill" : "moon.zzz"
             )
-        }
-    }
-
-    /// One compact entry for the destructive removals that apply to this song.
-    @ViewBuilder
-    private var removeMenu: some View {
-        let hasDownload = downloadManager.state(for: song.videoId) == .completed
-        if onRemove != nil || hasDownload {
-            Section {
-                Menu("Remove from…", systemImage: "minus.circle") {
-                    if let onRemove {
-                        Button("from Playlist", systemImage: "music.note.list", role: .destructive, action: onRemove)
-                            .tint(.red)
-                    }
-                    if hasDownload {
-                        Button("from Downloads", systemImage: "arrow.down.circle", role: .destructive) {
-                            confirmRemoveDownload = true
-                        }
-                        .tint(.red)
-                    }
-                }
-                .tint(.red)
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var downloadButton: some View {
-        switch downloadManager.state(for: song.videoId) {
-        case .completed:
-            EmptyView()
-        case .downloading:
-            Button("Downloading…", systemImage: "arrow.down.circle") {}
-                .disabled(true)
-        case .notStarted, .failed:
-            Button("Download", systemImage: "arrow.down.circle") {
-                Task { await downloadManager.download(song: song) }
-            }
         }
     }
 
@@ -305,6 +243,114 @@ struct SongActionsMenu<MenuLabel: View>: View {
             }
             if let browseId {
                 navigate(.artist(browseId: browseId))
+            }
+        }
+    }
+}
+
+// MARK: - Menu Items
+
+// Built only with the menu's items, so their observers and tasks cost nothing
+// for rows whose menu is never opened.
+
+private struct LikeMenuButton: View {
+    let song: SongItem
+    @ObservedObject private var likeStore = LikeStore.shared
+
+    var body: some View {
+        let liked = likeStore.isLiked(videoId: song.videoId)
+        Button(liked ? "Unlike" : "Like", systemImage: liked ? "heart.fill" : "heart") {
+            Task { await likeStore.toggle(song: song) }
+        }
+    }
+}
+
+private struct AddedByMenuItem: View {
+    let adder: PlaylistContributor
+    @State private var avatar: UIImage?
+
+    var body: some View {
+        // A menu shows the picture at icon size and the second Text as a subtitle.
+        Button {} label: {
+            Text("Added by \(adder.name)")
+            if adder.isOwner { Text("Playlist owner") }
+            if let avatar {
+                Image(uiImage: avatar).renderingMode(.original)
+            } else if adder.isOwner {
+                Image(uiImage: CollaboratorIcon.make(avatar: nil, crowned: true)).renderingMode(.original)
+            } else {
+                Image(systemName: "person.crop.circle.fill")
+            }
+        }
+        .task(id: adder.avatarUrl) {
+            guard let url = adder.avatarUrl.flatMap(URL.init) else {
+                avatar = nil
+                return
+            }
+            let isOwner = adder.isOwner
+            avatar = (try? await ArtworkLoader.image(for: url)).map { CollaboratorIcon.make(avatar: $0, crowned: isOwner) }
+        }
+    }
+}
+
+/// The pin state is owned by the menu, so the label stays right between openings;
+/// it is refreshed from the database each time the items are built.
+private struct PinMenuButton: View {
+    let song: SongItem
+    let pin: PinState
+
+    var body: some View {
+        Button(pin.isPinned ? "Unpin from Quick Picks" : "Pin to Quick Picks",
+               systemImage: pin.isPinned ? "pin.slash" : "pin") {
+            Task { await pin.toggle(song: song) }
+        }
+        .task(id: song.videoId) { await pin.load(videoId: song.videoId) }
+    }
+}
+
+private struct DownloadMenuButton: View {
+    let song: SongItem
+    @ObservedObject private var downloadManager = DownloadManager.shared
+
+    var body: some View {
+        switch downloadManager.state(for: song.videoId) {
+        case .completed:
+            EmptyView()
+        case .downloading:
+            Button("Downloading…", systemImage: "arrow.down.circle") {}
+                .disabled(true)
+        case .notStarted, .failed:
+            Button("Download", systemImage: "arrow.down.circle") {
+                Task { await downloadManager.download(song: song) }
+            }
+        }
+    }
+}
+
+/// One compact entry for the destructive removals that apply to this song.
+private struct RemoveMenuItems: View {
+    let song: SongItem
+    let onRemove: (() -> Void)?
+    @Binding var confirmRemoveDownload: Bool
+    @ObservedObject private var downloadManager = DownloadManager.shared
+
+    var body: some View {
+        let hasDownload = downloadManager.state(for: song.videoId) == .completed
+        if onRemove != nil || hasDownload {
+            Section {
+                Menu("Remove from…", systemImage: "minus.circle") {
+                    if let onRemove {
+                        Button("from Playlist", systemImage: "music.note.list", role: .destructive, action: onRemove)
+                            .tint(.red)
+                    }
+                    if hasDownload {
+                        Button("from Downloads", systemImage: "arrow.down.circle", role: .destructive) {
+                            confirmRemoveDownload = true
+                        }
+                        .tint(.red)
+                    }
+                }
+                .tint(.red)
             }
         }
     }

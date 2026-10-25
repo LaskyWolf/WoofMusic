@@ -9,7 +9,8 @@ import SwiftUI
 
 /// A Spotify-style equalizer: a line graph across 10 band frequencies whose
 /// points can be dragged up/down (±12 dB), plus a list of presets, each with
-/// a small curve of what it does.
+/// a small curve of what it does. TropApp re-applies playback settings when
+/// the gains or the toggle change, so this view only writes SettingsStore.
 struct EqualizerView: View {
     @Environment(\.settingsStore) private var settings
     @State private var dragIndex: Int?
@@ -66,10 +67,6 @@ struct EqualizerView: View {
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .fill(Color(.secondarySystemGroupedBackground))
         )
-        .onChange(of: settings.equalizerEnabled) { _, enabled in
-            _ = enabled
-            PlayerController.shared.applyPlaybackSettings()
-        }
     }
 
     // MARK: - Presets
@@ -83,7 +80,6 @@ struct EqualizerView: View {
             Button {
                 settings.equalizerGains = preset.gains
                 settings.equalizerPresetID = preset.id
-                PlayerController.shared.applyPlaybackSettings()
             } label: {
                 presetRow(
                     name: preset.name,
@@ -296,6 +292,5 @@ private struct EqualizerGraph: View {
         guard gains.indices.contains(index), gains[index] != gain else { return }
         gains[index] = gain
         SettingsStore.shared.equalizerPresetID = "custom"
-        PlayerController.shared.applyPlaybackSettings()
     }
 }

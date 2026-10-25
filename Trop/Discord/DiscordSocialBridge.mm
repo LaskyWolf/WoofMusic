@@ -26,7 +26,10 @@ static NSString *DiscordString(const std::string &value) {
     std::optional<discordpp::AuthorizationCodeVerifier> _verifier;
     NSTimer *_callbackTimer;
     NSTimer *_authorizationTimeoutTimer;
+    BOOL _authorizing;
 }
+- (void)startCallbackPump;
+- (void)stopCallbackPump;
 - (void)pumpCallbacks;
 - (void)authorizationTimedOut;
 @end
@@ -52,23 +55,41 @@ static NSString *DiscordString(const std::string &value) {
                 DiscordSocialBridge *strongSelf = weakSelf;
                 if (!strongSelf) return;
                 NSLog(@"[DiscordSocialSDK] status=%d errorDetail=%d", (int)status, errorDetail);
+                // Nothing left to pump once the client is idle.
+                if (status == Client::Status::Disconnected && !strongSelf->_authorizing) {
+                    [strongSelf stopCallbackPump];
+                }
                 [strongSelf.delegate discordSocialStatusChanged:(NSInteger)status];
             });
-        });
-        dispatch_async(dispatch_get_main_queue(), ^{
-            self->_callbackTimer = [NSTimer scheduledTimerWithTimeInterval:0.05
-                                                                      target:self
-                                                                    selector:@selector(pumpCallbacks)
-                                                                    userInfo:nil
-                                                                     repeats:YES];
-            NSLog(@"[DiscordSocialSDK] callback pump started");
         });
     }
     return self;
 }
 
+/// The SDK only delivers callbacks while `RunCallbacks` is pumped, so the
+/// timer runs from authorize/connect until the client is disconnected.
+- (void)startCallbackPump {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if (self->_callbackTimer) return;
+        self->_callbackTimer = [NSTimer scheduledTimerWithTimeInterval:0.05
+                                                                  target:self
+                                                                selector:@selector(pumpCallbacks)
+                                                                userInfo:nil
+                                                                 repeats:YES];
+        NSLog(@"[DiscordSocialSDK] callback pump started");
+    });
+}
+
+- (void)stopCallbackPump {
+    [_callbackTimer invalidate];
+    _callbackTimer = nil;
+    NSLog(@"[DiscordSocialSDK] callback pump stopped");
+}
+
 - (void)authorize {
     if (!_client) return;
+    _authorizing = YES;
+    [self startCallbackPump];
 
     _verifier = _client->CreateAuthorizationCodeVerifier();
     if (!_verifier || !_verifier->Challenge()) {
@@ -120,6 +141,7 @@ static NSString *DiscordString(const std::string &value) {
                 }
                 [self->_authorizationTimeoutTimer invalidate];
                 self->_authorizationTimeoutTimer = nil;
+                self->_authorizing = NO;
                 dispatch_async(dispatch_get_main_queue(), ^{
                     [self.delegate discordSocialAuthorizationSucceededWithAccessToken:DiscordString(accessToken)
                                                                            refreshToken:DiscordString(refreshToken)
@@ -152,6 +174,7 @@ static NSString *DiscordString(const std::string &value) {
 
 - (void)connectWithAccessToken:(NSString *)accessToken {
     if (!_client || accessToken.length == 0) return;
+    [self startCallbackPump];
     std::string token = accessToken.UTF8String ?: "";
     _client->UpdateToken(discordpp::AuthorizationTokenType::Bearer, token,
                          [weakSelf = self](discordpp::ClientResult result) {
@@ -233,6 +256,10 @@ static NSString *DiscordString(const std::string &value) {
 - (void)fail:(const std::string &)message {
     [_authorizationTimeoutTimer invalidate];
     _authorizationTimeoutTimer = nil;
+    _authorizing = NO;
+    if (_client && _client->GetStatus() == Client::Status::Disconnected) {
+        dispatch_async(dispatch_get_main_queue(), ^{ [self stopCallbackPump]; });
+    }
     NSString *value = DiscordString(message);
     NSLog(@"[DiscordSocialSDK] error=%@", value);
     dispatch_async(dispatch_get_main_queue(), ^{

@@ -43,13 +43,6 @@ struct SearchView: View {
             .onChange(of: router.selectedTabIndex) { _, _ in
                 focusIfSearchTab()
             }
-            .task(id: viewModel.results.count) {
-                let urls = viewModel.results
-                    .flatMap(\.items)
-                    .compactMap(\.thumbnailUrl)
-                    .compactMap(URL.init)
-                await ImagePreloader.shared.preload(urls)
-            }
         }
     }
 
@@ -318,7 +311,7 @@ struct SearchView: View {
 
     private func artistCarousel(items: [YTItem]) -> some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(alignment: .top, spacing: 16) {
+            LazyHStack(alignment: .top, spacing: 16) {
                 ForEach(items, id: \.id) { item in
                     if case .artist(let artist) = item {
                         Button {
@@ -350,7 +343,7 @@ struct SearchView: View {
 
     private func albumCarousel(items: [YTItem]) -> some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(alignment: .top, spacing: 12) {
+            LazyHStack(alignment: .top, spacing: 12) {
                 ForEach(items, id: \.id) { item in
                     if case .album(let album) = item {
                         Button {

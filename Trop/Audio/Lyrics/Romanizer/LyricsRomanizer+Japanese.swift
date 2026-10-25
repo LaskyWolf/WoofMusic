@@ -11,6 +11,8 @@ import Foundation
 extension LyricsRomanizer {
     static func romanizeJapanese(_ text: String) -> String {
         let chars = Array(text)
+        // Katakana folded onto hiragana once per line, for the reading tables.
+        let normalized = chars.map { katakanaToHiragana($0) ?? $0 }
         var out = ""
         var lastVowel: Character?
         var i = 0
@@ -35,14 +37,14 @@ extension LyricsRomanizer {
             // Sokuon doubles the next consonant (one extra copy — the
             // following reading supplies its own).
             if raw == "っ" || katakanaToHiragana(raw) == "っ" {
-                if let next = reading(in: chars, at: i + 1), let first = next.romaji.first {
+                if let next = reading(in: normalized, at: i + 1), let first = next.romaji.first {
                     appendReading(String(first))
                 }
                 i += 1
                 continue
             }
 
-            if let r = reading(in: chars, at: i) {
+            if let r = reading(in: normalized, at: i) {
                 appendReading(r.romaji)
                 i += r.length
                 continue
@@ -108,9 +110,9 @@ extension LyricsRomanizer {
         }
     }
 
-    private static func reading(in chars: [Character], at index: Int) -> (romaji: String, length: Int)? {
-        guard index < chars.count else { return nil }
-        let normalized = chars.map { katakanaToHiragana($0) ?? $0 }
+    /// `normalized` is the line with katakana already folded onto hiragana.
+    private static func reading(in normalized: [Character], at index: Int) -> (romaji: String, length: Int)? {
+        guard index < normalized.count else { return nil }
         if index + 1 < normalized.count {
             let pair = String(normalized[index]) + String(normalized[index + 1])
             if let digraph = digraphReadings[pair] {

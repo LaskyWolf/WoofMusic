@@ -20,9 +20,9 @@ struct LibraryView: View {
     @State private var showCreateDialog = false
     @State private var playlistToDelete: PlaylistEntity?
     @State private var playlistSongCounts: [String: Int] = [:]
+    @State private var didStartSync = false
 
     @ObservedObject private var router = AppRouter.shared
-    @ObservedObject private var downloadManager = DownloadManager.shared
 
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
@@ -36,15 +36,10 @@ struct LibraryView: View {
         [
             AutoPlaylistInfo(id: "liked", title: "Liked Songs", icon: "heart.fill", subtitle: "\(likedSongCount) songs", route: .likedSongs),
             AutoPlaylistInfo(id: "top100", title: "My Top 100", icon: "trophy.fill", subtitle: "Most played", route: .topSongs(limit: 100)),
+            // Subtitle comes from DownloadsSubtitle, so only it redraws on download changes.
             AutoPlaylistInfo(id: "downloads", title: "Downloads", icon: "arrow.down.circle.fill",
-                             subtitle: downloadsSubtitle, route: nil, detailRoute: .downloads)
+                             subtitle: nil, route: nil, detailRoute: .downloads)
         ]
-    }
-
-    private var downloadsSubtitle: String {
-        downloadManager.persistedDownloadCount == 0
-            ? "Offline"
-            : "\(downloadManager.persistedDownloadCount) songs"
     }
 
     enum LibraryFilter: String, CaseIterable {
@@ -81,23 +76,14 @@ struct LibraryView: View {
                 NewPlaylistSheet(onCreated: { await loadContent() })
             }
             .task {
+                // Runs on every appear, so coming back from a playlist deleted there reloads too.
                 await loadContent()
+                guard !didStartSync else { return }
+                didStartSync = true
                 Task {
                     await SyncBridge.checkAndSyncIfStale()
                     await loadContent()
                 }
-            }
-            .onAppear {
-                // Coming back from a playlist that was deleted there.
-                guard !isLoading else { return }
-                Task { await loadContent() }
-            }
-            .task(id: isLoading) {
-                guard !isLoading else { return }
-                let urls = (playlists.map(\.thumbnailUrl) + albums.map(\.thumbnailUrl) + artists.map(\.thumbnailUrl) + podcasts.map(\.thumbnailUrl))
-                    .compactMap { $0 }
-                    .compactMap(URL.init)
-                await ImagePreloader.shared.preload(urls)
             }
             .refreshable {
                 await SyncBridge.forceFullSync()
@@ -218,12 +204,16 @@ struct LibraryView: View {
                 .font(.subheadline.weight(.semibold))
                 .lineLimit(1)
                 .minimumScaleFactor(0.85)
-            if let subtitle = info.subtitle {
-                Text(subtitle)
-                    .font(.caption)
-                    .opacity(0.8)
-                    .lineLimit(1)
+            Group {
+                if info.id == "downloads" {
+                    DownloadsSubtitle()
+                } else if let subtitle = info.subtitle {
+                    Text(subtitle)
+                }
             }
+            .font(.caption)
+            .opacity(0.8)
+            .lineLimit(1)
         }
         .foregroundStyle(.white)
         .padding(12)
@@ -398,11 +388,11 @@ struct LibraryView: View {
         do {
             async let artistsFetch = DatabaseService.shared.fetchAll(
                 ArtistEntity.self,
-                sql: "SELECT * FROM artist WHERE bookmarked_at IS NOT NULL ORDER BY name LIMIT 50"
+                sql: "SELECT * FROM artist WHERE bookmarked_at IS NOT NULL ORDER BY name"
             )
             async let playlistsFetch = DatabaseService.shared.fetchAll(
                 PlaylistEntity.self,
-                sql: "SELECT * FROM playlist WHERE bookmarked_at IS NOT NULL ORDER BY name LIMIT 50"
+                sql: "SELECT * FROM playlist WHERE bookmarked_at IS NOT NULL ORDER BY name"
             )
             async let albumsFetch = DatabaseService.shared.fetchAllAlbums()
             async let podcastsFetch = DatabaseService.shared.fetchAllPodcasts()
@@ -552,6 +542,19 @@ struct NewPlaylistSheet: View {
             try await DatabaseService.shared.insert(entity)
             return entity.id
         }
+    }
+}
+
+// MARK: - Downloads Subtitle
+
+/// Observes DownloadManager on its own, so download progress doesn't redraw the whole Library.
+private struct DownloadsSubtitle: View {
+    @ObservedObject private var downloadManager = DownloadManager.shared
+
+    var body: some View {
+        Text(downloadManager.persistedDownloadCount == 0
+             ? "Offline"
+             : "\(downloadManager.persistedDownloadCount) songs")
     }
 }
 

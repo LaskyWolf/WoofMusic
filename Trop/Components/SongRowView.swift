@@ -5,6 +5,7 @@
 // Created by 686udjie on 12/09/2026.
 //
 
+import Combine
 import SwiftUI
 
 /// Trailing ⋮ button shared by every song row.
@@ -110,12 +111,13 @@ struct SongRowView: View {
 struct DownloadCellProgressView: View {
     let song: SongItem
     @Environment(SettingsStore.self) private var settings
-    @ObservedObject private var downloadManager = DownloadManager.shared
+    /// Only this song's entry: observing the whole manager would redraw every
+    /// visible row at each progress step of any download.
+    @State private var state: DownloadManager.DownloadState?
 
     var body: some View {
-        let state = downloadManager.state(for: song.videoId)
         GeometryReader { geo in
-            if case .downloading(let fraction) = state {
+            if case .downloading(let fraction)? = state {
                 let width = geo.size.width * CGFloat(min(max(fraction, 0), 1))
                 ZStack(alignment: .bottomLeading) {
                     settings.accentColor.opacity(0.18)
@@ -130,5 +132,8 @@ struct DownloadCellProgressView: View {
             }
         }
         .animation(.easeInOut(duration: 0.3), value: state)
+        .onReceive(DownloadManager.shared.$downloads.map { [videoId = song.videoId] in $0[videoId] }.removeDuplicates()) {
+            state = $0
+        }
     }
 }

@@ -101,8 +101,9 @@ struct YouTubeGridItemView: View {
                     .lineLimit(2)
                     .multilineTextAlignment(isArtist ? .center : .leading)
 
-                if !subtitleText.isEmpty {
-                    Text(subtitleText)
+                let subtitle = subtitleText
+                if !subtitle.isEmpty {
+                    Text(subtitle)
                         .font(.caption2)
                         .foregroundColor(.secondary)
                         .lineLimit(1)

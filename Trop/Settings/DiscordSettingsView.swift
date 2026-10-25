@@ -162,6 +162,9 @@ struct DiscordSettingsView: View {
 
                     Section("Buttons") {
                         Toggle("Button 1", isOn: $btn1Enabled)
+                            .onChange(of: btn1Enabled) { _, _ in
+                                DiscordRpcManager.shared.notifySettingsChanged()
+                            }
                         if btn1Enabled {
                             // swiftlint:disable:next multiple_closures_with_trailing_closure
                             Button(action: { showBtn1LabelEditor = true }) {
@@ -181,6 +184,9 @@ struct DiscordSettingsView: View {
                             }
                         }
                         Toggle("Button 2", isOn: $btn2Enabled)
+                            .onChange(of: btn2Enabled) { _, _ in
+                                DiscordRpcManager.shared.notifySettingsChanged()
+                            }
                         if btn2Enabled {
                             // swiftlint:disable:next multiple_closures_with_trailing_closure
                             Button(action: { showBtn2LabelEditor = true }) {
@@ -207,6 +213,9 @@ struct DiscordSettingsView: View {
                             Text("Idle").tag("idle")
                             Text("DND").tag("dnd")
                         }
+                        .onChange(of: userStatus) { _, _ in
+                            DiscordRpcManager.shared.notifySettingsChanged()
+                        }
                     }
                 }
 
@@ -227,10 +236,18 @@ struct DiscordSettingsView: View {
         .textPrompt("Details Template", isPresented: $showDetailsTemplateEditor, placeholder: "Template", text: $detailsTemplate) {
             DiscordRpcManager.shared.notifySettingsChanged()
         }
-        .textPrompt("Button 1 Label", isPresented: $showBtn1LabelEditor, placeholder: "Label", text: $btn1Label)
-        .textPrompt("Button 1 URL", isPresented: $showBtn1UrlEditor, placeholder: "URL", text: $btn1Url)
-        .textPrompt("Button 2 Label", isPresented: $showBtn2LabelEditor, placeholder: "Label", text: $btn2Label)
-        .textPrompt("Button 2 URL", isPresented: $showBtn2UrlEditor, placeholder: "URL", text: $btn2Url)
+        .textPrompt("Button 1 Label", isPresented: $showBtn1LabelEditor, placeholder: "Label", text: $btn1Label) {
+            DiscordRpcManager.shared.notifySettingsChanged()
+        }
+        .textPrompt("Button 1 URL", isPresented: $showBtn1UrlEditor, placeholder: "URL", text: $btn1Url) {
+            DiscordRpcManager.shared.notifySettingsChanged()
+        }
+        .textPrompt("Button 2 Label", isPresented: $showBtn2LabelEditor, placeholder: "Label", text: $btn2Label) {
+            DiscordRpcManager.shared.notifySettingsChanged()
+        }
+        .textPrompt("Button 2 URL", isPresented: $showBtn2UrlEditor, placeholder: "URL", text: $btn2Url) {
+            DiscordRpcManager.shared.notifySettingsChanged()
+        }
     }
 
     private var displayActivityName: String {
@@ -245,6 +262,9 @@ struct DiscordSettingsView: View {
     }
 
     private func bind() {
+        // onAppear runs on every return to this screen: subscribe only once.
+        // The sinks stay live (they live in @State), so the values are already current.
+        guard cancellables.isEmpty else { return }
         DiscordRpcManager.shared.connectionStatus
             .receive(on: DispatchQueue.main)
             .sink { s in status = s }
@@ -333,20 +353,9 @@ private struct RichPresencePreview: View {
         }
     }
 
-    private func fmt(_ secs: Int) -> String {
-        let m = secs / 60
-        let s = secs % 60
-        return String(format: "%02d:%02d", m, s)
-    }
-
     var body: some View {
         let l = live
         let r = rendered
-        // Progress uses live NowPlaying if playing, else mock 5 / 175 as in screenshot
-        let cur = NowPlaying.shared.isPlaying ? Int(NowPlaying.shared.currentTime) : 5
-        let dur = NowPlaying.shared.duration > 0 ? Int(NowPlaying.shared.duration) : (l.songId == "xxxx" ? 175 : Int(NowPlaying.shared.duration))
-        let displayDur = dur > 0 ? dur : 175
-        let progress = displayDur > 0 ? CGFloat(cur) / CGFloat(displayDur) : 0.03
         // Header: "Listening to {artist}" — Discord shows activity name artist
         let header = "Listening to \(l.artist)"
         VStack(alignment: .leading, spacing: 12) {
@@ -371,22 +380,8 @@ private struct RichPresencePreview: View {
                 .padding(.top, 2)
                 Spacer(minLength: 0)
             }
-            VStack(spacing: 8) {
-                GeometryReader { geo in
-                    ZStack(alignment: .leading) {
-                        Capsule().fill(Color.white.opacity(0.18)).frame(height: 5)
-                        Capsule().fill(Color.white).frame(width: geo.size.width * min(max(progress, 0), 1), height: 5)
-                            .overlay(Circle().fill(Color.white).frame(width: 9, height: 9), alignment: .trailing)
-                    }
-                }
-                .frame(height: 5)
-                HStack {
-                    Text(fmt(min(cur, displayDur))).font(.system(size: 13, design: .monospaced)).foregroundStyle(.white.opacity(0.85))
-                    Spacer()
-                    Text(fmt(displayDur)).font(.system(size: 13, design: .monospaced)).foregroundStyle(.white.opacity(0.85))
-                }
-            }
-            .padding(.top, 2)
+            RichPresenceProgress(isMock: l.songId == "xxxx")
+                .padding(.top, 2)
             VStack(spacing: 10) {
                 if btn1Enabled {
                     Text(btn1Label.isEmpty ? DiscordDefaults.button1Label : btn1Label)
@@ -406,5 +401,40 @@ private struct RichPresencePreview: View {
         .padding(16)
         .background(RoundedRectangle(cornerRadius: 22).fill(Color(red: 0.17, green: 0.17, blue: 0.18)))
         .overlay(RoundedRectangle(cornerRadius: 22).stroke(Color.white.opacity(0.06), lineWidth: 1))
+    }
+}
+
+/// The preview's progress bar. Its own view, so the playback clock
+/// (NowPlaying.currentTime) redraws only this part, not the whole preview.
+private struct RichPresenceProgress: View {
+    let isMock: Bool
+
+    private func fmt(_ secs: Int) -> String {
+        let m = secs / 60
+        let s = secs % 60
+        return String(format: "%02d:%02d", m, s)
+    }
+
+    var body: some View {
+        // Progress uses live NowPlaying if playing, else mock 5 / 175 as in screenshot
+        let cur = NowPlaying.shared.isPlaying ? Int(NowPlaying.shared.currentTime) : 5
+        let dur = NowPlaying.shared.duration > 0 ? Int(NowPlaying.shared.duration) : (isMock ? 175 : Int(NowPlaying.shared.duration))
+        let displayDur = dur > 0 ? dur : 175
+        let progress = displayDur > 0 ? CGFloat(cur) / CGFloat(displayDur) : 0.03
+        VStack(spacing: 8) {
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color.white.opacity(0.18)).frame(height: 5)
+                    Capsule().fill(Color.white).frame(width: geo.size.width * min(max(progress, 0), 1), height: 5)
+                        .overlay(Circle().fill(Color.white).frame(width: 9, height: 9), alignment: .trailing)
+                }
+            }
+            .frame(height: 5)
+            HStack {
+                Text(fmt(min(cur, displayDur))).font(.system(size: 13, design: .monospaced)).foregroundStyle(.white.opacity(0.85))
+                Spacer()
+                Text(fmt(displayDur)).font(.system(size: 13, design: .monospaced)).foregroundStyle(.white.opacity(0.85))
+            }
+        }
     }
 }

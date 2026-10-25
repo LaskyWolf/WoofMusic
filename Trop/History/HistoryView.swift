@@ -183,7 +183,6 @@ struct HistoryScreenView: View {
                 )
             }
         }()
-        let allItems = allDisplayableSongs
         let isSelected = selectedEvents.contains(entry.event)
         HStack(spacing: 0) {
             if isSelecting {
@@ -210,7 +209,8 @@ struct HistoryScreenView: View {
                         selectedEvents.insert(entry.event)
                     }
                 } else {
-                    PlaybackQueue.play(song, in: allItems, log: Log.historyView, context: "History play")
+                    // Built on tap only: computing it per row re-converts the whole history.
+                    PlaybackQueue.play(song, in: allDisplayableSongs, log: Log.historyView, context: "History play")
                 }
             })
             .swipeActions(edge: .trailing, allowsFullSwipe: true) {

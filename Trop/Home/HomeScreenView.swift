@@ -64,7 +64,10 @@ struct HomeScreenView: View {
                 }
             }
             .task {
-                await viewModel.restoreSession()
+                // .task re-runs on every return to Home; the session only needs restoring once.
+                if !viewModel.isLoggedIn {
+                    await viewModel.restoreSession()
+                }
                 viewModel.loadHomeData()
                 await reloadSpeedDial()
                 // Trigger library sync in background
@@ -74,13 +77,6 @@ struct HomeScreenView: View {
             }
             .onReceive(NotificationCenter.default.publisher(for: .speedDialDidChange)) { _ in
                 Task { await reloadSpeedDial() }
-            }
-            .task(id: viewModel.homeSections.count) {
-                let urls = viewModel.homeSections
-                    .flatMap(\.items)
-                    .compactMap(\.thumbnailUrl)
-                    .compactMap(URL.init)
-                await ImagePreloader.shared.preload(urls)
             }
         }
     }
@@ -279,7 +275,7 @@ struct HomeScreenView: View {
     private func mixedSection(_ section: HomeSection) -> some View {
         let queue = section.items.compactMap { if case .song(let s) = $0 { return s } else { return nil } }
         return HorizontalSection(title: section.displayTitle, vSpacing: 8, contentVerticalPadding: 0) {
-            HStack(spacing: 12) {
+            LazyHStack(spacing: 12) {
                 ForEach(section.items.indices, id: \.self) { i in
                     let item = section.items[i]
                     if case .song(let s) = item, !queue.isEmpty {

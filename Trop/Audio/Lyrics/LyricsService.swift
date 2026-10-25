@@ -34,6 +34,11 @@ actor LyricsService {
     private var cache: [String: [LyricLine]] = [:]
     private var customs: [String: (lines: [LyricLine], providerName: String)] = [:]
     private var inFlight: [String: Task<FetchResult, Error>] = [:]
+    /// Songs no provider had lyrics for, so reopening or preloading them skips
+    /// the providers for a while. Entries expire because lyrics can be
+    /// published later.
+    private var notFoundUntil: [String: Date] = [:]
+    private static let notFoundTTL: TimeInterval = 10 * 60
 
     private init() {}
 
@@ -53,6 +58,10 @@ actor LyricsService {
         if let cached = cache[videoId] {
             await updateAvailability(videoId: videoId, available: !cached.isEmpty)
             return cached
+        }
+        if let until = notFoundUntil[videoId], until > Date() {
+            await updateAvailability(videoId: videoId, available: false)
+            throw LyricsError.notFound
         }
         if let flight = inFlight[videoId] {
             return try await flight.value.lines
@@ -78,6 +87,9 @@ actor LyricsService {
             return result.lines
         } catch {
             inFlight.removeValue(forKey: videoId)
+            if case LyricsError.notFound = error {
+                notFoundUntil[videoId] = Date().addingTimeInterval(Self.notFoundTTL)
+            }
             if !(error is CancellationError) {
                 await updateAvailability(videoId: videoId, available: false)
             }
@@ -135,6 +147,7 @@ actor LyricsService {
     /// result (explicit user intent), like Metrolist's refetchLyrics.
     func refetch(videoId: String) async {
         cache.removeValue(forKey: videoId)
+        notFoundUntil.removeValue(forKey: videoId)
         func signalReload() {
             Task { await MainActor.run { LyricsState.shared.refreshToken += 1 } }
         }

@@ -546,18 +546,17 @@ struct PodcastDetailView: View {
 
     @ViewBuilder
     private func episodeList(for podcast: PodcastDetailInfo) -> some View {
-        VStack(spacing: 0) {
-            ForEach(Array(podcast.episodes.enumerated()), id: \.offset) { index, episode in
-                EpisodeRowView(
-                    episode: episode,
-                    onTap: { playEpisode(episode, in: podcast) },
-                    onNavigate: { AppRouter.shared.open($0) }
-                )
+        // No VStack wrapper: the ForEach must sit directly in the parent LazyVStack to stay lazy.
+        ForEach(Array(podcast.episodes.enumerated()), id: \.offset) { index, episode in
+            EpisodeRowView(
+                episode: episode,
+                onTap: { playEpisode(episode, in: podcast) },
+                onNavigate: { AppRouter.shared.open($0) }
+            )
 
-                if index < podcast.episodes.count - 1 {
-                    Divider()
-                        .padding(.leading, 100)
-                }
+            if index < podcast.episodes.count - 1 {
+                Divider()
+                    .padding(.leading, 100)
             }
         }
     }

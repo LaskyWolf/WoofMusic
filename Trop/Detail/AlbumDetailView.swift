@@ -381,7 +381,9 @@ struct AlbumDetailView: View {
 
     @ViewBuilder
     private func songList(for album: AlbumDetailInfo) -> some View {
-        VStack(spacing: 0) {
+        // Lazy, like the playlist list: a plain VStack builds every row at once.
+        // Kept as its own stack so songSelectionColumn wraps only the rows.
+        LazyVStack(spacing: 0) {
             ForEach(Array(album.songs.enumerated()), id: \.offset) { index, song in
                 SongRowView(
                     song: song,

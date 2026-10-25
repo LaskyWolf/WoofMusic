@@ -21,7 +21,14 @@ final class NowPlaying {
     var albumTitle = ""
     var videoId: String?
     var artists: [YTArtist] = []
-    var isPlaying = false
+    /// The progress timer runs only while playing; pause and seek publish the
+    /// position themselves.
+    var isPlaying = false {
+        didSet {
+            guard isPlaying != oldValue else { return }
+            if isPlaying { startTimer() } else { stopTimer() }
+        }
+    }
     /// True from the moment a song is requested until its audio is loaded.
     var isLoadingTrack = false
     var currentTime: TimeInterval = 0
@@ -324,7 +331,7 @@ final class NowPlaying {
         self.duration = 0
         self.videoId = videoId
         self.musicVideoType = nil
-        startTimer()
+        if isPlaying { startTimer() }
         loadThumbnail(videoId: videoId, thumbnailUrl: thumbnailUrl)
         preloadNextTrack()
     }
@@ -410,6 +417,8 @@ final class NowPlaying {
         Task {
             do {
                 let radio = try await PersonalizationService.shared.fetchRadio(videoId: videoId)
+                // The user picked another song while the radio loaded.
+                guard self.videoId == videoId else { return }
                 let songs = radio.songs
                 guard !songs.isEmpty else {
                     isPlaying = false
@@ -477,7 +486,9 @@ final class NowPlaying {
 
         Task {
             // For downloaded songs, try to extract embedded artwork from the local file first.
-            if let localURL = await DownloadManager.shared.localURL(for: videoId) {
+            let localURL = await DownloadManager.shared.localURL(for: videoId)
+            guard lastLoadedVideoId == videoId else { return }
+            if let localURL {
                 loadArtworkFromLocalFile(localURL, videoId: videoId, thumbnailUrl: thumb)
                 return
             }
@@ -505,7 +516,7 @@ final class NowPlaying {
                 // Older downloads embedded a small row thumbnail; prefer the
                 // CDN cover unless the embedded one is player-sized.
                 if let artworkImage {
-                    publishArtwork(artworkImage)
+                    publishArtwork(artworkImage, videoId: videoId)
                     if min(artworkImage.size.width, artworkImage.size.height) * artworkImage.scale >= 600 { return }
                 }
                 loadThumbnailFromCDN(videoId: videoId, thumbnailUrl: thumbnailUrl)
@@ -513,14 +524,26 @@ final class NowPlaying {
         }
     }
 
+    @ObservationIgnored private var artworkRequest = 0
+
     /// Publishes a loaded image as the current artwork (cropped square).
-    private func publishArtwork(_ image: UIImage) {
-        let cropped = image.centerCroppedSquare()
-        thumbnailUIImage = cropped
-        thumbnailImage = Image(uiImage: cropped)
-        thumbnailVersion &+= 1
-        updateDominantColors(from: cropped)
-        PlayerController.shared.updateNowPlayingArtwork()
+    /// Cropping and color extraction run off the main thread; the newest
+    /// request wins, so a slow crop can't replace a better image.
+    private func publishArtwork(_ image: UIImage, videoId: String) {
+        artworkRequest &+= 1
+        let request = artworkRequest
+        Task {
+            let (cropped, colors) = await Task.detached(priority: .userInitiated) { () -> (UIImage, [Color]) in
+                let cropped = image.centerCroppedSquare()
+                return (cropped, cropped.extractDominantColors())
+            }.value
+            guard request == artworkRequest, lastLoadedVideoId == videoId else { return }
+            thumbnailUIImage = cropped
+            thumbnailImage = Image(uiImage: cropped)
+            thumbnailVersion &+= 1
+            dominantColors = colors
+            PlayerController.shared.updateNowPlayingArtwork()
+        }
     }
 
     private func loadThumbnailFromCDN(videoId: String, thumbnailUrl: String? = nil) {
@@ -545,7 +568,7 @@ final class NowPlaying {
             thumbnailUIImage = nil
             thumbnailImage = Image(systemName: "music.note")
             thumbnailVersion &+= 1
-            updateDominantColors(from: nil)
+            resetDominantColors()
             return
         }
 
@@ -554,7 +577,7 @@ final class NowPlaying {
         var paintedIndex: Int?
         for (index, url) in urls.enumerated() {
             if let cached = ArtworkLoader.cachedImage(for: url) {
-                publishArtwork(cached)
+                publishArtwork(cached, videoId: videoId)
                 paintedIndex = index
                 break
             }
@@ -568,6 +591,7 @@ final class NowPlaying {
         }
         if paintedIndex == nil {
             thumbnailImage = nil
+            thumbnailUIImage = nil
         }
         Task {
             for url in urls.prefix(fetchCount) {
@@ -576,7 +600,7 @@ final class NowPlaying {
                     let platformImage = try await ArtworkLoader.image(for: url)
                     await MainActor.run {
                         guard self.lastLoadedVideoId == videoId else { return }
-                        self.publishArtwork(platformImage)
+                        self.publishArtwork(platformImage, videoId: videoId)
                     }
                     return
                 } catch {
@@ -587,8 +611,9 @@ final class NowPlaying {
                 await MainActor.run {
                     guard self.lastLoadedVideoId == videoId else { return }
                     thumbnailImage = Image(systemName: "music.note")
+                    thumbnailUIImage = nil
                     thumbnailVersion &+= 1
-                    updateDominantColors(from: nil)
+                    resetDominantColors()
                 }
             }
         }
@@ -638,13 +663,8 @@ final class NowPlaying {
         timer = nil
     }
 
-    @MainActor
-    private func updateDominantColors(from uiImage: UIImage?) {
-        guard let uiImage = uiImage else {
-            self.dominantColors = [Color(red: 0.15, green: 0.15, blue: 0.2), Color(red: 0.05, green: 0.05, blue: 0.08)]
-            return
-        }
-        self.dominantColors = uiImage.extractDominantColors()
+    private func resetDominantColors() {
+        dominantColors = [Color(red: 0.15, green: 0.15, blue: 0.2), Color(red: 0.05, green: 0.05, blue: 0.08)]
     }
 
     private func cleanArtist(_ name: String) -> String {

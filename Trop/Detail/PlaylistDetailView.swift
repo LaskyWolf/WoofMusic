@@ -21,6 +21,9 @@ final class PlaylistDetailViewModel {
     let autoRoute: AutoPlaylistRoute?
     var autoSongSort: LibrarySongSort = .recentlyAdded
     var autoTopPeriod: TopPeriod = .allTime
+    /// Bumped by each auto-playlist load, so an older load that finishes late
+    /// can't overwrite the result of a newer sort or period choice.
+    @ObservationIgnored private var autoLoadGeneration = 0
 
     init(playlistId: String) {
         self.playlistId = playlistId
@@ -163,6 +166,8 @@ final class PlaylistDetailViewModel {
     }
 
     private func loadAutoPlaylist(route: AutoPlaylistRoute) async {
+        autoLoadGeneration += 1
+        let generation = autoLoadGeneration
         isLoading = true
         error = nil
         do {
@@ -181,32 +186,14 @@ final class PlaylistDetailViewModel {
                     entities = try await DatabaseService.shared.fetchTopSongs(limit: limit, from: autoTopPeriod.dateFrom, to: Date())
                 }
             }
+            guard generation == autoLoadGeneration else { return }
             var songs = entities.toSongItems()
 
-            // Resolve missing durations in background
-            let emptyDurationIds = songs.filter { $0.duration <= 0 }.map { $0.videoId }
-            if !emptyDurationIds.isEmpty {
-                // resolveDuration fills DurationCache; cap parallel requests
-                // so a long Top list doesn't hit InnerTube rate limits.
-                await withTaskGroup(of: Void.self) { group in
-                    var running = 0
-                    for videoId in emptyDurationIds {
-                        guard !DurationCache.isPending(videoId) else { continue }
-                        if let cached = DurationCache.get(videoId), cached > 0 { continue }
-                        if running >= 4 {
-                            await group.next()
-                            running -= 1
-                        }
-                        group.addTask {
-                            _ = await InnerTubeClient.tropShared.resolveDuration(videoId: videoId)
-                        }
-                        running += 1
-                    }
-                }
-                for i in songs.indices where songs[i].duration <= 0 {
-                    if let cached = DurationCache.get(songs[i].videoId), cached > 0 {
-                        songs[i].duration = cached
-                    }
+            // Fill durations already cached. Rows resolve the rest themselves
+            // (SongRowView's DurationResolver), so the list doesn't wait on the network.
+            for i in songs.indices where songs[i].duration <= 0 {
+                if let cached = DurationCache.get(songs[i].videoId), cached > 0 {
+                    songs[i].duration = cached
                 }
             }
 
@@ -226,6 +213,7 @@ final class PlaylistDetailViewModel {
             )
             isLoading = false
         } catch {
+            guard generation == autoLoadGeneration else { return }
             self.error = error
             isLoading = false
         }

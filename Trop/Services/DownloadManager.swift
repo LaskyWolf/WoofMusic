@@ -31,7 +31,8 @@ final class DownloadManager: ObservableObject {
         case failed(String)
     }
 
-    private static let minimumAudioBytes = 8_192
+    nonisolated private static let minimumAudioBytes = 8_192
+    private static let maxConcurrentDownloads = 3
 
     private let fileManager = FileManager.default
     private let pathMonitor = NWPathMonitor()
@@ -40,6 +41,9 @@ final class DownloadManager: ObservableObject {
     private var cancelledDownloadIds: Set<String> = []
     private var lastReportedProgress: [String: Double] = [:]
     private var activeFFmpegSessions: [String: FFmpegSession] = [:]
+    private var runningDownloadCount = 0
+    /// Downloads waiting for a free slot, in arrival order.
+    private var downloadWaiters: [(videoId: String, continuation: CheckedContinuation<Bool, Never>)] = []
 
     private var tracksById: [String: DownloadedTrackEntity] = [:]
 
@@ -126,7 +130,11 @@ final class DownloadManager: ObservableObject {
     }
 
     private func resolvedURL(for track: DownloadedTrackEntity) -> URL? {
-        let stored = track.localPath
+        Self.resolvedURL(forStoredPath: track.localPath, in: downloadsDir)
+    }
+
+    nonisolated private static func resolvedURL(forStoredPath stored: String, in downloadsDir: URL) -> URL? {
+        let fileManager = FileManager.default
         let url: URL
         if stored.hasPrefix("/") {
             url = URL(fileURLWithPath: stored)
@@ -159,43 +167,93 @@ final class DownloadManager: ObservableObject {
         defer { isReloading = false }
 
         ensureDirectories()
-        let scanned = scanDownloadedFiles()
-
-        var rebuilt: [String: DownloadedTrackEntity] = [:]
+        let before = tracksById
+        let dir = downloadsDir
         let databaseTracks = await fetchAllFromDatabase()
+        // Directory scan and per-file checks run off the main actor.
+        let plan = await Task.detached(priority: .utility) {
+            Self.reconcile(databaseTracks, in: dir)
+        }.value
 
-        for track in databaseTracks {
-            guard let url = resolvedURL(for: track) ?? scanned[track.id] else {
-                _ = try? await DatabaseService.shared.delete(track)
-                continue
-            }
-            var fixed = track
-            fixed.localPath = storedPath(for: url)
-            if fixed.localPath != track.localPath {
-                try? await DatabaseService.shared.save(fixed)
-            }
-            rebuilt[fixed.id] = fixed
-        }
-
-        for (videoId, url) in scanned where rebuilt[videoId] == nil {
-            let metadata = await songMetadata(for: videoId)
+        var rebuilt = plan.kept
+        var orphans: [DownloadedTrackEntity] = []
+        for orphan in plan.orphans {
+            let metadata = await songMetadata(for: orphan.videoId)
             let entity = DownloadedTrackEntity(
-                id: videoId,
-                title: metadata?.title ?? Self.displayTitle(from: url),
+                id: orphan.videoId,
+                title: metadata?.title ?? Self.displayTitle(from: orphan.url),
                 artist: metadata?.artistName ?? "",
                 duration: metadata?.duration ?? 0,
                 thumbnailUrl: metadata?.thumbnailUrl,
-                localPath: storedPath(for: url),
-                downloadedAt: (try? url.resourceValues(forKeys: [.contentModificationDateKey])
-                    .contentModificationDate) ?? Date()
+                localPath: storedPath(for: orphan.url),
+                downloadedAt: orphan.modified ?? Date()
             )
-            _ = try? await DatabaseService.shared.insertOrReplace(entity)
-            rebuilt[videoId] = entity
-            Log.downloadManager.notice("Recovered orphaned download \(videoId) from \(url.lastPathComponent)")
+            orphans.append(entity)
+            rebuilt[entity.id] = entity
+            Log.downloadManager.notice("Recovered orphaned download \(orphan.videoId) from \(orphan.url.lastPathComponent)")
+        }
+
+        let missing = plan.missing
+        let pathFixes = plan.pathFixes
+        if !missing.isEmpty || !pathFixes.isEmpty || !orphans.isEmpty {
+            try? await DatabaseService.shared.write { db in
+                for track in missing {
+                    _ = try track.delete(db)
+                }
+                // UPDATE, not save: a row deleted meanwhile must stay deleted.
+                for track in pathFixes {
+                    try db.execute(
+                        sql: "UPDATE downloaded_track SET local_path = ? WHERE id = ?",
+                        arguments: [track.localPath, track.id]
+                    )
+                }
+                for track in orphans {
+                    try track.insert(db, onConflict: .replace)
+                }
+            }
+        }
+
+        // Keep downloads registered or deleted while this reload was suspended.
+        for (id, track) in tracksById where before[id] != track {
+            rebuilt[id] = track
+        }
+        for id in before.keys where tracksById[id] == nil {
+            rebuilt.removeValue(forKey: id)
         }
 
         apply(rebuilt)
         isLoaded = true
+    }
+
+    /// Matches database rows to files in `downloadsDir`. Touches only the
+    /// file system, so it can run off the main actor.
+    nonisolated private static func reconcile(
+        _ databaseTracks: [DownloadedTrackEntity],
+        in downloadsDir: URL
+    ) -> ReconcilePlan {
+        let scanned = scanDownloadedFiles(in: downloadsDir)
+        var plan = ReconcilePlan()
+
+        for track in databaseTracks {
+            guard let url = resolvedURL(forStoredPath: track.localPath, in: downloadsDir)
+                ?? scanned[track.id] else {
+                plan.missing.append(track)
+                continue
+            }
+            var fixed = track
+            fixed.localPath = url.lastPathComponent
+            if fixed.localPath != track.localPath {
+                plan.pathFixes.append(fixed)
+            }
+            plan.kept[fixed.id] = fixed
+        }
+
+        for (videoId, url) in scanned where plan.kept[videoId] == nil {
+            let modified = try? url.resourceValues(forKeys: [.contentModificationDateKey])
+                .contentModificationDate
+            plan.orphans.append(ReconcilePlan.Orphan(videoId: videoId, url: url, modified: modified))
+        }
+        return plan
     }
 
     private func apply(_ newTracks: [String: DownloadedTrackEntity]) {
@@ -206,8 +264,12 @@ final class DownloadManager: ObservableObject {
     }
 
     private func scanDownloadedFiles() -> [String: URL] {
+        Self.scanDownloadedFiles(in: downloadsDir)
+    }
+
+    nonisolated private static func scanDownloadedFiles(in downloadsDir: URL) -> [String: URL] {
         let keys: [URLResourceKey] = [.fileSizeKey, .contentModificationDateKey]
-        guard let urls = try? fileManager.contentsOfDirectory(
+        guard let urls = try? FileManager.default.contentsOfDirectory(
             at: downloadsDir,
             includingPropertiesForKeys: keys,
             options: [.skipsHiddenFiles]
@@ -261,6 +323,10 @@ extension DownloadManager {
             Log.downloadManager.debug("Download already in progress for \(videoId)")
             return
         }
+        // Claim the id before the first suspension so a second call stops at the guard above.
+        cancelledDownloadIds.remove(videoId)
+        lastReportedProgress.removeValue(forKey: videoId)
+        downloads[videoId] = .downloading(0)
 
         if let existing = await localURL(for: videoId),
            let size = try? existing.resourceValues(forKeys: [.fileSizeKey]).fileSize,
@@ -269,6 +335,23 @@ extension DownloadManager {
             if tracksById[videoId] == nil {
                 await adoptExistingFile(at: existing, song: song)
             }
+            return
+        }
+
+        if SettingsStore.shared.wifiOnlyDownloads, !isOnWiFi {
+            downloads[videoId] = .failed("Wi-Fi Only is enabled and you are not on Wi-Fi.")
+            return
+        }
+
+        // Queued downloads stay at progress 0 until a slot frees up.
+        guard await acquireDownloadSlot(for: videoId) else {
+            // Cancelled while queued; delete already reset the state.
+            cancelledDownloadIds.remove(videoId)
+            return
+        }
+        defer { releaseDownloadSlot() }
+        if cancelledDownloadIds.contains(videoId) {
+            cancelledDownloadIds.remove(videoId)
             return
         }
 
@@ -281,16 +364,9 @@ extension DownloadManager {
             if bgTask != .invalid { UIApplication.shared.endBackgroundTask(bgTask) }
         }
 
-        cancelledDownloadIds.remove(videoId)
-        lastReportedProgress.removeValue(forKey: videoId)
         let artist = song.artists.map(\.name).joined(separator: ", ")
         let downloadStart = CFAbsoluteTimeGetCurrent()
         Log.downloadManager.debug("Starting download: \(artist) - \(song.title) (\(videoId))")
-
-        if SettingsStore.shared.wifiOnlyDownloads, !isOnWiFi {
-            downloads[videoId] = .failed("Wi-Fi Only is enabled and you are not on Wi-Fi.")
-            return
-        }
 
         setProgress(0.02, for: videoId)
 
@@ -493,7 +569,37 @@ extension DownloadManager {
 
     // MARK: - State
 
+    /// Waits until fewer than `maxConcurrentDownloads` are running.
+    /// Returns false if the download was cancelled while queued.
+    private func acquireDownloadSlot(for videoId: String) async -> Bool {
+        if runningDownloadCount < Self.maxConcurrentDownloads {
+            runningDownloadCount += 1
+            return true
+        }
+        return await withCheckedContinuation { continuation in
+            downloadWaiters.append((videoId: videoId, continuation: continuation))
+        }
+    }
+
+    private func releaseDownloadSlot() {
+        if downloadWaiters.isEmpty {
+            runningDownloadCount -= 1
+        } else {
+            // Hand the slot straight to the next queued download.
+            downloadWaiters.removeFirst().continuation.resume(returning: true)
+        }
+    }
+
+    private func cancelQueuedDownloads(where shouldCancel: (String) -> Bool) {
+        let cancelled = downloadWaiters.filter { shouldCancel($0.videoId) }
+        downloadWaiters.removeAll { shouldCancel($0.videoId) }
+        for waiter in cancelled {
+            waiter.continuation.resume(returning: false)
+        }
+    }
+
     private func cancelAllActiveDownloads() {
+        cancelQueuedDownloads { _ in true }
         for (videoId, state) in downloads {
             if case .downloading = state {
                 cancelledDownloadIds.insert(videoId)
@@ -618,6 +724,7 @@ extension DownloadManager {
 extension DownloadManager {
     func delete(videoId: String) async {
         cancelledDownloadIds.insert(videoId)
+        cancelQueuedDownloads { $0 == videoId }
         if let session = activeFFmpegSessions.removeValue(forKey: videoId) {
             session.cancel()
         }
@@ -631,10 +738,13 @@ extension DownloadManager {
             }
             _ = try? await DatabaseService.shared.delete(entity)
         }
-        // Also remove any orphaned file matching this id.
-        if let scanned = scanDownloadedFiles()[videoId] {
-            try? fileManager.removeItem(at: scanned)
-        }
+        // Also remove any orphaned file matching this id (directory scan off the main actor).
+        let dir = downloadsDir
+        await Task.detached(priority: .utility) {
+            if let scanned = Self.scanDownloadedFiles(in: dir)[videoId] {
+                try? FileManager.default.removeItem(at: scanned)
+            }
+        }.value
 
         apply(tracksById)
     }
@@ -643,12 +753,14 @@ extension DownloadManager {
         cancelAllActiveDownloads()
 
         // Remove files directly so orphaned downloads are cleaned too.
-        for url in scanDownloadedFiles().values {
-            try? fileManager.removeItem(at: url)
-        }
-        let tracks = await fetchAllFromDatabase()
-        for track in tracks {
-            _ = try? await DatabaseService.shared.delete(track)
+        let dir = downloadsDir
+        await Task.detached(priority: .utility) {
+            for url in Self.scanDownloadedFiles(in: dir).values {
+                try? FileManager.default.removeItem(at: url)
+            }
+        }.value
+        try? await DatabaseService.shared.write { db in
+            _ = try DownloadedTrackEntity.deleteAll(db)
         }
 
         tracksById.removeAll()
@@ -831,6 +943,20 @@ extension DownloadManager {
         let artist: String
         let artworkData: Data?
     }
+}
+
+/// Result of matching database rows to files on disk during `reload()`.
+private struct ReconcilePlan: Sendable {
+    struct Orphan: Sendable {
+        let videoId: String
+        let url: URL
+        let modified: Date?
+    }
+
+    var kept: [String: DownloadedTrackEntity] = [:]
+    var pathFixes: [DownloadedTrackEntity] = []
+    var missing: [DownloadedTrackEntity] = []
+    var orphans: [Orphan] = []
 }
 
 enum DownloadError: Error, LocalizedError {

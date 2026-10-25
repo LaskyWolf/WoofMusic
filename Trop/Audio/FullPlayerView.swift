@@ -15,8 +15,6 @@ struct FullPlayerView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private let player = PlayerController.shared
     @Bindable private var np = NowPlaying.shared
-    @State private var editingProgress: Float = 0
-    @State private var isEditingSlider = false
 
     @ObservedObject private var likeStore = LikeStore.shared
     private var isLiked: Bool {
@@ -38,24 +36,11 @@ struct FullPlayerView: View {
     @State private var titleChangeTrigger = 0
     @State private var titleChangeDirection: CGFloat = 1
     @State private var lastTitleQueueIndex = NowPlaying.shared.queueIndex
-    @State private var currentLyrics: [LyricLine] = []
+    /// Timed, non-empty lines of the current song, for the lyric preview.
+    @State private var syncedLyrics: [LyricLine] = []
     /// How far the player is pulled down by the dismiss gesture.
     @State private var pullDistance: CGFloat = 0
     private var playerBackgroundColors: [Color] { np.dominantColors }
-
-    private var activeLyricText: String? {
-        let synchronizedLines = currentLyrics.filter {
-            $0.startTime != nil &&
-                !$0.text.trimmingCharacters(in: CharacterSet(charactersIn: "♪*· ")).isEmpty
-        }
-        guard let firstLine = synchronizedLines.first else { return nil }
-
-        let lyricTime = np.currentTime + settings.lyricsOffsetSeconds
-        return synchronizedLines.last { line in
-            guard let startTime = line.startTime else { return false }
-            return startTime <= lyricTime
-        }?.text ?? firstLine.text
-    }
 
     var body: some View {
         GeometryReader { geometry in
@@ -114,7 +99,7 @@ struct FullPlayerView: View {
                             .padding(.top, 20)
                             .padding(.bottom, 16)
 
-                        lyricPreview
+                        PlayerLyricPreview(lines: syncedLyrics)
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .contentShape(Rectangle())
@@ -125,7 +110,7 @@ struct FullPlayerView: View {
                             .padding(.bottom, 12)
                     }
 
-                    progressSlider
+                    PlayerProgressSection()
                         .padding(.top, 4)
                         .padding(.bottom, 16)
 
@@ -260,28 +245,6 @@ struct FullPlayerView: View {
         }
     }
 
-    private var lyricPreview: some View {
-        Group {
-            if let activeLyricText {
-                Text(activeLyricText)
-                    .font(.subheadline.weight(.medium))
-                    .foregroundStyle(.white.opacity(0.82))
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                    .multilineTextAlignment(settings.lyricsAlignment.multilineTextAlignment)
-                    .frame(maxWidth: .infinity, alignment: settings.lyricsAlignment.textAlignment)
-                    .padding(.horizontal, 32)
-                    .padding(.bottom, 8)
-                    .accessibilityLabel("Current lyric: \(activeLyricText)")
-            } else {
-                Color.clear
-            }
-        }
-        .frame(maxWidth: .infinity)
-        .frame(height: 33, alignment: .bottom)
-        .allowsHitTesting(false)
-    }
-
     // MARK: - Gestures
 
     private func pullToDismiss(height: CGFloat) -> PlayerDismissGesture {
@@ -328,14 +291,17 @@ struct FullPlayerView: View {
 
     private func loadCurrentLyrics() async {
         guard let videoId = np.videoId else {
-            currentLyrics = []
+            syncedLyrics = []
             return
         }
-        currentLyrics = []
+        syncedLyrics = []
         guard let lines = try? await LyricsService.shared.fetchLyrics(videoId: videoId),
               !Task.isCancelled,
               np.videoId == videoId else { return }
-        currentLyrics = lines
+        syncedLyrics = lines.filter {
+            $0.startTime != nil &&
+                !$0.text.trimmingCharacters(in: CharacterSet(charactersIn: "♪*· ")).isEmpty
+        }
     }
 
     private var titleAndActionsRow: some View {
@@ -429,8 +395,57 @@ struct FullPlayerView: View {
             }
         }
     }
+}
 
-    private var progressSlider: some View {
+/// The current lyric line under the title. Its own view so only this line,
+/// not the whole player, redraws as `currentTime` ticks.
+private struct PlayerLyricPreview: View {
+    let lines: [LyricLine]
+
+    @Environment(SettingsStore.self) private var settings
+    private let np = NowPlaying.shared
+
+    private var activeLyricText: String? {
+        guard let firstLine = lines.first else { return nil }
+        let lyricTime = np.currentTime + settings.lyricsOffsetSeconds
+        return lines.last { line in
+            guard let startTime = line.startTime else { return false }
+            return startTime <= lyricTime
+        }?.text ?? firstLine.text
+    }
+
+    var body: some View {
+        Group {
+            if let activeLyricText {
+                Text(activeLyricText)
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(.white.opacity(0.82))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .multilineTextAlignment(settings.lyricsAlignment.multilineTextAlignment)
+                    .frame(maxWidth: .infinity, alignment: settings.lyricsAlignment.textAlignment)
+                    .padding(.horizontal, 32)
+                    .padding(.bottom, 8)
+                    .accessibilityLabel("Current lyric: \(activeLyricText)")
+            } else {
+                Color.clear
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .frame(height: 33, alignment: .bottom)
+        .allowsHitTesting(false)
+    }
+}
+
+/// Progress bar and time labels. Its own view so only this part, not the
+/// whole player, redraws as `currentTime` ticks.
+private struct PlayerProgressSection: View {
+    private let player = PlayerController.shared
+    private let np = NowPlaying.shared
+    @State private var editingProgress: Float = 0
+    @State private var isEditingSlider = false
+
+    var body: some View {
         VStack(spacing: 6) {
             ProgressBar(
                 progress: Binding(
@@ -463,12 +478,10 @@ struct FullPlayerView: View {
         }
         .padding(.horizontal, 32)
     }
-
 }
 
-/// The full player's "⋯" menu. The player redraws several times a second for
-/// the progress bar; `.equatable()` skips those redraws here, because a menu
-/// rebuilt while open flickers.
+/// The full player's "⋯" menu. `.equatable()` skips the player's redraws
+/// here, because a menu rebuilt while open flickers.
 private struct PlayerSongMenu: View, Equatable {
     let song: SongItem
     let onCollapse: () -> Void

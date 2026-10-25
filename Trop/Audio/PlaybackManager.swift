@@ -36,15 +36,17 @@ actor PlaybackManager {
         if let localPath = await DownloadManager.shared.localURL(for: videoId) {
             let song = await MainActor.run { NowPlaying.shared.queueSongs.first { $0.videoId == videoId } }
             let artists = song?.artists ?? []
-            await PlayerController.shared.play(
-                url: localPath.absoluteString,
-                title: song?.title,
-                artist: song?.artists.map(\.name).joined(separator: ", "),
-                videoId: videoId,
-                duration: song.map { TimeInterval($0.duration) },
-                artists: artists,
-                thumbnailUrl: song?.thumbnailUrl
-            )
+            if await isStillCurrent(videoId) {
+                await PlayerController.shared.play(
+                    url: localPath.absoluteString,
+                    title: song?.title,
+                    artist: song?.artists.map(\.name).joined(separator: ", "),
+                    videoId: videoId,
+                    duration: song.map { TimeInterval($0.duration) },
+                    artists: artists,
+                    thumbnailUrl: song?.thumbnailUrl
+                )
+            }
             return PlaybackResult(
                 streamUrl: localPath.absoluteString,
                 itag: 0,
@@ -66,16 +68,18 @@ actor PlaybackManager {
 
         if let cached = await StreamCache.shared.get(videoId: videoId) {
             let queueSong = await queueSong(for: videoId)
-            await PlayerController.shared.play(
-                url: cached.streamUrl,
-                title: cached.title,
-                artist: cached.author,
-                videoId: videoId,
-                duration: cached.duration.flatMap { $0 > 0 ? TimeInterval($0) : nil },
-                artists: queueSong?.artists ?? [],
-                loudnessDb: cached.loudnessDb,
-                thumbnailUrl: queueSong?.thumbnailUrl
-            )
+            if await isStillCurrent(videoId) {
+                await PlayerController.shared.play(
+                    url: cached.streamUrl,
+                    title: cached.title,
+                    artist: cached.author,
+                    videoId: videoId,
+                    duration: cached.duration.flatMap { $0 > 0 ? TimeInterval($0) : nil },
+                    artists: queueSong?.artists ?? [],
+                    loudnessDb: cached.loudnessDb,
+                    thumbnailUrl: queueSong?.thumbnailUrl
+                )
+            }
             await publishMusicVideoType(cached.musicVideoType ?? queueSong?.musicVideoType)
             return cached
         }
@@ -108,13 +112,17 @@ actor PlaybackManager {
         return result
     }
 
-    private func playNetworkResult(_ result: PlaybackResult, videoId: String) async {
-        // A slow resolve must not replace a song the user picked after it.
+    /// A slow resolve must not replace a song the user picked after it.
+    private func isStillCurrent(_ videoId: String) async -> Bool {
         let current = await MainActor.run { () -> String? in
             let np = NowPlaying.shared
             return np.queueSongs.indices.contains(np.queueIndex) ? np.queueSongs[np.queueIndex].videoId : nil
         }
-        guard current == nil || current == videoId else { return }
+        return current == nil || current == videoId
+    }
+
+    private func playNetworkResult(_ result: PlaybackResult, videoId: String) async {
+        guard await isStillCurrent(videoId) else { return }
         let queueSong = await queueSong(for: videoId)
         await PlayerController.shared.play(
             url: result.streamUrl,
