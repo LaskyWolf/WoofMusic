@@ -44,23 +44,27 @@ final class SleepTimer {
         return -max(remaining, 0)
     }
 
-    // The song position only updates a few times per second; between updates
-    // the remaining time is extrapolated so the prelude moves smoothly.
-    @ObservationIgnored private var songSampleTime: TimeInterval = -1
-    @ObservationIgnored private var songSampleDate = Date()
-    @ObservationIgnored private var songSampleRemaining: TimeInterval = 0
+    /// When the song is expected to end. The song position arrives four times a
+    /// second with some jitter: following each sample makes the animation clock
+    /// jump back and forth, so the end date only moves when the song really jumped.
+    @ObservationIgnored private var predictedSongEnd: Date?
+    private static let songJumpTolerance = 0.75
 
     private func secondsUntilEnd(at date: Date) -> Double? {
         if let endsAt { return endsAt.timeIntervalSince(date) }
         guard stopsAtSongEnd else { return nil }
         let np = NowPlaying.shared
         guard np.duration > 0 else { return nil }
-        if np.currentTime != songSampleTime {
-            songSampleTime = np.currentTime
-            songSampleDate = date
-            songSampleRemaining = np.duration - np.currentTime
+        let reported = np.duration - np.currentTime
+        guard np.isPlaying else {
+            predictedSongEnd = nil
+            return reported
         }
-        return songSampleRemaining - (np.isPlaying ? date.timeIntervalSince(songSampleDate) : 0)
+        if let end = predictedSongEnd, abs(end.timeIntervalSince(date) - reported) < Self.songJumpTolerance {
+            return end.timeIntervalSince(date)
+        }
+        predictedSongEnd = date.addingTimeInterval(reported)
+        return reported
     }
 
     /// "until 23:10" or "end of song", for the menu label.

@@ -132,17 +132,21 @@ private struct SleepAnimationFrame: View {
     // MARK: - Title
 
     private func titleView(strength: Double) -> some View {
-        Text(SleepTimer.shared.message)
-            .font(.custom("GreatVibes-Regular", size: size.width * 0.2))
+        let fontSize = size.width * 0.17
+        return Text(SleepTimer.shared.message)
+            .font(.custom("GreatVibes-Regular", size: fontSize))
             .lineLimit(1)
             .minimumScaleFactor(0.5)
             .foregroundStyle(.white)
+            // Script letters reach past their box; blur and shadows draw only
+            // inside the box, so it gets room for the swashes.
+            .padding(.horizontal, fontSize * 0.25)
+            .padding(.vertical, fontSize * 0.15)
             .shadow(color: Color(red: 0.04, green: 0.03, blue: 0.24).opacity(0.6), radius: 8, y: 2)
             .shadow(color: Color(red: 0.67, green: 0.63, blue: 1).opacity(0.5), radius: 12)
             .scaleEffect(0.94 + 0.06 * strength)
             .blur(radius: (1 - strength) * 12)
             .opacity(strength)
-            .padding(.horizontal, 16)
             .frame(width: size.width)
             .position(x: size.width / 2, y: size.height / 2)
     }
