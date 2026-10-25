@@ -110,3 +110,26 @@ final class ExploreViewModel {
     }
 
 }
+
+/// Mood pages kept in memory, so reopening one shows it at once instead of reloading.
+@MainActor
+enum MoodDetailCache {
+    private static var entries: [String: (sections: [ExploreSection], date: Date)] = [:]
+    /// A cached page older than this is refreshed quietly in the background.
+    private static let maxAge: TimeInterval = 30 * 60
+
+    private static func key(_ mood: MoodItem) -> String { mood.params ?? mood.title }
+
+    static func sections(for mood: MoodItem) -> [ExploreSection]? {
+        entries[key(mood)]?.sections
+    }
+
+    static func isFresh(_ mood: MoodItem) -> Bool {
+        guard let date = entries[key(mood)]?.date else { return false }
+        return Date().timeIntervalSince(date) < maxAge
+    }
+
+    static func store(_ sections: [ExploreSection], for mood: MoodItem) {
+        entries[key(mood)] = (sections, Date())
+    }
+}

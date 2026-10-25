@@ -233,6 +233,23 @@ else
     echo "Local build: LASTFM_API_KEY / LASTFM_SECRET not provided - skipping Last.fm credential injection."
 fi
 
+# Discord Social SDK: proprietary xcframework, not in the repo. When it was
+# downloaded to build/discord (see the workflow), link and embed it; otherwise
+# the Discord bridge compiles as a stub and Discord login reports an error.
+DISCORD_SDK_XCF="$WORKING_LOCATION/build/discord/discord_partner_sdk.xcframework"
+DISCORD_SDK_SLICE="$DISCORD_SDK_XCF/ios-arm64"
+XCODE_DISCORD_ARGS=()
+if [ -d "$DISCORD_SDK_SLICE/discord_partner_sdk.framework" ]; then
+    echo "Discord Social SDK found - linking it."
+    XCODE_DISCORD_ARGS+=(
+        "FRAMEWORK_SEARCH_PATHS=\$(inherited) $DISCORD_SDK_SLICE"
+        "HEADER_SEARCH_PATHS=\$(inherited) $DISCORD_SDK_SLICE/discord_partner_sdk.framework/Headers"
+        "OTHER_LDFLAGS=\$(inherited) -framework discord_partner_sdk"
+    )
+else
+    echo "Discord Social SDK not found - Discord presence stays disabled."
+fi
+
 # CI sets CURRENT_PROJECT_VERSION to the run number
 # so AltStore/Feather can detect nightly updates while marketing version stays put.
 XCODE_VERSION_ARGS=()
@@ -254,6 +271,7 @@ xcodebuild -project "$WORKING_LOCATION/$PROJECT_NAME.xcodeproj" \
     SKIP_SWIFTLINT=YES \
     CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGN_ENTITLEMENTS="" CODE_SIGNING_ALLOWED="NO" \
     ${XCODE_LASTFM_ARGS[@]+"${XCODE_LASTFM_ARGS[@]}"} \
+    ${XCODE_DISCORD_ARGS[@]+"${XCODE_DISCORD_ARGS[@]}"} \
     ${XCODE_VERSION_ARGS[@]+"${XCODE_VERSION_ARGS[@]}"}
 
 DD_APP_PATH="$DERIVED_DATA_PATH/Build/Products/Release-iphoneos/$APPLICATION_NAME.app"
@@ -265,6 +283,12 @@ fi
 
 rm -rf "$OUTPUT_APP_PATH"
 cp -r "$DD_APP_PATH" "$OUTPUT_APP_PATH"
+
+if [ ${#XCODE_DISCORD_ARGS[@]} -gt 0 ]; then
+    mkdir -p "$OUTPUT_APP_PATH/Frameworks"
+    rm -rf "$OUTPUT_APP_PATH/Frameworks/discord_partner_sdk.framework"
+    cp -R "$DISCORD_SDK_SLICE/discord_partner_sdk.framework" "$OUTPUT_APP_PATH/Frameworks/"
+fi
 
 # Strip any leftover duplicate/extra Mach-O binaries from embedded frameworks
 sanitize_framework_binaries "$OUTPUT_APP_PATH"

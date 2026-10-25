@@ -81,10 +81,16 @@ import UIKit
     enum Background { case solid, gradient }
     var defaultTab = 0
     var playerBackgroundStyle = Background.gradient
+    var leftHandedTabBar = false
+}
+@Observable @MainActor final class SleepTimer {
+    static let shared = SleepTimer()
+    var isCelebrating = false
 }
 @Observable @MainActor final class NowPlaying {
     static let shared = NowPlaying()
     var isBarPresented = true
+    var isLoadingTrack = false
     var dominantColors: [Color] = [.purple, .black]
     var accentColor: Color? = .purple
 }

@@ -71,6 +71,38 @@ struct ProgressBar: View {
     }
 }
 
+/// Play/pause icon that turns into a spinner while the song is loading.
+struct PlayPauseGlyph: View {
+    let isPlaying: Bool
+    let size: CGFloat
+    var color: Color?
+
+    private var style: AnyShapeStyle {
+        color.map { AnyShapeStyle($0) } ?? AnyShapeStyle(.tint)
+    }
+
+    var body: some View {
+        ZStack {
+            if NowPlaying.shared.isLoadingTrack {
+                ProgressView()
+                    .progressViewStyle(.circular)
+                    .controlSize(.regular)
+                    .scaleEffect(size / 20)
+                    .tint(color)
+                    .transition(.opacity)
+            } else {
+                // A moon replaces the button while the sleep timer animation plays.
+                Image(systemName: SleepTimer.shared.isCelebrating ? "moon.fill" : (isPlaying ? "pause.fill" : "play.fill"))
+                    .font(.system(size: size))
+                    .foregroundStyle(style)
+                    .contentTransition(.symbolEffect(.replace))
+                    .transition(.opacity)
+            }
+        }
+        .animation(.easeOut(duration: 0.15), value: NowPlaying.shared.isLoadingTrack)
+    }
+}
+
 // MARK: - PlaybackControlsRow
 struct PlayerPlayPauseButton: View {
     let isPlaying: Bool
@@ -78,10 +110,7 @@ struct PlayerPlayPauseButton: View {
 
     var body: some View {
         Button(action: action) {
-            Image(systemName: isPlaying ? "pause.fill" : "play.fill")
-                .font(.system(size: 42))
-                .foregroundStyle(.white)
-                .contentTransition(.symbolEffect(.replace))
+            PlayPauseGlyph(isPlaying: isPlaying, size: 42, color: .white)
         }
         // Scoped here: on the whole row it also bent the skip glyph
         // animation whenever play state changed mid-skip.

@@ -180,10 +180,7 @@ struct MiniPlayerBarView: View {
 
     private var playPauseButton: some View {
         Button(action: { player.togglePlayPause() }, label: {
-            Image(systemName: np.isPlaying ? "pause.fill" : "play.fill")
-                .contentTransition(.symbolEffect(.replace))
-                .font(.system(size: 17))
-                .foregroundStyle(.tint)
+            PlayPauseGlyph(isPlaying: np.isPlaying, size: 17)
                 .frame(width: 44, height: 44)
                 .contentShape(Rectangle())
         })

@@ -17,6 +17,12 @@ struct SongActionsMenu<MenuLabel: View>: View {
     /// Collapses the full player so a pushed page is visible underneath.
     var onCollapseRequest: (() -> Void)?
     var onNavigate: ((DetailRoute) -> Void)?
+    /// Shows a Select item that starts multi-select in the hosting list.
+    var onSelect: (() -> Void)?
+    /// Shows a destructive Remove from Playlist item (editable playlists only).
+    var onRemove: (() -> Void)?
+    /// Attaches the menu to the label's long press instead of making it a tap target.
+    var asContextMenu = false
     @ViewBuilder var label: () -> MenuLabel
 
     private enum Sheet: Identifiable {
@@ -43,7 +49,7 @@ struct SongActionsMenu<MenuLabel: View>: View {
     }
 
     var body: some View {
-        Menu {
+        host {
             // Compact icon row at the top, like Apple Music's song menu.
             ControlGroup {
                 let liked = likeStore.isLiked(videoId: song.videoId)
@@ -96,6 +102,12 @@ struct SongActionsMenu<MenuLabel: View>: View {
                 sleepTimerMenu
             }
 
+            if let onSelect {
+                Button("Select", systemImage: "checkmark.circle", action: onSelect)
+            }
+
+            removeMenu
+
             Menu("Go To", systemImage: "arrow.forward.circle") {
                 if !song.artists.filter({ !$0.name.isEmpty }).isEmpty {
                     Button("Artist", systemImage: "music.mic", action: handleViewArtist)
@@ -109,10 +121,7 @@ struct SongActionsMenu<MenuLabel: View>: View {
                 Button("Similar Songs…", systemImage: "sparkles") { sheet = .similar }
                 Button("Song Details…", systemImage: "info.circle") { sheet = .details }
             }
-        } label: {
-            label()
         }
-        .menuOrder(.fixed)
         .task(id: song.addedBy?.avatarUrl) {
             guard let url = song.addedBy?.avatarUrl.flatMap(URL.init) else { return }
             adderAvatar = (try? await ArtworkLoader.image(for: url)).map(Self.circle)
@@ -167,6 +176,17 @@ struct SongActionsMenu<MenuLabel: View>: View {
         .task { await pin.load(videoId: song.videoId) }
     }
 
+    /// The same items as a tap menu on the ⋯ button or as a long-press menu on a whole row.
+    @ViewBuilder
+    private func host<Items: View>(@ViewBuilder _ items: () -> Items) -> some View {
+        if asContextMenu {
+            label().contextMenu { items() }
+        } else {
+            Menu { items() } label: { label() }
+                .menuOrder(.fixed)
+        }
+    }
+
     private var sleepTimerMenu: some View {
         let timer = SleepTimer.shared
         return Menu {
@@ -189,14 +209,34 @@ struct SongActionsMenu<MenuLabel: View>: View {
         }
     }
 
+    /// One compact entry for the destructive removals that apply to this song.
+    @ViewBuilder
+    private var removeMenu: some View {
+        let hasDownload = downloadManager.state(for: song.videoId) == .completed
+        if onRemove != nil || hasDownload {
+            Section {
+                Menu("Remove from…", systemImage: "minus.circle") {
+                    if let onRemove {
+                        Button("from Playlist", systemImage: "music.note.list", role: .destructive, action: onRemove)
+                            .tint(.red)
+                    }
+                    if hasDownload {
+                        Button("from Downloads", systemImage: "arrow.down.circle", role: .destructive) {
+                            confirmRemoveDownload = true
+                        }
+                        .tint(.red)
+                    }
+                }
+                .tint(.red)
+            }
+        }
+    }
+
     @ViewBuilder
     private var downloadButton: some View {
         switch downloadManager.state(for: song.videoId) {
         case .completed:
-            Button("Remove Download", systemImage: "trash", role: .destructive) {
-                confirmRemoveDownload = true
-            }
-            .tint(.red)
+            EmptyView()
         case .downloading:
             Button("Downloading…", systemImage: "arrow.down.circle") {}
                 .disabled(true)
@@ -280,7 +320,10 @@ struct SongActionsMenu<MenuLabel: View>: View {
 
 /// Lets the user pick which playlist to add `song` to, or create a new one.
 struct AddSongToPlaylistSheet: View {
-    let song: SongItem
+    let songs: [SongItem]
+
+    init(song: SongItem) { songs = [song] }
+    init(songs: [SongItem]) { self.songs = songs }
     @Environment(\.dismiss) private var dismiss
 
     @State private var playlists: [PlaylistEntity] = []
@@ -349,7 +392,9 @@ struct AddSongToPlaylistSheet: View {
                 placeholder: "Playlist name",
                 text: $newPlaylistTitle,
                 okTitle: "Create",
-                message: Text("Adds “\(song.title)” once created.")
+                message: Text(songs.count == 1
+                    ? "Adds “\(songs[0].title)” once created."
+                    : "Adds \(songs.count) songs once created.")
             ) {
                 Task { await createAndAdd() }
             }
@@ -367,7 +412,9 @@ struct AddSongToPlaylistSheet: View {
         guard !addedTo.contains(playlist.id) else { return }
         Task {
             do {
-                try await SyncBridge.mutations.addToPlaylist(playlistId: playlist.id, songId: song.videoId)
+                for song in songs {
+                    try await SyncBridge.mutations.addToPlaylist(playlistId: playlist.id, songId: song.videoId)
+                }
                 addedTo.insert(playlist.id)
             } catch {
                 addedTo.remove(playlist.id)
@@ -382,7 +429,9 @@ struct AddSongToPlaylistSheet: View {
         defer { isCreating = false }
         do {
             let playlistId = try await SyncBridge.mutations.createPlaylist(title: title)
-            try await SyncBridge.mutations.addToPlaylist(playlistId: playlistId, songId: song.videoId)
+            for song in songs {
+                try await SyncBridge.mutations.addToPlaylist(playlistId: playlistId, songId: song.videoId)
+            }
             await loadPlaylists()
             addedTo.insert(playlistId)
         } catch {

@@ -19,24 +19,27 @@ struct ContentView: View {
     var body: some View {
         TabView(selection: $selectedTab) {
             Tab("Home", systemImage: "house.fill", value: 0) {
-                HomeScreenView()
+                HomeScreenView().environment(\.layoutDirection, .leftToRight)
             }
 
             Tab("Library", systemImage: "music.note.square.stack", value: 1) {
-                LibraryView()
+                LibraryView().environment(\.layoutDirection, .leftToRight)
             }
 
             Tab("Explore", systemImage: "flame", value: 2) {
-                ExploreView()
+                ExploreView().environment(\.layoutDirection, .leftToRight)
             }
 
             Tab("Search", systemImage: "magnifyingglass", value: 3, role: .search) {
-                SearchView()
+                SearchView().environment(\.layoutDirection, .leftToRight)
             }
         }
+        // Right-to-left mirrors only the tab bar; every page inside is set back to left-to-right.
+        .environment(\.layoutDirection, settings.leftHandedTabBar ? .rightToLeft : .leftToRight)
         .tabBarMinimizeBehavior(.onScrollDown)
             .tabViewBottomAccessory(isEnabled: nowPlaying.isBarPresented) {
                 MiniPlayerBarView(onExpand: expandPlayer, isTransitioning: isExpanded)
+                    .environment(\.layoutDirection, .leftToRight)
                     .matchedTransitionSource(id: "nowPlaying", in: playerTransition) { source in
                         source.clipShape(RoundedRectangle(cornerRadius: 24))
                     }

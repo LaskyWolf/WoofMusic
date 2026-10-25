@@ -177,14 +177,16 @@ struct LibraryView: View {
                         subtitle: playlistSongCounts[playlist.id].map { "\($0) songs" }
                     )
                 }
-                .buttonStyle(.plain)
-                .contextMenu {
-                    Button(role: .destructive) {
-                        playlistToDelete = playlist
-                    } label: {
-                        Label(playlist.isEditable ? "Delete" : "Remove from Library", systemImage: "trash")
+                .buttonStyle(ZoomPressStyle())
+                .playlistCardMenu(id: playlist.id) {
+                    Section {
+                        Button(role: .destructive) {
+                            playlistToDelete = playlist
+                        } label: {
+                            Label(playlist.isEditable ? "Delete" : "Remove from Library", systemImage: "trash")
+                        }
+                        .tint(.red)
                     }
-                    .tint(.red)
                 }
             }
         }
@@ -199,7 +201,7 @@ struct LibraryView: View {
                 NavigationLink(value: info.detailRoute ?? info.route.map(DetailRoute.autoPlaylist)) {
                     shortcutTile(info: info)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(ZoomPressStyle())
             }
         }
         .padding(.horizontal, DesignTokens.screenHPadding)
@@ -242,7 +244,8 @@ struct LibraryView: View {
                         name: artist.name
                     )
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(ZoomPressStyle())
+                .artistCardMenu(browseId: artist.id)
             }
         }
     }
@@ -259,7 +262,8 @@ struct LibraryView: View {
                         subtitle: album.songCount > 0 ? "\(album.songCount) songs" : nil
                     )
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(ZoomPressStyle())
+                .albumCardMenu(browseId: album.id)
             }
         }
     }
@@ -273,10 +277,11 @@ struct LibraryView: View {
                     itemCell(
                         url: podcast.thumbnailUrl,
                         title: podcast.name,
-                        subtitle: nil
+                        subtitle: nil,
+                        opensPage: false
                     )
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(ZoomPressStyle())
             }
         }
     }
@@ -326,12 +331,13 @@ struct LibraryView: View {
         )
     }
 
-    private func itemCell(url: String?, title: String, subtitle: String?) -> some View {
+    private func itemCell(url: String?, title: String, subtitle: String?, opensPage: Bool = true) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             AsyncImageView(url: url)
                 .frame(maxWidth: .infinity)
                 .aspectRatio(1, contentMode: .fit)
                 .clipShape(RoundedRectangle(cornerRadius: 12))
+                .opensPageBadge(opensPage)
             Text(title).lineLimit(1).font(.callout)
             if let subtitle {
                 Text(subtitle).font(.caption).foregroundColor(.secondary)
@@ -344,7 +350,10 @@ struct LibraryView: View {
             AsyncImageView(url: url)
                 .frame(width: 120, height: 120)
                 .clipShape(Circle())
-            Text(name).lineLimit(1).font(.callout)
+            VStack(spacing: 2) {
+                Text(name).lineLimit(1).font(.callout)
+                Text("Artist").font(.caption).foregroundColor(.secondary)
+            }
         }
         .frame(maxWidth: .infinity)
     }

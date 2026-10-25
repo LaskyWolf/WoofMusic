@@ -443,8 +443,8 @@ struct PlaylistDetailView: View {
     @State private var viewModel: PlaylistDetailViewModel
     @State private var playlistEntity: PlaylistEntity?
     @State private var showAddSongs = false
-    @State private var pendingRoute: DetailRoute?
     @State private var deleteError: String?
+    @State private var selection = SongSelection()
 
     @Environment(\.dismiss) private var dismiss
 
@@ -476,17 +476,10 @@ struct PlaylistDetailView: View {
         }
         .scrollDisabled(viewModel.isLoading || viewModel.error != nil || viewModel.playlist == nil)
         .miniPlayerTracksScroll()
-        .navigationTitle(viewModel.playlist?.title ?? "")
+        .navigationTitle(selection.isActive ? "\(selection.selected.count) selected" : (viewModel.playlist?.title ?? ""))
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            if isEditable {
-                ToolbarItem(placement: .primaryAction) {
-                                        Button(action: { showAddSongs = true }, label: {
-                        Image(systemName: "plus")
-                    })
-                }
-            }
-        }
+        .sensoryFeedback(.selection, trigger: selection.selected)
+        .toolbar { toolbarContent }
         .sheet(isPresented: $showAddSongs) {
             AddSongToPlaylistView(playlistId: playlistId) {
                 await viewModel.load()
@@ -498,7 +491,6 @@ struct PlaylistDetailView: View {
             await viewModel.load()
             await fetchEntity()
         }
-        .detailRouteSheet(item: $pendingRoute)
         .alert("Couldn't delete playlist", isPresented: Binding(
             get: { deleteError != nil },
             set: { if !$0 { deleteError = nil } }
@@ -506,6 +498,30 @@ struct PlaylistDetailView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text(deleteError ?? "")
+        }
+    }
+
+    // MARK: - Multi-select
+
+    private var songs: [SongItem] { viewModel.playlist?.songs ?? [] }
+
+    @ToolbarContentBuilder
+    private var toolbarContent: some ToolbarContent {
+        if selection.isActive {
+            SongSelectionToolbar(
+                selection: selection,
+                songs: songs,
+                onRemove: isEditable ? { picked in Task { await removeSongs(picked) } } : nil
+            )
+        } else {
+            ToolbarItemGroup(placement: .primaryAction) {
+                if !songs.isEmpty {
+                    Button("Select", systemImage: "checkmark.circle") { selection.begin() }
+                }
+                if isEditable {
+                    Button("Add Songs", systemImage: "plus") { showAddSongs = true }
+                }
+            }
         }
     }
 
@@ -697,17 +713,16 @@ struct PlaylistDetailView: View {
         // duration starts a network request.
         LazyVStack(spacing: 0) {
             ForEach(Array(playlist.songs.enumerated()), id: \.offset) { index, song in
-                SongRowView(song: song, onTap: { playSong(song, in: playlist) }, onNavigate: { pendingRoute = $0 })
-                .contextMenu {
-                    if isEditable {
-                        Button(role: .destructive) {
-                            Task { await removeSong(song) }
-                        } label: {
-                            Label("Remove from Playlist", systemImage: "minus.circle")
-                        }
-                        .tint(.red)
-                    }
-                }
+                SongRowView(
+                    song: song,
+                    onTap: { selection.isActive ? selection.toggle(song) : playSong(song, in: playlist) },
+                    onNavigate: { AppRouter.shared.open($0) },
+                    isSelecting: selection.isActive,
+                    isSelected: selection.selected.contains(song.videoId),
+                    onSelect: { selection.begin(with: song) },
+                    onRemove: isEditable ? { Task { await removeSongs([song]) } } : nil
+                )
+                .trackRowFrame(selection, index: index)
 
                 if index < playlist.songs.count - 1 {
                     Divider()
@@ -715,16 +730,19 @@ struct PlaylistDetailView: View {
                 }
             }
         }
+        .songSelectionColumn(selection, songs: playlist.songs)
     }
 
-    private func removeSong(_ song: SongItem) async {
-        let maps = (try? await DatabaseService.shared.fetchAll(
-            PlaylistSongMap.self,
-            sql: "SELECT * FROM playlist_song_map WHERE playlist_id = ? AND song_id = ? LIMIT 1",
-            arguments: [playlistId, song.videoId]
-        )) ?? []
-        guard let setVideoId = maps.first?.setVideoId else { return }
-        try? await SyncBridge.mutations.removeFromPlaylist(playlistId: playlistId, songId: song.videoId, setVideoId: setVideoId)
+    private func removeSongs(_ songs: [SongItem]) async {
+        for song in songs {
+            let maps = (try? await DatabaseService.shared.fetchAll(
+                PlaylistSongMap.self,
+                sql: "SELECT * FROM playlist_song_map WHERE playlist_id = ? AND song_id = ? LIMIT 1",
+                arguments: [playlistId, song.videoId]
+            )) ?? []
+            guard let setVideoId = maps.first?.setVideoId else { continue }
+            try? await SyncBridge.mutations.removeFromPlaylist(playlistId: playlistId, songId: song.videoId, setVideoId: setVideoId)
+        }
         await viewModel.load()
     }
 

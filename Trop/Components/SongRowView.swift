@@ -31,10 +31,29 @@ struct SongRowView: View {
     var artRadius: CGFloat = DesignTokens.thumbRadius
     var onTap: () -> Void
     var onNavigate: ((DetailRoute) -> Void)?
+    /// Multi-select: shows a checkmark instead of the ⋯ button; `onTap` toggles the song.
+    var isSelecting = false
+    var isSelected = false
+    /// Starts multi-select from the song menu (⋯ or long press).
+    var onSelect: (() -> Void)?
+    var onRemove: (() -> Void)?
 
     @State private var durations = DurationResolver()
+    @Environment(SettingsStore.self) private var settings
 
     var body: some View {
+        if isSelecting {
+            rowContent
+        } else {
+            // Long pressing anywhere on the row opens the same menu as ⋯.
+            SongActionsMenu(song: song, onNavigate: { onNavigate?($0) }, onSelect: onSelect,
+                            onRemove: onRemove, asContextMenu: true) {
+                rowContent
+            }
+        }
+    }
+
+    private var rowContent: some View {
         HStack(spacing: DesignTokens.rowSpacing) {
             AsyncImageView(url: song.thumbnailUrl)
                 .frame(width: artSize, height: artSize)
@@ -55,16 +74,28 @@ struct SongRowView: View {
 
             Spacer()
 
-            HStack(spacing: 2) {
-                SongActionsMenu(song: song, onNavigate: { onNavigate?($0) }) {
-                    MoreGlyph()
+            if isSelecting {
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .font(.title3)
+                    .foregroundStyle(isSelected ? AnyShapeStyle(settings.accentColor) : AnyShapeStyle(.secondary))
+                    .contentTransition(.symbolEffect(.replace))
+                    .frame(minWidth: 44, minHeight: 44)
+                    .accessibilityHidden(true)
+            } else {
+                HStack(spacing: 2) {
+                    SongActionsMenu(song: song, onNavigate: { onNavigate?($0) },
+                                    onSelect: onSelect, onRemove: onRemove) {
+                        MoreGlyph()
+                    }
                 }
             }
         }
         .padding(.horizontal, DesignTokens.screenHPadding)
         .padding(.vertical, DesignTokens.rowVPadding)
         .background(DownloadCellProgressView(song: song))
+        .background(isSelected ? settings.accentColor.opacity(0.12) : .clear)
         .contentShape(Rectangle())
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
         .onTapGesture(perform: onTap)
         .rowPressFeedback()
         .task { await durations.resolve(videoId: song.videoId, knownDuration: song.duration) }

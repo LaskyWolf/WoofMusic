@@ -184,7 +184,7 @@ struct ExploreSectionsList: View {
                                 trailingSymbol: "chevron.up.chevron.down"
                             )
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(ZoomPressStyle())
                     case .mood(let mood, let family):
                         NavigationLink(value: mood) {
                             MoodCard(title: mood.title, color: MoodCard.swatch(family: family, title: mood.title))
@@ -436,6 +436,11 @@ private struct MoodDetailView: View {
     @State private var sections: [ExploreSection]?
     @State private var pendingRoute: DetailRoute?
 
+    init(mood: MoodItem) {
+        self.mood = mood
+        _sections = State(initialValue: MoodDetailCache.sections(for: mood))
+    }
+
     var body: some View {
         Group {
             if let sections {
@@ -465,9 +470,27 @@ private struct MoodDetailView: View {
                 pendingRoute = nil
             }
         }
-        .task {
-            sections = await ExploreViewModel.loadMoodDetail(mood)
+        .task { await refreshIfNeeded() }
+    }
+
+    /// Loads the page only when it is not cached yet or the cached copy is old.
+    /// A refresh replaces what is on screen only when the content really changed.
+    private func refreshIfNeeded() async {
+        guard !MoodDetailCache.isFresh(mood) else { return }
+        let loaded = await ExploreViewModel.loadMoodDetail(mood)
+        // A failed request returns nothing: keep the cached page.
+        if loaded.isEmpty {
+            if sections == nil { sections = [] }
+            return
         }
+        MoodDetailCache.store(loaded, for: mood)
+        if sections.map(Self.signature) != Self.signature(loaded) { sections = loaded }
+    }
+
+    private static func signature(_ sections: [ExploreSection]) -> String {
+        sections.map { section in
+            section.title + "|" + section.items.map(\.id).joined(separator: ",") + "|\(section.moods.count)"
+        }.joined(separator: ";")
     }
 }
 
@@ -480,40 +503,34 @@ private struct ExploreSkeletonView: View {
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 2) {
-                VStack(alignment: .leading, spacing: 0) {
-                    ShimmerSectionTitle(width: 220)
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(alignment: .top, spacing: 12) {
-                            ForEach(0..<5, id: \.self) { _ in
-                                ShimmerCard(showsSubtitle: false)
-                            }
+                // Card carousel: square cover, title and subtitle, like the real cards.
+                skeletonSection(titleWidth: 220) {
+                    HStack(alignment: .top, spacing: 12) {
+                        ForEach(0..<5, id: \.self) { _ in
+                            ShimmerCard()
                         }
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 4)
                     }
                 }
-                VStack(alignment: .leading, spacing: 0) {
-                    ShimmerSectionTitle(width: 160)
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        LazyHGrid(
-                            rows: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)],
-                            spacing: 10
-                        ) {
-                            ForEach(0..<10, id: \.self) { _ in
-                                ShimmerBlock(width: 150, height: 64, radius: 12)
-                            }
+                // Moods: two rows of 172 x 100 cards.
+                skeletonSection(titleWidth: 80) {
+                    LazyHGrid(
+                        rows: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)],
+                        spacing: 10
+                    ) {
+                        ForEach(0..<12, id: \.self) { _ in
+                            ShimmerBlock(width: 172, height: 100, radius: 14)
                         }
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 4)
                     }
                 }
-                VStack(alignment: .leading, spacing: 0) {
-                    ShimmerSectionTitle(width: 120)
-                    VStack(spacing: 0) {
-                        ForEach(0..<6, id: \.self) { _ in
+                // Song rows: four rows scrolling sideways, 320 wide.
+                skeletonSection(titleWidth: 120) {
+                    LazyHGrid(
+                        rows: Array(repeating: GridItem(.flexible(), spacing: 0), count: 4),
+                        spacing: 12
+                    ) {
+                        ForEach(0..<8, id: \.self) { _ in
                             ShimmerRow()
-                                .padding(.horizontal, 16)
-                                .padding(.vertical, 6)
+                                .frame(width: 320, alignment: .leading)
                         }
                     }
                 }
@@ -521,6 +538,22 @@ private struct ExploreSkeletonView: View {
             .padding(.bottom, 16)
         }
         .scrollIndicators(.hidden)
+        .allowsHitTesting(false)
+    }
+
+    /// Same structure as `HorizontalSection`: a title over a sideways-scrolling row.
+    private func skeletonSection<Content: View>(
+        titleWidth: CGFloat,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ShimmerSectionTitle(width: titleWidth)
+            ScrollView(.horizontal, showsIndicators: false) {
+                content()
+                    .padding(.horizontal, DesignTokens.screenHPadding)
+                    .padding(.vertical, 4)
+            }
+        }
     }
 }
 

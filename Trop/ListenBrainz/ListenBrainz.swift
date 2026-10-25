@@ -14,21 +14,7 @@ import Observation
 final class ListenBrainz {
     static let shared = ListenBrainz()
 
-    enum ConnectError: LocalizedError {
-        case invalidToken
-        case unreachable
-
-        var errorDescription: String? {
-            switch self {
-            case .invalidToken: "ListenBrainz didn't accept this token. Copy it again from your ListenBrainz settings."
-            case .unreachable: "Couldn't reach ListenBrainz. Check your connection and try again."
-            }
-        }
-    }
-
-    private static let api = "https://api.listenbrainz.org/1/"
-    private static let userNameKey = "listenBrainz.userName"
-    @ObservationIgnored private let store = SecureStore(service: "com.woofmusic.listenbrainz")
+    @ObservationIgnored private let store = SecureStore(service: ListenBrainzDefaults.keychainService)
     @ObservationIgnored private var token: String?
     private(set) var userName: String?
 
@@ -43,31 +29,25 @@ final class ListenBrainz {
     var isConnected: Bool { userName != nil }
 
     private init() {
-        if let data = try? store.load(for: "token") {
+        if let data = try? store.load(for: ListenBrainzDefaults.tokenAccount) {
             token = String(data: data, encoding: .utf8)
-            userName = UserDefaults.standard.string(forKey: Self.userNameKey)
+            userName = UserDefaults.standard.string(forKey: ListenBrainzDefaults.userNameKey)
         }
     }
 
     /// Checks `token` with ListenBrainz, then saves it.
     func connect(token rawToken: String) async throws {
         let token = rawToken.trimmingCharacters(in: .whitespacesAndNewlines)
-        var request = URLRequest(url: URL(string: Self.api + "validate-token")!)
-        request.setValue("Token \(token)", forHTTPHeaderField: "Authorization")
-        guard let reply = try? await URLSession.shared.data(for: request) else { throw ConnectError.unreachable }
-        let json = try? JSONSerialization.jsonObject(with: reply.0) as? [String: Any]
-        guard json?["valid"] as? Bool == true, let name = json?["user_name"] as? String else {
-            throw ConnectError.invalidToken
-        }
-        try store.save(Data(token.utf8), for: "token")
-        UserDefaults.standard.set(name, forKey: Self.userNameKey)
+        let name = try await ListenBrainzService.validate(token: token)
+        try store.save(Data(token.utf8), for: ListenBrainzDefaults.tokenAccount)
+        UserDefaults.standard.set(name, forKey: ListenBrainzDefaults.userNameKey)
         self.token = token
         userName = name
     }
 
     func disconnect() {
-        try? store.delete(for: "token")
-        UserDefaults.standard.removeObject(forKey: Self.userNameKey)
+        try? store.delete(for: ListenBrainzDefaults.tokenAccount)
+        UserDefaults.standard.removeObject(forKey: ListenBrainzDefaults.userNameKey)
         token = nil
         userName = nil
     }
@@ -92,47 +72,41 @@ final class ListenBrainz {
         }
         lastTick = np.isPlaying ? now : nil
 
-        // A couple of seconds in, so the title and artist are final.
-        if !sentNowPlaying, listened >= 2 {
+        if !sentNowPlaying, listened >= ListenBrainzDefaults.nowPlayingDelaySeconds {
             sentNowPlaying = true
-            send(type: "playing_now", listenedAt: nil, token: token)
+            send(type: .playingNow, listenedAt: nil, token: token)
         }
         let duration = np.duration
-        if !submitted, duration >= 30, listened >= min(duration / 2, 240) {
+        if !submitted, duration >= ListenBrainzDefaults.minSongDuration,
+           listened >= min(duration / 2, ListenBrainzDefaults.maxListenSeconds) {
             submitted = true
-            send(type: "single", listenedAt: startedAt, token: token)
+            send(type: .single, listenedAt: startedAt, token: token)
         }
     }
 
     // ponytail: a listen that fails to send is dropped, not queued; add an
     // offline queue if listens go missing on bad connections.
-    private func send(type: String, listenedAt: Date?, token: String) {
+    private func send(type: ListenBrainzService.ListenType, listenedAt: Date?, token: String) {
         let np = NowPlaying.shared
         guard !np.title.isEmpty, !np.displayArtist.isEmpty, let videoId = np.videoId else { return }
-        var metadata: [String: Any] = [
-            "artist_name": np.displayArtist,
-            "track_name": np.title,
-            "additional_info": [
-                "media_player": "Woof Music",
-                "submission_client": "Woof Music",
-                "music_service": "music.youtube.com",
-                "origin_url": "https://music.youtube.com/watch?v=\(videoId)",
-                "duration_ms": Int(np.duration * 1000)
-            ]
-        ]
-        if !np.albumTitle.isEmpty { metadata["release_name"] = np.albumTitle }
-        var listen: [String: Any] = ["track_metadata": metadata]
-        if let listenedAt { listen["listened_at"] = Int(listenedAt.timeIntervalSince1970) }
-
-        var request = URLRequest(url: URL(string: Self.api + "submit-listens")!)
-        request.httpMethod = "POST"
-        request.setValue("Token \(token)", forHTTPHeaderField: "Authorization")
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try? JSONSerialization.data(withJSONObject: ["listen_type": type, "payload": [listen]])
+        let listen = ListenBrainzListen(
+            listenedAt: listenedAt.map { Int($0.timeIntervalSince1970) },
+            trackMetadata: .init(
+                artistName: np.displayArtist,
+                trackName: np.title,
+                releaseName: np.albumTitle.isEmpty ? nil : np.albumTitle,
+                additionalInfo: .init(
+                    mediaPlayer: ListenBrainzDefaults.clientName,
+                    submissionClient: ListenBrainzDefaults.clientName,
+                    musicService: "music.youtube.com",
+                    originUrl: "https://music.youtube.com/watch?v=\(videoId)",
+                    durationMs: Int(np.duration * 1000)
+                )
+            )
+        )
         Task {
-            let status = (try? await URLSession.shared.data(for: request))
-                .flatMap { ($0.1 as? HTTPURLResponse)?.statusCode }
-            if status != 200 { Log.listenBrainz.error("Submitting \(type) failed with status \(status ?? -1)") }
+            let status = await ListenBrainzService.submit(listen, type: type, token: token)
+            if status != 200 { Log.listenBrainz.error("Submitting \(type.rawValue) failed with status \(status ?? -1)") }
         }
     }
 }

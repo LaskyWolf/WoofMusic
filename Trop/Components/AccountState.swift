@@ -7,6 +7,7 @@
 
 import SwiftUI
 import Combine
+import SwiftyTube
 
 /// The signed-in YouTube Music account, shared by every tab header and the
 /// Settings account row, so signing in or out anywhere updates them all.
@@ -22,6 +23,9 @@ final class AccountState {
     let loginModel = LoginViewModel()
 
     @ObservationIgnored private var loginObserver: AnyCancellable?
+    @ObservationIgnored private let cookieStore = CookieStore()
+    @ObservationIgnored private var hasAttemptedTokenRefresh = false
+    @ObservationIgnored private var isFetchingAccountInfo = false
 
     private init() {
         // LoginViewModel is an ObservableObject; mirror its flag into this
@@ -38,6 +42,7 @@ final class AccountState {
         isLoggedIn = loggedIn
         if loggedIn {
             isLoginSheetPresented = false
+            hasAttemptedTokenRefresh = false
             Task { await fetchAccountInfo() }
         } else {
             accountName = "Guest"
@@ -45,14 +50,59 @@ final class AccountState {
         }
     }
 
+    /// Google can answer `account_menu` with a guest-shaped menu while the
+    /// session still works (stale rotating tokens). Retry, then renew once.
     private func fetchAccountInfo() async {
-        do {
-            let info = try await InnerTubeClient.tropShared.accountInfo()
+        guard isLoggedIn, !isFetchingAccountInfo else { return }
+        isFetchingAccountInfo = true
+        defer { isFetchingAccountInfo = false }
+        for attempt in 1...3 {
+            let info: AccountInfo
+            do {
+                info = try await InnerTubeClient.tropShared.accountInfo()
+            } catch {
+                Log.loginViewModel.error("fetchAccountInfo: attempt \(attempt) failed: \(error)")
+                return
+            }
+            guard !info.name.isEmpty, info.name != "Guest" else {
+                if attempt < 3 {
+                    try? await Task.sleep(nanoseconds: 2_000_000_000)
+                    continue
+                }
+                Log.loginViewModel.notice("fetchAccountInfo: giving up — menu stayed guest-shaped")
+                if !hasAttemptedTokenRefresh {
+                    hasAttemptedTokenRefresh = true
+                    // Release the guard so the fetch after the renewal can run.
+                    isFetchingAccountInfo = false
+                    await refreshRotatedSession()
+                }
+                return
+            }
             accountName = info.name
-            accountImageUrl = info.thumbnailUrl
-        } catch {
-            Log.loginViewModel.error("Failed to fetch account info: \(error)")
+            if let url = info.thumbnailUrl {
+                accountImageUrl = url
+                return
+            }
+            if accountImageUrl != nil || attempt == 3 { return }
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
         }
+    }
+
+    /// Renews the rotating session tokens through a hidden webview (Google
+    /// sign-in round trip) and stores the reissued cookies in the Keychain.
+    private func refreshRotatedSession() async {
+        let base = await cookieStore.cookies()
+        guard let sapisid = await cookieStore.sapisid() else { return }
+        let refreshed = await SessionTokenRefresher.shared.refreshRotatedTokens(baseCookies: base)
+        guard !refreshed.isEmpty else { return }
+        await cookieStore.save(
+            cookies: refreshed,
+            sapisid: sapisid,
+            visitorData: refreshed["visitor_data"],
+            dataSyncId: await cookieStore.dataSyncId()
+        )
+        await InnerTubeClient.tropShared.loadState(from: cookieStore)
+        await fetchAccountInfo()
     }
 
     func signOut() {

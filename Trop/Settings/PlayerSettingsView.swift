@@ -47,6 +47,7 @@ struct PlayerSettingsView: View {
             } header: {
                 Text("Transitions")
             } footer: {
+                // swiftlint:disable:next line_length
                 Text("AutoMix blends songs like a DJ: it matches their tempo, keeps the beats together and swaps the bass on the bar. Songs without a steady beat get a Smart Crossfade instead. Smart Crossfade fades into the next song where the current one winds down.")
             }
 
@@ -57,6 +58,14 @@ struct PlayerSettingsView: View {
                 Text("Queue")
             } footer: {
                 Text("Persist Queue restores your queue, shuffle, and repeat state when the app relaunches.")
+            }
+
+            Section {
+                SettingsToggleRow("Persistent Play/Pause", icon: "pause.circle", isOn: $settings.persistentPlayPause)
+            } header: {
+                Text("Playback")
+            } footer: {
+                Text("On: if the player is paused, a new song you pick stays paused. Off: the new song starts playing.")
             }
 
             Section {

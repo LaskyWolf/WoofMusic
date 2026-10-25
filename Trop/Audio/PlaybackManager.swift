@@ -20,8 +20,19 @@ actor PlaybackManager {
     private init() {}
 
     /// Resolve a video and start playback. Returns the result used, or throws.
+    /// `NowPlaying.isLoadingTrack` stays on until mpv reports the file loaded.
     @discardableResult
     func resolveAndPlay(videoId: String) async throws -> PlaybackResult {
+        await MainActor.run { NowPlaying.shared.isLoadingTrack = true }
+        do {
+            return try await resolveAndPlayUnflagged(videoId: videoId)
+        } catch {
+            await MainActor.run { NowPlaying.shared.isLoadingTrack = false }
+            throw error
+        }
+    }
+
+    private func resolveAndPlayUnflagged(videoId: String) async throws -> PlaybackResult {
         if let localPath = await DownloadManager.shared.localURL(for: videoId) {
             let song = await MainActor.run { NowPlaying.shared.queueSongs.first { $0.videoId == videoId } }
             let artists = song?.artists ?? []

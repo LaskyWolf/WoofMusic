@@ -602,7 +602,7 @@ struct ArtistDetailView: View {
                     .padding(.horizontal, 16)
                     .padding(.vertical, 6)
                 })
-                .buttonStyle(.plain)
+                .buttonStyle(ZoomPressStyle())
 
                 if index < songs.count - 1 {
                     Divider()
@@ -625,7 +625,8 @@ struct ArtistDetailView: View {
                         size: 156
                     )
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(ZoomPressStyle())
+                .albumCardMenu(browseId: album.browseId, artists: album.artists)
             }
         }
     }
@@ -643,7 +644,8 @@ struct ArtistDetailView: View {
                         size: 156
                     )
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(ZoomPressStyle())
+                .albumCardMenu(browseId: single.browseId, artists: single.artists)
             }
         }
     }
@@ -671,7 +673,7 @@ struct ArtistDetailView: View {
                         }
                     }
                 })
-                .buttonStyle(.plain)
+                .buttonStyle(ZoomPressStyle())
             }
         }
     }
@@ -689,7 +691,8 @@ struct ArtistDetailView: View {
                         size: 156
                     )
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(ZoomPressStyle())
+                .playlistCardMenu(id: playlist.id)
             }
         }
     }
@@ -707,10 +710,14 @@ struct ArtistDetailView: View {
                         Text(related.name)
                             .lineLimit(1)
                             .font(.callout)
+                        Text("Artist")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
                     }
                     .frame(width: 120)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(ZoomPressStyle())
+                .artistCardMenu(browseId: related.browseId)
             }
         }
     }

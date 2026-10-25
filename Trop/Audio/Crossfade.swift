@@ -47,6 +47,7 @@ final class Crossfade {
     private var failedFor: String?
     /// Transition settings read when the playing song started, so changing
     /// them takes effect from the next song.
+    // swiftlint:disable:next large_tuple
     private var songSettings: (songId: String, autoMix: Bool, crossfade: Bool, seconds: Double)?
 
     /// Seconds of audio analysed at the end of the outgoing song and the
