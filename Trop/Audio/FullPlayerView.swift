@@ -23,6 +23,11 @@ struct FullPlayerView: View {
         guard let song = np.queueSongs.indices.contains(np.queueIndex) ? np.queueSongs[np.queueIndex] : nil else { return false }
         return likeStore.isLiked(videoId: song.videoId)
     }
+    private var currentLikeFlavor: LikeFlavor {
+        guard np.queueSongs.indices.contains(np.queueIndex) else { return .heart }
+        let song = np.queueSongs[np.queueIndex]
+        return LikeFlavor.guess(title: song.title, artists: song.artists.map(\.name), album: song.album, videoId: song.videoId)
+    }
     @State private var showLyrics = false
     @State private var showQueue = false
     @State private var pendingRoute: DetailRoute?
@@ -149,9 +154,13 @@ struct FullPlayerView: View {
                     Color.clear.frame(height: 8)
                 }
 
-                SleepEndedOverlay(
-                    coverHeight: (geometry.size.height + artworkTopInset) * 0.58 - artworkTopInset
-                )
+                // Sized and offset like the artwork, not with ignoresSafeArea: the safe
+                // area shrinks while the player is pulled down and would slide the
+                // animation away from the player.
+                SleepEndedOverlay(size: CGSize(width: geometry.size.width, height: geometry.size.height + artworkTopInset))
+                    .frame(width: geometry.size.width, height: geometry.size.height + artworkTopInset)
+                    .offset(y: -artworkTopInset)
+                    .frame(maxHeight: .infinity, alignment: .top)
             }
             .animation(.easeInOut(duration: reduceMotion ? 0.15 : 0.25), value: showQueue)
             .animation(.easeInOut(duration: reduceMotion ? 0.15 : 0.25), value: showLyrics)
@@ -341,7 +350,7 @@ struct FullPlayerView: View {
             Spacer()
 
             HStack(spacing: 12) {
-                PlayerLikeButton(isLiked: isLiked) {
+                PlayerLikeButton(isLiked: isLiked, flavor: currentLikeFlavor) {
                     guard let song = np.queueSongs.indices.contains(np.queueIndex) ? np.queueSongs[np.queueIndex] : nil else { return }
                     Task { await likeStore.toggle(song: song) }
                 }

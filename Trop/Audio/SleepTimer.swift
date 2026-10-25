@@ -25,8 +25,37 @@ final class SleepTimer {
     private(set) var endedAt: Date?
 
     static let celebrationSeconds = 15.0
+    /// How long before the end the player starts announcing it.
+    static let preludeSeconds = 10.0
 
     var isActive: Bool { endsAt != nil || stopsAtSongEnd }
+
+    /// Where the animation is on its timeline: negative during the prelude
+    /// (minus the seconds left), positive after the timer ended, nil when idle.
+    func animationTime(at date: Date) -> Double? {
+        if isCelebrating, let endedAt { return date.timeIntervalSince(endedAt) }
+        guard let remaining = secondsUntilEnd(at: date), remaining <= Self.preludeSeconds else { return nil }
+        return -max(remaining, 0)
+    }
+
+    // The song position only updates a few times per second; between updates
+    // the remaining time is extrapolated so the prelude moves smoothly.
+    @ObservationIgnored private var songSampleTime: TimeInterval = -1
+    @ObservationIgnored private var songSampleDate = Date()
+    @ObservationIgnored private var songSampleRemaining: TimeInterval = 0
+
+    private func secondsUntilEnd(at date: Date) -> Double? {
+        if let endsAt { return endsAt.timeIntervalSince(date) }
+        guard stopsAtSongEnd else { return nil }
+        let np = NowPlaying.shared
+        guard np.duration > 0 else { return nil }
+        if np.currentTime != songSampleTime {
+            songSampleTime = np.currentTime
+            songSampleDate = date
+            songSampleRemaining = np.duration - np.currentTime
+        }
+        return songSampleRemaining - (np.isPlaying ? date.timeIntervalSince(songSampleDate) : 0)
+    }
 
     /// "until 23:10" or "end of song", for the menu label.
     var summary: String? {

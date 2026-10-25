@@ -38,6 +38,10 @@
 			<string>arrow.down.circle</string>
 		</dict>
 	</array>
+	<key>UIAppFonts</key>
+	<array>
+		<string>GreatVibes-Regular.ttf</string>
+	</array>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 	<key>UIBackgroundModes</key>
