@@ -61,6 +61,14 @@ struct PlayerSettingsView: View {
             }
 
             Section {
+                SettingsToggleRow("Persistent Play/Pause", icon: "pause.circle", isOn: $settings.persistentPlayPause)
+            } header: {
+                Text("Playback")
+            } footer: {
+                Text("On: if the player is paused, a new song you pick stays paused. Off: the new song starts playing.")
+            }
+
+            Section {
                 SettingsToggleRow("Swipe Artwork to Skip", icon: "hand.draw", isOn: $settings.artworkSwipeNavigation)
             } header: {
                 Text("Gestures")

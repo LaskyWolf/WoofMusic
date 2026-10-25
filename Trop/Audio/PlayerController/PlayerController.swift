@@ -120,8 +120,8 @@ extension PlayerController {
         if isNewSong {
             await PlaybackStateService.shared.stopTracking()
         }
-        // A paused player stays paused when the track changes.
-        desiredPlaying = playState.value != .paused
+        // With Persistent Play/Pause a paused player stays paused when the track changes.
+        desiredPlaying = SettingsStore.shared.persistentPlayPause ? playState.value != .paused : true
         assertAudioSession()
         if let videoId { await PlaybackStateService.shared.startTracking(videoId: videoId) }
 

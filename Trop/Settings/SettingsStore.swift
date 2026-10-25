@@ -220,6 +220,10 @@ final class SettingsStore {
     var leftHandedTabBar: Bool {
         didSet { Self.defaults.set(leftHandedTabBar, forKey: Keys.leftHandedTabBar) }
     }
+    /// A paused player stays paused when a new song is picked; off starts the new song.
+    var persistentPlayPause: Bool {
+        didSet { Self.defaults.set(persistentPlayPause, forKey: Keys.persistentPlayPause) }
+    }
     var gaplessPlayback: Bool {
         didSet { Self.defaults.set(gaplessPlayback, forKey: Keys.gaplessPlayback) }
     }
@@ -369,6 +373,7 @@ final class SettingsStore {
         static let audioQuality = "settings.audioQuality"
         static let audioNormalization = "settings.audioNormalization"
         static let leftHandedTabBar = "settings.leftHandedTabBar"
+        static let persistentPlayPause = "settings.persistentPlayPause"
         static let gaplessPlayback = "settings.gaplessPlayback"
         static let autoplaySimilar = "settings.autoplaySimilar"
         static let crossfadeEnabled = "settings.crossfadeEnabled"
@@ -436,6 +441,7 @@ final class SettingsStore {
         audioQuality = Self.loadEnum(Keys.audioQuality, default: .auto)
         audioNormalization = Self.load(Keys.audioNormalization, default: false)
         leftHandedTabBar = Self.load(Keys.leftHandedTabBar, default: false)
+        persistentPlayPause = Self.load(Keys.persistentPlayPause, default: false)
         gaplessPlayback = Self.load(Keys.gaplessPlayback, default: true)
         autoplaySimilar = Self.load(Keys.autoplaySimilar, default: true)
         crossfadeEnabled = Self.load(Keys.crossfadeEnabled, default: false)
