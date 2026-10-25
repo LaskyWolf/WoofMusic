@@ -20,12 +20,17 @@ struct DownloadSettingsView: View {
 
         List {
             Section {
-                NavigationLink {
-                    DownloadsView()
-                } label: {
+                // Hidden link behind the card: the whole row opens the list
+                // and the list adds no second chevron.
+                ZStack {
                     storageCard
+                    NavigationLink {
+                        DownloadsView()
+                    } label: {
+                        EmptyView()
+                    }
+                    .opacity(0)
                 }
-                .buttonStyle(.plain)
                 .accessibilityHint("Opens your downloaded songs")
                 .listRowInsets(.init(top: 8, leading: 0, bottom: 8, trailing: 0))
                     .listRowBackground(Color.clear)

@@ -30,12 +30,9 @@ struct HomeScreenView: View {
 
                 Group {
                     if viewModel.isLoading {
-                        VStack {
-                            Spacer()
-                            ShimmerLoadingView()
-                            Spacer()
-                        }
-                        .transition(.opacity)
+                        ShimmerLoadingView()
+                            .frame(maxHeight: .infinity, alignment: .top)
+                            .transition(.opacity)
                     } else if let error = viewModel.error {
                         errorView(error)
                     } else {

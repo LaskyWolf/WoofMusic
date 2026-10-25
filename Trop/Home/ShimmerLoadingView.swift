@@ -167,6 +167,13 @@ struct ShimmerLoadingView: View {
                 }
             }
             .padding(.horizontal, DesignTokens.screenHPadding)
+
+            HStack(spacing: 6) {
+                ForEach(0..<3, id: \.self) { _ in
+                    Circle().fill(Color.secondary.opacity(0.35)).frame(width: 6, height: 6)
+                }
+            }
+            .frame(maxWidth: .infinity)
         }
     }
 
@@ -181,14 +188,23 @@ struct ShimmerLoadingView: View {
         }
     }
 
+    /// Song rows like the real section: columns of 4 rows, 280 pt wide, scrolling sideways.
     private var listSection: some View {
         section {
-            VStack(spacing: 12) {
-                ForEach(0..<4, id: \.self) { _ in
-                    ShimmerRow(titleWidth: 200, subtitleWidth: 140)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(alignment: .top, spacing: 12) {
+                    ForEach(0..<2, id: \.self) { _ in
+                        VStack(spacing: 0) {
+                            ForEach(0..<4, id: \.self) { _ in
+                                ShimmerRow(titleWidth: 170, subtitleWidth: 110)
+                                    .frame(height: 60)
+                            }
+                        }
+                        .frame(width: 280)
+                    }
                 }
+                .padding(.horizontal, DesignTokens.screenHPadding)
             }
-            .padding(.horizontal, DesignTokens.screenHPadding)
         }
     }
 

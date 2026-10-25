@@ -98,7 +98,7 @@ struct PlayerLikeButton: View {
     var flavor: LikeFlavor = .unknown
     var activeColor: Color = .red
     var inactiveColor: Color = .white
-    var fontSize: CGFloat = 17
+    var fontSize: CGFloat = 26
     let onToggle: () -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -119,7 +119,7 @@ struct PlayerLikeButton: View {
                     heart(scale: 1)
                 }
             }
-            .frame(width: 36, height: 36)
+            .frame(width: 40, height: 40)
             .contentShape(Rectangle())
         }
         .sensoryFeedback(.impact(weight: .medium), trigger: hapticCount)
@@ -160,6 +160,7 @@ struct PlayerLikeButton: View {
 
     private func heart(
         scale: Double,
+        filled: Bool? = nil,
         tint: Color? = nil,
         scaleX: Double = 1,
         scaleY: Double = 1,
@@ -168,7 +169,7 @@ struct PlayerLikeButton: View {
         flip: Double = 0,
         opacity: Double = 1
     ) -> some View {
-        Image(systemName: isLiked ? "heart.fill" : "heart")
+        Image(systemName: filled ?? isLiked ? "heart.fill" : "heart")
             .font(.system(size: fontSize, weight: .regular))
             .foregroundStyle(tint ?? (isLiked ? activeColor : inactiveColor))
             .rotation3DEffect(.degrees(flip), axis: (x: 0, y: 1, z: 0), perspective: 0.5)
@@ -185,13 +186,14 @@ struct PlayerLikeButton: View {
         case .spin:
             let progress = clamp(t / 0.9)
             let scale = t < 0.12 ? 1 - 0.35 * ease(t / 0.12) : 0.65 + 0.35 * elastic(clamp((t - 0.12) / 0.9)) + 0.45 * sin(progress * .pi)
-            heart(scale: scale, tint: tint, flip: 720 * (1 - pow(1 - progress, 3)))
+            heart(scale: scale, filled: true, tint: tint, flip: 720 * (1 - pow(1 - progress, 3)))
         case .heartbeat:
             heartbeatContent(time: t, tint: tint)
         case .jelly:
             let wobble = sin(t * 22) * exp(-t * 4.2)
             heart(
                 scale: 1,
+                filled: true,
                 tint: tint,
                 scaleX: 1 + 0.38 * wobble,
                 scaleY: 1 - 0.38 * wobble,
@@ -219,7 +221,7 @@ struct PlayerLikeButton: View {
         } else {
             height = 0.7 + 0.3 * elastic((t - 0.62) / 0.45)
         }
-        return heart(scale: 1, tint: tint, scaleX: 1 / height, scaleY: height, lift: -18 * air)
+        return heart(scale: 1, filled: true, tint: tint, scaleX: 1 / height, scaleY: height, lift: -18 * air)
     }
 
     private func emojiContent(_ emoji: String, time t: Double) -> some View {
@@ -251,9 +253,9 @@ struct PlayerLikeButton: View {
         let burst = clamp((t - 0.15) / 0.95)
 
         return ZStack {
-            heart(scale: heartScale, opacity: heartOpacity)
+            heart(scale: heartScale, filled: true, opacity: heartOpacity)
             Text(emoji)
-                .font(.system(size: fontSize * 1.4))
+                .font(.system(size: fontSize * 0.85))
                 .scaleEffect(emojiScale)
                 .rotationEffect(.degrees(emojiRotation))
                 .offset(y: emojiLift)
@@ -295,11 +297,11 @@ struct PlayerLikeButton: View {
                 let u = clamp((t - delay) / 0.7)
                 Circle()
                     .stroke(tint, lineWidth: 2)
-                    .frame(width: fontSize * 1.7, height: fontSize * 1.7)
+                    .frame(width: fontSize * 1.15, height: fontSize * 1.15)
                     .scaleEffect(0.9 + u * 2.4)
                     .opacity(u > 0 && u < 1 ? 0.6 * (1 - u) : 0)
             }
-            heart(scale: scale, tint: tint)
+            heart(scale: scale, filled: true, tint: tint)
         }
     }
 
@@ -314,13 +316,13 @@ struct PlayerLikeButton: View {
                 let size = 0.6 + Double(index % 3) * 0.2
                 let u = clamp((t - 0.1 - Double(index) * 0.1) / 1.1)
                 Image(systemName: "heart.fill")
-                    .font(.system(size: 12))
+                    .font(.system(size: 14))
                     .foregroundStyle(run.palette[index % run.palette.count])
                     .scaleEffect(size * (0.7 + 0.5 * u))
                     .offset(x: drift + sin(u * 6 + drift) * sway, y: -ease(u) * rise)
                     .opacity(u > 0 && u < 1 ? sin(u * .pi) * 0.95 : 0)
             }
-            heart(scale: scale, tint: tint)
+            heart(scale: scale, filled: true, tint: tint)
         }
     }
 }

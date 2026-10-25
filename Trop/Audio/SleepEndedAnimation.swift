@@ -28,7 +28,8 @@ struct SleepEndedOverlay: View {
             // the per-frame clock runs while there is something to draw.
             TimelineView(.periodic(from: .now, by: 0.5)) { outer in
                 if timer.animationTime(at: outer.date) != nil {
-                    TimelineView(.animation) { frame in
+                    // 30 fps: the glow is redrawn from scratch every frame.
+                    TimelineView(.animation(minimumInterval: 1.0 / 30)) { frame in
                         if let time = timer.animationTime(at: frame.date) {
                             SleepAnimationFrame(time: time, size: size, showsParticles: !reduceMotion)
                         }
