@@ -3,7 +3,6 @@
 //  Trop
 //
 
-import CoreGraphics
 import Foundation
 import SwiftUI
 
@@ -11,7 +10,7 @@ import SwiftUI
 ///
 /// Ten seconds before the end a faint tint and a small wavy glow slide in from
 /// the screen edges. At the end the glow grows into a night sky around the cover
-/// with stars and comets, and a "Sleep timer" title fades in and dissolves,
+/// with stars and comets, and a title ("Good night", "Sleep well" or "Sweet dreams") fades in and dissolves,
 /// for `SleepTimer.celebrationSeconds`.
 /// The frame is a function of `SleepTimer.animationTime`, so it also looks right
 /// when the player opens in the middle of the animation.
@@ -28,8 +27,7 @@ struct SleepEndedOverlay: View {
             // the per-frame clock runs while there is something to draw.
             TimelineView(.periodic(from: .now, by: 0.5)) { outer in
                 if timer.animationTime(at: outer.date) != nil {
-                    // 30 fps: the glow is redrawn from scratch every frame.
-                    TimelineView(.animation(minimumInterval: 1.0 / 30)) { frame in
+                    TimelineView(.animation) { frame in
                         if let time = timer.animationTime(at: frame.date) {
                             SleepAnimationFrame(time: time, size: size, showsParticles: !reduceMotion)
                         }
@@ -103,44 +101,38 @@ private struct SleepAnimationFrame: View {
 
     // MARK: - Glow
 
-    @ViewBuilder
+    /// Drawn by the `sleepGlow` Metal shader, so no image is built on the CPU each frame.
     private func glow(strength: Double, waveBoost: Double, outset: Double) -> some View {
-        let pad = GlowImage.padding * scale
-        if let image = GlowImage.make(
-            time: time,
-            size: size,
-            scale: scale,
-            strength: strength,
-            waveBoost: waveBoost,
-            outset: outset,
-            waves: showsParticles
-        ) {
-            let fullHeight = size.height + 2 * pad
-            Image(decorative: image, scale: 1)
-                .resizable()
-                .interpolation(.high)
-                .frame(width: size.width + 2 * pad, height: fullHeight)
-                .blur(radius: 8 * scale)
-                .mask {
-                    // The glow comes from the sides and the top: it fades out before the controls.
-                    LinearGradient(
-                        stops: [
-                            .init(color: .black, location: 0),
-                            .init(color: .black, location: (0.6 * size.height + pad) / fullHeight),
-                            .init(color: .clear, location: (0.92 * size.height + pad) / fullHeight)
-                        ],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                }
-                .offset(x: -pad, y: -pad)
-        }
+        Rectangle()
+            .fill(Color.white)
+            .frame(width: size.width, height: size.height)
+            .colorEffect(ShaderLibrary.sleepGlow(
+                .float2(size),
+                .float(time),
+                .float(strength),
+                .float(waveBoost),
+                .float(outset),
+                .float(scale),
+                .float(showsParticles ? 1 : 0)
+            ))
+            .mask {
+                // The glow comes from the sides and the top: it fades out before the controls.
+                LinearGradient(
+                    stops: [
+                        .init(color: .black, location: 0),
+                        .init(color: .black, location: 0.6),
+                        .init(color: .clear, location: 0.92)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            }
     }
 
     // MARK: - Title
 
     private func titleView(strength: Double) -> some View {
-        Text("Sleep timer")
+        Text(SleepTimer.shared.message)
             .font(.custom("GreatVibes-Regular", size: size.width * 0.2))
             .lineLimit(1)
             .minimumScaleFactor(0.5)
@@ -266,130 +258,6 @@ private struct SleepAnimationFrame: View {
         Comet(id: 1, start: 7.2, duration: 1.7, from: CGPoint(x: 1.15, y: -0.2), to: CGPoint(x: 0.34, y: 0.5)),
         Comet(id: 2, start: 10.6, duration: 1.7, from: CGPoint(x: 1.3, y: 0.06), to: CGPoint(x: 0.55, y: 0.28))
     ]
-}
-
-// MARK: - Glow image
-
-/// The glow as a small bitmap: three wavy layers (indigo, violet, a touch of teal)
-/// hugging the left, top and right edges. The three edges are joined by a smooth
-/// minimum, so the glow follows the rounded top corners. The bitmap is scaled up
-/// and blurred by the view.
-private enum GlowImage {
-    static let padding = 24.0
-
-    private struct Layer {
-        let color: (Double, Double, Double)
-        let alpha: Double
-        let depth: Double
-        let amplitude: Double
-        let frequency: Double
-        let speed: Double
-        let phase: Double
-    }
-
-    private static let layers = [
-        Layer(color: (48, 32, 165), alpha: 0.95, depth: 185, amplitude: 34, frequency: 0.012, speed: 0.7, phase: 0),
-        Layer(color: (112, 86, 250), alpha: 0.6, depth: 132, amplitude: 38, frequency: 0.016, speed: -0.9, phase: 1.7),
-        Layer(color: (86, 196, 220), alpha: 0.3, depth: 88, amplitude: 26, frequency: 0.02, speed: 1.1, phase: 3.1)
-    ]
-
-    /// Softness of the joins between the edges, per point.
-    private static let softness = 0.016
-
-    static func make(
-        time: Double,
-        size: CGSize,
-        scale: Double,
-        strength: Double,
-        waveBoost: Double,
-        outset: Double,
-        waves: Bool
-    ) -> CGImage? {
-        // Zero or NaN sizes appear while the player is being presented: they would crash the Int conversion below.
-        guard strength > 0.001, size.width > 10, size.height > 10, scale > 0.03 else { return nil }
-        let pad = padding * scale
-        let cell = 8 * scale
-        let width = Double(size.width)
-        let height = Double(size.height)
-        let cols = Int(((width + 2 * pad) / cell).rounded(.up))
-        let rows = Int(((height + 2 * pad) / cell).rounded(.up))
-        guard cols > 0, rows > 0 else { return nil }
-
-        let k = softness / scale
-        let skipMargin = log(3.0) / k
-        let waveOn = waves ? 1.0 : 0.0
-        var acc = [Float](repeating: 0, count: cols * rows * 4)
-        var left = [Double](repeating: 0, count: rows)
-        var right = [Double](repeating: 0, count: rows)
-        var top = [Double](repeating: 0, count: cols)
-
-        for (index, layer) in layers.enumerated() {
-            let edge = min(1, strength * (1 + Double(index) * 0.04))
-            let depth = layer.depth * scale
-            let fade = depth * edge + 1
-            let freq = layer.frequency / scale
-            let amp = layer.amplitude * scale * edge * waveBoost * waveOn
-
-            func boundary(_ u: Double, _ offset: Double) -> Double {
-                edge * depth - outset
-                    + amp * sin(u * freq + time * layer.speed + layer.phase + offset)
-                    + amp * 0.12 * sin(u * freq * 1.7 - time * layer.speed * 0.6 + layer.phase + offset)
-            }
-
-            for row in 0..<rows {
-                let y = Double(row) * cell - pad
-                left[row] = boundary(y, 0)
-                right[row] = boundary(y, 1.9)
-            }
-            for col in 0..<cols {
-                top[col] = boundary(Double(col) * cell - pad, 3.8) * 0.85
-            }
-
-            for row in 0..<rows {
-                let y = Double(row) * cell - pad
-                for col in 0..<cols {
-                    let x = Double(col) * cell - pad
-                    let v1 = x - left[row]
-                    let v2 = (width - x) - right[row]
-                    let v3 = (y - top[col]) / 0.85
-                    if min(v1, min(v2, v3)) > skipMargin { continue }
-                    let distance = -log(exp(-k * v1) + exp(-k * v2) + exp(-k * v3)) / k
-                    var u = -distance / fade
-                    if u <= 0 { continue }
-                    if u > 1 { u = 1 }
-                    let a = Float(u * u * (3 - 2 * u) * layer.alpha)
-                    let i = (row * cols + col) * 4
-                    let keep = 1 - a
-                    acc[i] = acc[i] * keep + Float(layer.color.0) * a
-                    acc[i + 1] = acc[i + 1] * keep + Float(layer.color.1) * a
-                    acc[i + 2] = acc[i + 2] * keep + Float(layer.color.2) * a
-                    acc[i + 3] = acc[i + 3] * keep + a
-                }
-            }
-        }
-
-        var pixels = [UInt8](repeating: 0, count: cols * rows * 4)
-        for i in stride(from: 0, to: pixels.count, by: 4) {
-            pixels[i] = UInt8(min(max(acc[i], 0), 255))
-            pixels[i + 1] = UInt8(min(max(acc[i + 1], 0), 255))
-            pixels[i + 2] = UInt8(min(max(acc[i + 2], 0), 255))
-            pixels[i + 3] = UInt8(min(max(acc[i + 3] * 255, 0), 255))
-        }
-        guard let provider = CGDataProvider(data: Data(pixels) as CFData) else { return nil }
-        return CGImage(
-            width: cols,
-            height: rows,
-            bitsPerComponent: 8,
-            bitsPerPixel: 32,
-            bytesPerRow: cols * 4,
-            space: CGColorSpaceCreateDeviceRGB(),
-            bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue),
-            provider: provider,
-            decode: nil,
-            shouldInterpolate: true,
-            intent: .defaultIntent
-        )
-    }
 }
 
 // MARK: - Shapes

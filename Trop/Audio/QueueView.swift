@@ -141,20 +141,19 @@ struct QueueView: View {
                 isCurrent: isCurrent,
                 isPlayed: index < np.queueIndex
             )
-            // The highlight lives in the row itself, so the row keeps its rounded
-            // look while it is lifted for dragging (the system paints a square
-            // dark background behind a lifted list row background).
-            .background {
+            .background(QueueDragPreviewFix())
+        }
+        .buttonStyle(.plain)
+        .listRowInsets(EdgeInsets())
+        .listRowBackground(
+            Group {
                 if isCurrent {
                     RoundedRectangle(cornerRadius: 10)
                         .fill(Color.white.opacity(0.08))
                         .padding(.horizontal, 12)
                 }
             }
-        }
-        .buttonStyle(.plain)
-        .listRowInsets(EdgeInsets())
-        .listRowBackground(Color.clear)
+        )
         .listRowSeparator(.hidden)
         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
             Button(role: .destructive) {

@@ -82,21 +82,22 @@ struct SongActionsMenu<MenuLabel: View>: View {
                 }
             }
 
-            Section {
-                Button("Start Radio…", systemImage: "dot.radiowaves.left.and.right") { sheet = .radio }
-                downloadButton
-                Button(pin.isPinned ? "Unpin from Quick Picks" : "Pin to Quick Picks",
-                       systemImage: pin.isPinned ? "pin.slash" : "pin") {
-                    Task { await pin.toggle(song: song) }
-                }
-            }
+            downloadButton
 
             if showsSleepTimer {
                 sleepTimerMenu
             }
 
-            if let onSelect {
-                Button("Select", systemImage: "checkmark.circle", action: onSelect)
+            // The rarer actions share one item, so the menu fits the screen without scrolling.
+            Menu("More", systemImage: "ellipsis.circle") {
+                Button("Start Radio…", systemImage: "dot.radiowaves.left.and.right") { sheet = .radio }
+                Button(pin.isPinned ? "Unpin from Quick Picks" : "Pin to Quick Picks",
+                       systemImage: pin.isPinned ? "pin.slash" : "pin") {
+                    Task { await pin.toggle(song: song) }
+                }
+                if let onSelect {
+                    Button("Select", systemImage: "checkmark.circle", action: onSelect)
+                }
             }
 
             removeMenu

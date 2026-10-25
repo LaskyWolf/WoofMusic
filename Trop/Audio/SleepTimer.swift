@@ -24,6 +24,12 @@ final class SleepTimer {
     /// When the animation started; it draws itself from the time passed since then.
     private(set) var endedAt: Date?
 
+    /// Shown in turn by the animation, one per time the timer ends.
+    static let messages = ["Good night", "Sleep well", "Sweet dreams"]
+    private static let messageIndexKey = "sleepTimerMessageIndex"
+    /// The title of the current animation.
+    private(set) var message = SleepTimer.messages[0]
+
     static let celebrationSeconds = 15.0
     /// How long before the end the player starts announcing it.
     static let preludeSeconds = 10.0
@@ -98,6 +104,10 @@ final class SleepTimer {
     }
 
     private func celebrate() {
+        let defaults = UserDefaults.standard
+        let index = defaults.integer(forKey: Self.messageIndexKey) % Self.messages.count
+        message = Self.messages[index]
+        defaults.set(index + 1, forKey: Self.messageIndexKey)
         let start = Date()
         endedAt = start
         isCelebrating = true

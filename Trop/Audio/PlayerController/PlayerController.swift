@@ -47,6 +47,9 @@ final class PlayerController {
     /// for a moment. Until it catches up, progress reports the seek target
     /// instead, so the timeline doesn't jump back and forth.
     private var pendingSeek: (target: TimeInterval, deadline: Date)?
+    /// Where to continue once a finished song is loaded again: the user moved
+    /// the timeline after it ended and then pressed play.
+    private var resumeAfterLoad: (videoId: String, time: TimeInterval)?
 
     var currentTime: TimeInterval {
         withMpv { mpv in
@@ -174,7 +177,11 @@ extension PlayerController {
         Crossfade.shared.finishNow()
         // After the queue ends mpv holds no file: unpausing it would play silence.
         if !paused, playState.value == .stopped, pendingVideoId == nil {
-            NowPlaying.shared.playCurrentSong(logContext: "resume")
+            let np = NowPlaying.shared
+            if let videoId = np.videoId, np.duration > 0, np.currentTime < np.duration - 1 {
+                resumeAfterLoad = (videoId, np.currentTime)
+            }
+            np.playCurrentSong(logContext: "resume")
             return
         }
         desiredPlaying = !paused
@@ -409,6 +416,10 @@ extension PlayerController {
             Task { await PlaybackStateService.shared.setPlaying(actuallyPlaying) }
             self.currentVideoId = pendingVideoId
             self.pendingVideoId = nil
+            if let resume = self.resumeAfterLoad {
+                self.resumeAfterLoad = nil
+                if resume.videoId == pendingVideoId { self.seek(to: resume.time) }
+            }
             self.assertAudioSession()
             self.setNowPlayingMetadata()
             let checkId = pendingVideoId
