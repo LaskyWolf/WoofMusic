@@ -57,18 +57,18 @@ struct DownloadsView: View {
     }
 
     private var contentView: some View {
-        ScrollView {
+        // Built once per update: `songs` converts every track each time it is read.
+        let songs = songs
+        return ScrollView {
             LazyVStack(spacing: 0) {
-                header
+                header(songs: songs)
                     .padding(.bottom, 8)
 
                 if !activeDownloads.isEmpty {
                     activeDownloadsSection
                 }
 
-                if !songs.isEmpty {
-                    songList
-                }
+                songList(songs)
             }
         }
         .scrollDisabled(!downloadManager.isLoaded)
@@ -77,7 +77,7 @@ struct DownloadsView: View {
         .miniPlayerTracksScroll()
     }
 
-    private var header: some View {
+    private func header(songs: [SongItem]) -> some View {
         PlaylistHeaderView(
             title: "Downloads",
             thumbnails: Array(tracks.prefix(4).compactMap(\.thumbnailUrl)),
@@ -107,9 +107,10 @@ struct DownloadsView: View {
         .padding(.bottom, 16)
     }
 
-    private var songList: some View {
-        VStack(spacing: 0) {
-            ForEach(Array(songs.enumerated()), id: \.offset) { index, song in
+    /// Rows sit directly in the parent `LazyVStack`, so only the visible ones are built.
+    private func songList(_ songs: [SongItem]) -> some View {
+        ForEach(Array(songs.enumerated()), id: \.offset) { index, song in
+            VStack(spacing: 0) {
                 SongRowView(
                     song: song,
                     artSize: 48,
