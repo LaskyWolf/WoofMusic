@@ -97,7 +97,7 @@ struct HomeScreenView: View {
                 }
 
                 if viewModel.isChipLoading {
-                    ShimmerLoadingView()
+                    ShimmerLoadingView(showsChips: false)
                 } else {
                     // Keyed by section id, so a new section fades in instead of popping in.
                     ForEach(viewModel.homeSections) { section in

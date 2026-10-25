@@ -129,6 +129,9 @@ struct ShimmerChips: View {
 struct ShimmerLoadingView: View {
     private enum Section: Hashable { case quickPicks, squares, list }
 
+    /// Off when the real chips are already on screen above, while a chip loads.
+    var showsChips = true
+
     private var sections: [Section] {
         (SettingsStore.shared.showQuickPicks ? [.quickPicks] : []) + [.squares, .list, .squares]
     }
@@ -136,7 +139,7 @@ struct ShimmerLoadingView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                chipsRow
+                if showsChips { chipsRow }
                 ForEach(sections.indices, id: \.self) { index in
                     switch sections[index] {
                     case .quickPicks: quickPicksSection
