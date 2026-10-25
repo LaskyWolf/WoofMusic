@@ -19,6 +19,9 @@ struct SleepEndedOverlay: View {
     let size: CGSize
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// Start of the wave clock. The waves follow the wall clock, not the
+    /// timeline, so they keep moving while the music is paused in the prelude.
+    @State private var waveClockStart = Date()
     private let timer = SleepTimer.shared
 
     var body: some View {
@@ -29,7 +32,12 @@ struct SleepEndedOverlay: View {
                 if timer.animationTime(at: outer.date) != nil {
                     TimelineView(.animation) { frame in
                         if let time = timer.animationTime(at: frame.date) {
-                            SleepAnimationFrame(time: time, size: size, showsParticles: !reduceMotion)
+                            SleepAnimationFrame(
+                                time: time,
+                                waveTime: frame.date.timeIntervalSince(waveClockStart),
+                                size: size,
+                                showsParticles: !reduceMotion
+                            )
                         }
                     }
                 }
@@ -43,6 +51,8 @@ struct SleepEndedOverlay: View {
 
 private struct SleepAnimationFrame: View {
     let time: Double
+    /// Seconds on the wall clock; drives the wave motion only.
+    let waveTime: Double
     let size: CGSize
     let showsParticles: Bool
 
@@ -71,7 +81,7 @@ private struct SleepAnimationFrame: View {
         let preGlow = 0.15 * enter
         let mainGlow = ease(ramp(0, 4.8))
         let waveBoost = 1 + 2.8 * (1 - mainGlow) * enter
-        let breath = showsParticles ? 1 + 0.18 * sin(time * 2.4) * (1 - mainGlow) * smoother(ramp(-8, -5)) : 1
+        let breath = showsParticles ? 1 + 0.18 * sin(waveTime * 2.4) * (1 - mainGlow) * smoother(ramp(-8, -5)) : 1
         let strength = (preGlow + (1 - preGlow) * mainGlow) * breath * outGlow
         let outset = 44 * scale * (1 - enter)
         let title = ease(ramp(3, 4.6)) * (1 - ease(ramp(12.3, 14.5)))
@@ -108,7 +118,7 @@ private struct SleepAnimationFrame: View {
             .frame(width: size.width, height: size.height)
             .colorEffect(ShaderLibrary.sleepGlow(
                 .float2(size),
-                .float(time),
+                .float(waveTime),
                 .float(strength),
                 .float(waveBoost),
                 .float(outset),
@@ -120,8 +130,8 @@ private struct SleepAnimationFrame: View {
                 LinearGradient(
                     stops: [
                         .init(color: .black, location: 0),
-                        .init(color: .black, location: 0.6),
-                        .init(color: .clear, location: 0.92)
+                        .init(color: .black, location: 0.45),
+                        .init(color: .clear, location: 0.85)
                     ],
                     startPoint: .top,
                     endPoint: .bottom

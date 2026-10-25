@@ -34,6 +34,7 @@ struct FullPlayerView: View {
     @State private var isOpeningArtist = false
     @State private var artistUnavailable = false
     @State private var artworkEntryOffset: CGFloat = 0
+    private static let sleepOverlayBleed: CGFloat = 8
     @State private var titleChangeTrigger = 0
     @State private var titleChangeDirection: CGFloat = 1
     @State private var lastTitleQueueIndex = NowPlaying.shared.queueIndex
@@ -158,9 +159,15 @@ struct FullPlayerView: View {
             // Sized and offset like the artwork, not with ignoresSafeArea: the safe
             // area shrinks while the player is pulled down and would slide the
             // animation away from the player.
+            // A few points wider than the player on each side, so no edge of the
+            // screen is left without the animation.
             .overlay(alignment: .top) {
-                SleepEndedOverlay(size: CGSize(width: geometry.size.width, height: geometry.size.height + artworkTopInset))
-                    .frame(width: geometry.size.width, height: geometry.size.height + artworkTopInset)
+                let sleepOverlaySize = CGSize(
+                    width: geometry.size.width + 2 * Self.sleepOverlayBleed,
+                    height: geometry.size.height + artworkTopInset
+                )
+                SleepEndedOverlay(size: sleepOverlaySize)
+                    .frame(width: sleepOverlaySize.width, height: sleepOverlaySize.height)
                     .offset(y: -artworkTopInset)
             }
             .animation(.easeInOut(duration: reduceMotion ? 0.15 : 0.25), value: showQueue)

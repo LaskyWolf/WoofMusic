@@ -31,6 +31,8 @@ static float glowBoundary(float u, float offset, float edge, float depth, float 
 
     if (strength <= 0.001) { return half4(0); }
 
+    // The side waves flatten toward the bottom, where the glow fades out.
+    float sideWaves = 1.0 - smoothstep(size.y * 0.35, size.y * 0.8, position.y);
     float k = 0.016 / scale;
     float skipMargin = log(3.0) / k;
     float4 acc = float4(0);
@@ -42,8 +44,9 @@ static float glowBoundary(float u, float offset, float edge, float depth, float 
         float freq = frequencies[i] / scale;
         float amp = amplitudes[i] * scale * edge * waveBoost * waves;
 
-        float v1 = position.x - glowBoundary(position.y, 0.0, edge, depth, outset, amp, freq, time, speeds[i], phases[i]);
-        float v2 = (size.x - position.x) - glowBoundary(position.y, 1.9, edge, depth, outset, amp, freq, time, speeds[i], phases[i]);
+        float sideAmp = amp * sideWaves;
+        float v1 = position.x - glowBoundary(position.y, 0.0, edge, depth, outset, sideAmp, freq, time, speeds[i], phases[i]);
+        float v2 = (size.x - position.x) - glowBoundary(position.y, 1.9, edge, depth, outset, sideAmp, freq, time, speeds[i], phases[i]);
         float v3 = (position.y - glowBoundary(position.x, 3.8, edge, depth, outset, amp, freq, time, speeds[i], phases[i]) * 0.85) / 0.85;
         if (min(v1, min(v2, v3)) > skipMargin) { continue; }
 
