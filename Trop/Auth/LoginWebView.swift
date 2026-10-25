@@ -6,6 +6,7 @@
 //
 
 @preconcurrency import SwiftUI
+import SwiftyTube
 import WebKit
 
 // Presented as a sheet — launches Google OAuth in a full-screen WKWebView
@@ -59,6 +60,8 @@ final class WebLoginController: UIViewController {
 
         let config = WKWebViewConfiguration()
         let webView = WKWebView(frame: .zero, configuration: config)
+        // Google serves a cookie-incomplete login flow to mobile user agents.
+        webView.customUserAgent = LoginWebviewHarvest.userAgent
         webView.navigationDelegate = delegate
         view = webView
 
@@ -67,9 +70,10 @@ final class WebLoginController: UIViewController {
     }
 }
 
-// Handles navigation and extracts auth cookies on login redirect
+// Handles navigation and imports the session once Google lands on music.youtube.com
 private final class LoginNavigationDelegate: NSObject, WKNavigationDelegate {
     let model: LoginViewModel
+    private var didCaptureSession = false
 
     init(model: LoginViewModel) {
         self.model = model
@@ -79,35 +83,23 @@ private final class LoginNavigationDelegate: NSObject, WKNavigationDelegate {
         guard let url = webView.url, url.host?.contains("music.youtube.com") == true else {
             return
         }
+        guard !didCaptureSession, !model.isLoggedIn else { return }
 
-        Log.login.debug("Redirected to \(url.host ?? "") — extracting cookies...")
+        Log.login.debug("Redirected to \(url.host ?? "") — collecting cookies...")
 
-        webView.configuration.websiteDataStore.httpCookieStore.getAllCookies { [weak self] cookies in
-            var cookieDict: [String: String] = [:]
-            var sapisid: String?
-            var visitorData: String?
-
-            Log.login.debug("Found \(cookies.count) total cookies")
-
-            for cookie in cookies where cookie.domain.contains("youtube.com") || cookie.domain.contains("google.com") {
-                cookieDict[cookie.name] = cookie.value
-
-                if cookie.name == "__Secure-3PSAPISID" || cookie.name == "SAPISID" {
-                    sapisid = cookie.value
-                    Log.login.debug("  ✅ Found SAPISID!")
-                }
-
-                if cookie.name == "visitor_data" {
-                    visitorData = cookie.value
-                    Log.login.debug("  ✅ Found visitor_data!")
-                }
+        Task { @MainActor [weak self, weak webView] in
+            guard let webView else { return }
+            // The first snapshot after the redirect is incomplete; the harvest
+            // polls until the rotating session tokens are present.
+            let session = await LoginWebviewHarvest.collectSession(from: webView) { [weak self] in
+                guard let self, !self.didCaptureSession, !self.model.isLoggedIn else { return false }
+                return true
             }
-
-            if sapisid == nil {
-                Log.login.notice("  ❌ No SAPISID found — login may have failed")
+            guard let self, let (cookies, sapisid) = session else {
+                Log.login.notice("  ❌ No complete session found — login may have failed")
+                return
             }
-
-            guard let sapisid else { return }
+            self.didCaptureSession = true
 
             // Read dataSyncId first, then save the whole session in one step so
             // the login survives a relaunch and InnerTube is signed in before
@@ -119,10 +111,10 @@ private final class LoginNavigationDelegate: NSObject, WKNavigationDelegate {
                 } else if dataSyncId == nil {
                     Log.login.notice("  ⚠️ dataSyncId not found in page context")
                 }
-                self?.model.handleLogin(
-                    cookies: cookieDict,
+                self.model.handleLogin(
+                    cookies: cookies,
                     sapisid: sapisid,
-                    visitorData: visitorData,
+                    visitorData: cookies["visitor_data"],
                     dataSyncId: dataSyncId
                 )
             }
