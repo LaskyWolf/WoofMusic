@@ -47,6 +47,7 @@ struct PlayerSettingsView: View {
             } header: {
                 Text("Transitions")
             } footer: {
+                // swiftlint:disable:next line_length
                 Text("AutoMix blends songs like a DJ: it matches their tempo, keeps the beats together and swaps the bass on the bar. Songs without a steady beat get a Smart Crossfade instead. Smart Crossfade fades into the next song where the current one winds down.")
             }
 
