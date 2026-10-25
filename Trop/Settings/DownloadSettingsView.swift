@@ -20,8 +20,14 @@ struct DownloadSettingsView: View {
 
         List {
             Section {
-                storageCard
-                    .listRowInsets(.init(top: 8, leading: 0, bottom: 8, trailing: 0))
+                NavigationLink {
+                    DownloadsView()
+                } label: {
+                    storageCard
+                }
+                .buttonStyle(.plain)
+                .accessibilityHint("Opens your downloaded songs")
+                .listRowInsets(.init(top: 8, leading: 0, bottom: 8, trailing: 0))
                     .listRowBackground(Color.clear)
             }
 
@@ -57,6 +63,10 @@ struct DownloadSettingsView: View {
                 }
 
                 Spacer(minLength: 0)
+
+                Image(systemName: "chevron.right")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.tertiary)
             }
         }
         .padding(18)
