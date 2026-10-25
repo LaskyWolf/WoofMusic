@@ -74,8 +74,13 @@ struct AppearanceSettingsView: View {
                     Text("Explore").tag(2)
                     Text("Search").tag(3)
                 }
+                Toggle(isOn: $settings.leftHandedTabBar) {
+                    Label("Left-Handed Tab Bar", systemImage: "hand.point.left")
+                }
             } header: {
                 Text("General")
+            } footer: {
+                Text("Puts Search on the left, closer to your left thumb, and reverses the other tabs.")
             }
         }
         .id(settings.accentName)

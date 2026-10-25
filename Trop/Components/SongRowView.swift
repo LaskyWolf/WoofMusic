@@ -55,14 +55,6 @@ struct SongRowView: View {
 
     private var rowContent: some View {
         HStack(spacing: DesignTokens.rowSpacing) {
-            if isSelecting {
-                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                    .font(.title3)
-                    .foregroundStyle(isSelected ? AnyShapeStyle(settings.accentColor) : AnyShapeStyle(.secondary))
-                    .contentTransition(.symbolEffect(.replace))
-                    .accessibilityHidden(true)
-            }
-
             AsyncImageView(url: song.thumbnailUrl)
                 .frame(width: artSize, height: artSize)
                 .clipShape(RoundedRectangle(cornerRadius: artRadius, style: .continuous))
@@ -82,7 +74,14 @@ struct SongRowView: View {
 
             Spacer()
 
-            if !isSelecting {
+            if isSelecting {
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .font(.title3)
+                    .foregroundStyle(isSelected ? AnyShapeStyle(settings.accentColor) : AnyShapeStyle(.secondary))
+                    .contentTransition(.symbolEffect(.replace))
+                    .frame(minWidth: 44, minHeight: 44)
+                    .accessibilityHidden(true)
+            } else {
                 HStack(spacing: 2) {
                     SongActionsMenu(song: song, onNavigate: { onNavigate?($0) },
                                     onSelect: onSelect, onRemove: onRemove) {

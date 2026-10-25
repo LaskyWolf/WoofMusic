@@ -252,6 +252,7 @@ struct AlbumDetailView: View {
     let browseId: String
     @State private var viewModel: AlbumDetailViewModel
     @State private var showMoreSheet = false
+    @State private var selection = SongSelection()
 
     @Environment(\.dismiss) private var dismiss
 
@@ -274,8 +275,18 @@ struct AlbumDetailView: View {
         }
         .scrollDisabled(viewModel.isLoading || viewModel.error != nil || viewModel.album == nil)
         .miniPlayerTracksScroll()
-        .navigationTitle(viewModel.album?.title ?? "")
+        .navigationTitle(selection.isActive ? "\(selection.selected.count) selected" : (viewModel.album?.title ?? ""))
         .navigationBarTitleDisplayMode(.inline)
+        .sensoryFeedback(.selection, trigger: selection.selected)
+        .toolbar {
+            if selection.isActive {
+                SongSelectionToolbar(selection: selection, songs: viewModel.album?.songs ?? [])
+            } else if let songs = viewModel.album?.songs, !songs.isEmpty {
+                ToolbarItem(placement: .primaryAction) {
+                    Button("Select", systemImage: "checkmark.circle") { selection.begin() }
+                }
+            }
+        }
         .task {
             guard viewModel.isLoading else { return }
             await viewModel.load()
@@ -374,9 +385,13 @@ struct AlbumDetailView: View {
             ForEach(Array(album.songs.enumerated()), id: \.offset) { index, song in
                 SongRowView(
                     song: song,
-                    onTap: { playSong(song, in: album) },
-                    onNavigate: { AppRouter.shared.open($0) }
+                    onTap: { selection.isActive ? selection.toggle(song) : playSong(song, in: album) },
+                    onNavigate: { AppRouter.shared.open($0) },
+                    isSelecting: selection.isActive,
+                    isSelected: selection.selected.contains(song.videoId),
+                    onSelect: { selection.begin(with: song) }
                 )
+                .trackRowFrame(selection, index: index)
 
                 if index < album.songs.count - 1 {
                     Divider()
@@ -384,6 +399,7 @@ struct AlbumDetailView: View {
                 }
             }
         }
+        .songSelectionColumn(selection, songs: album.songs)
     }
 
     // MARK: - Actions

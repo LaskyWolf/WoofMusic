@@ -444,11 +444,7 @@ struct PlaylistDetailView: View {
     @State private var playlistEntity: PlaylistEntity?
     @State private var showAddSongs = false
     @State private var deleteError: String?
-    @State private var isSelecting = false
-    @State private var selected: Set<String> = []
-    @State private var rowFrames: [Int: CGRect] = [:]
-    /// While dragging down the checkbox column: true selects the rows passed, false deselects.
-    @State private var dragSelects: Bool?
+    @State private var selection = SongSelection()
 
     @Environment(\.dismiss) private var dismiss
 
@@ -480,9 +476,9 @@ struct PlaylistDetailView: View {
         }
         .scrollDisabled(viewModel.isLoading || viewModel.error != nil || viewModel.playlist == nil)
         .miniPlayerTracksScroll()
-        .navigationTitle(isSelecting ? "\(selected.count) selected" : (viewModel.playlist?.title ?? ""))
+        .navigationTitle(selection.isActive ? "\(selection.selected.count) selected" : (viewModel.playlist?.title ?? ""))
         .navigationBarTitleDisplayMode(.inline)
-        .sensoryFeedback(.selection, trigger: selected)
+        .sensoryFeedback(.selection, trigger: selection.selected)
         .toolbar { toolbarContent }
         .sheet(isPresented: $showAddSongs) {
             AddSongToPlaylistView(playlistId: playlistId) {
@@ -509,64 +505,24 @@ struct PlaylistDetailView: View {
 
     private var songs: [SongItem] { viewModel.playlist?.songs ?? [] }
 
-    private var selectedSongs: [SongItem] {
-        songs.filter { selected.contains($0.videoId) }
-    }
-
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
-        if isSelecting {
-            ToolbarItemGroup(placement: .primaryAction) {
-                let allSelected = !songs.isEmpty && selected.count == Set(songs.map(\.videoId)).count
-                Button(allSelected ? "Deselect All" : "Select All",
-                       systemImage: allSelected ? "checklist.unchecked" : "checklist.checked") {
-                    selected = allSelected ? [] : Set(songs.map(\.videoId))
-                }
-                BulkSongActionsMenu(
-                    songs: selectedSongs,
-                    onRemove: isEditable ? { Task { await removeSongs(selectedSongs) } } : nil,
-                    onFinished: endSelecting
-                )
-                Button("Done", action: endSelecting)
-            }
+        if selection.isActive {
+            SongSelectionToolbar(
+                selection: selection,
+                songs: songs,
+                onRemove: isEditable ? { picked in Task { await removeSongs(picked) } } : nil
+            )
         } else {
             ToolbarItemGroup(placement: .primaryAction) {
                 if !songs.isEmpty {
-                    Button("Select", systemImage: "checkmark.circle") { isSelecting = true }
+                    Button("Select", systemImage: "checkmark.circle") { selection.begin() }
                 }
                 if isEditable {
                     Button("Add Songs", systemImage: "plus") { showAddSongs = true }
                 }
             }
         }
-    }
-
-    private func beginSelecting(with song: SongItem) {
-        selected = [song.videoId]
-        isSelecting = true
-    }
-
-    private func endSelecting() {
-        isSelecting = false
-        selected = []
-    }
-
-    private func toggle(_ song: SongItem) {
-        if selected.contains(song.videoId) {
-            selected.remove(song.videoId)
-        } else {
-            selected.insert(song.videoId)
-        }
-    }
-
-    /// Drag down the checkbox column to select (or deselect) every row it crosses.
-    private func dragSelect(atY y: CGFloat) {
-        guard let index = rowFrames.first(where: { $0.value.minY <= y && y < $0.value.maxY })?.key,
-              songs.indices.contains(index) else { return }
-        let id = songs[index].videoId
-        let selects = dragSelects ?? !selected.contains(id)
-        dragSelects = selects
-        if selects { selected.insert(id) } else { selected.remove(id) }
     }
 
     private func fetchEntity() async {
@@ -759,16 +715,14 @@ struct PlaylistDetailView: View {
             ForEach(Array(playlist.songs.enumerated()), id: \.offset) { index, song in
                 SongRowView(
                     song: song,
-                    onTap: { isSelecting ? toggle(song) : playSong(song, in: playlist) },
+                    onTap: { selection.isActive ? selection.toggle(song) : playSong(song, in: playlist) },
                     onNavigate: { AppRouter.shared.open($0) },
-                    isSelecting: isSelecting,
-                    isSelected: selected.contains(song.videoId),
-                    onSelect: { beginSelecting(with: song) },
+                    isSelecting: selection.isActive,
+                    isSelected: selection.selected.contains(song.videoId),
+                    onSelect: { selection.begin(with: song) },
                     onRemove: isEditable ? { Task { await removeSongs([song]) } } : nil
                 )
-                .onGeometryChange(for: CGRect.self) { $0.frame(in: .named("songList")) } action: {
-                    rowFrames[index] = $0
-                }
+                .trackRowFrame(selection, index: index)
 
                 if index < playlist.songs.count - 1 {
                     Divider()
@@ -776,19 +730,7 @@ struct PlaylistDetailView: View {
                 }
             }
         }
-        .coordinateSpace(name: "songList")
-        .overlay(alignment: .leading) {
-            if isSelecting {
-                Color.clear
-                    .frame(width: 56)
-                    .contentShape(Rectangle())
-                    .gesture(
-                        DragGesture(minimumDistance: 0, coordinateSpace: .named("songList"))
-                            .onChanged { dragSelect(atY: $0.location.y) }
-                            .onEnded { _ in dragSelects = nil }
-                    )
-            }
-        }
+        .songSelectionColumn(selection, songs: playlist.songs)
     }
 
     private func removeSongs(_ songs: [SongItem]) async {

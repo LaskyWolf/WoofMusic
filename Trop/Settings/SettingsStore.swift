@@ -216,6 +216,10 @@ final class SettingsStore {
         didSet { Self.defaults.set(audioNormalization, forKey: Keys.audioNormalization) }
     }
 
+    /// Mirrors the tab bar: Search on the left, the other tabs in reverse order.
+    var leftHandedTabBar: Bool {
+        didSet { Self.defaults.set(leftHandedTabBar, forKey: Keys.leftHandedTabBar) }
+    }
     var gaplessPlayback: Bool {
         didSet { Self.defaults.set(gaplessPlayback, forKey: Keys.gaplessPlayback) }
     }
@@ -364,6 +368,7 @@ final class SettingsStore {
         static let equalizerGains = "settings.equalizerGains"
         static let audioQuality = "settings.audioQuality"
         static let audioNormalization = "settings.audioNormalization"
+        static let leftHandedTabBar = "settings.leftHandedTabBar"
         static let gaplessPlayback = "settings.gaplessPlayback"
         static let autoplaySimilar = "settings.autoplaySimilar"
         static let crossfadeEnabled = "settings.crossfadeEnabled"
@@ -430,6 +435,7 @@ final class SettingsStore {
         }
         audioQuality = Self.loadEnum(Keys.audioQuality, default: .auto)
         audioNormalization = Self.load(Keys.audioNormalization, default: false)
+        leftHandedTabBar = Self.load(Keys.leftHandedTabBar, default: false)
         gaplessPlayback = Self.load(Keys.gaplessPlayback, default: true)
         autoplaySimilar = Self.load(Keys.autoplaySimilar, default: true)
         crossfadeEnabled = Self.load(Keys.crossfadeEnabled, default: false)

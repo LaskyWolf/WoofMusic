@@ -3,7 +3,112 @@
 //  Trop
 //
 
+import Observation
 import SwiftUI
+
+/// Multi-select state shared by the playlist and album pages.
+@MainActor
+@Observable
+final class SongSelection {
+    var isActive = false
+    var selected: Set<String> = []
+    /// Row frames in the "songList" space, read only while dragging down the checkbox column.
+    @ObservationIgnored var rowFrames: [Int: CGRect] = [:]
+    /// While dragging: true selects the rows passed, false deselects them.
+    @ObservationIgnored private var dragSelects: Bool?
+
+    func begin(with song: SongItem? = nil) {
+        selected = song.map { [$0.videoId] } ?? []
+        isActive = true
+    }
+
+    func end() {
+        isActive = false
+        selected = []
+    }
+
+    func toggle(_ song: SongItem) {
+        if selected.contains(song.videoId) {
+            selected.remove(song.videoId)
+        } else {
+            selected.insert(song.videoId)
+        }
+    }
+
+    func picked(from songs: [SongItem]) -> [SongItem] {
+        songs.filter { selected.contains($0.videoId) }
+    }
+
+    func allSelected(in songs: [SongItem]) -> Bool {
+        !songs.isEmpty && selected.count == Set(songs.map(\.videoId)).count
+    }
+
+    func toggleAll(in songs: [SongItem]) {
+        selected = allSelected(in: songs) ? [] : Set(songs.map(\.videoId))
+    }
+
+    func drag(atY y: CGFloat, in songs: [SongItem]) {
+        guard let index = rowFrames.first(where: { $0.value.minY <= y && y < $0.value.maxY })?.key,
+              songs.indices.contains(index) else { return }
+        let id = songs[index].videoId
+        let selects = dragSelects ?? !selected.contains(id)
+        dragSelects = selects
+        if selects { selected.insert(id) } else { selected.remove(id) }
+    }
+
+    func endDrag() { dragSelects = nil }
+}
+
+extension View {
+    /// Song list container: names the coordinate space and, while selecting,
+    /// lets a drag down the right edge select or deselect every row it crosses.
+    func songSelectionColumn(_ selection: SongSelection, songs: [SongItem]) -> some View {
+        coordinateSpace(name: "songList")
+            .overlay(alignment: .trailing) {
+                if selection.isActive {
+                    Color.clear
+                        .frame(width: 56)
+                        .contentShape(Rectangle())
+                        .gesture(
+                            DragGesture(minimumDistance: 0, coordinateSpace: .named("songList"))
+                                .onChanged { selection.drag(atY: $0.location.y, in: songs) }
+                                .onEnded { _ in selection.endDrag() }
+                        )
+                }
+            }
+    }
+
+    /// Records a row's frame for the drag selection.
+    func trackRowFrame(_ selection: SongSelection, index: Int) -> some View {
+        onGeometryChange(for: CGRect.self) { $0.frame(in: .named("songList")) } action: {
+            selection.rowFrames[index] = $0
+        }
+    }
+}
+
+/// Toolbar shown while selecting: Select All, the actions menu and Done.
+struct SongSelectionToolbar: ToolbarContent {
+    let selection: SongSelection
+    let songs: [SongItem]
+    /// Nil when the list is not an editable playlist.
+    var onRemove: (([SongItem]) -> Void)?
+
+    var body: some ToolbarContent {
+        ToolbarItemGroup(placement: .primaryAction) {
+            let all = selection.allSelected(in: songs)
+            Button(all ? "Deselect All" : "Select All",
+                   systemImage: all ? "checklist.unchecked" : "checklist.checked") {
+                selection.toggleAll(in: songs)
+            }
+            BulkSongActionsMenu(
+                songs: selection.picked(from: songs),
+                onRemove: onRemove.map { remove -> (() -> Void) in { remove(selection.picked(from: songs)) } },
+                onFinished: selection.end
+            )
+            Button("Done", action: selection.end)
+        }
+    }
+}
 
 /// Actions for the songs picked in a list's multi-select mode.
 struct BulkSongActionsMenu: View {
