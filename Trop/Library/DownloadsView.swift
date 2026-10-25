@@ -8,7 +8,6 @@ import SwiftUI
 struct DownloadsView: View {
     @Environment(SettingsStore.self) private var settings
     @ObservedObject private var downloadManager = DownloadManager.shared
-    @State private var pendingRoute: DetailRoute?
     @State private var showMoreSheet = false
 
     private var tracks: [DownloadedTrackEntity] { downloadManager.tracks }
@@ -37,7 +36,6 @@ struct DownloadsView: View {
                 await downloadManager.reload()
             }
         }
-        .detailRouteSheet(item: $pendingRoute)
     }
 
     private var emptyView: some View {
@@ -117,7 +115,7 @@ struct DownloadsView: View {
                     artSize: 48,
                     artRadius: 8,
                     onTap: { playSong(song) },
-                    onNavigate: { pendingRoute = $0 }
+                    onNavigate: { AppRouter.shared.open($0) }
                 )
 
                 if index < songs.count - 1 {

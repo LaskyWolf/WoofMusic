@@ -184,7 +184,7 @@ struct ExploreSectionsList: View {
                                 trailingSymbol: "chevron.up.chevron.down"
                             )
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(ZoomPressStyle())
                     case .mood(let mood, let family):
                         NavigationLink(value: mood) {
                             MoodCard(title: mood.title, color: MoodCard.swatch(family: family, title: mood.title))

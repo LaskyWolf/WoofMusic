@@ -405,6 +405,7 @@ extension PlayerController {
             Log.player.debug("TRANSITION FILE_LOADED videoId=\(pendingVideoId ?? "nil") playing=\(actuallyPlaying)")
             self.playState.send(actuallyPlaying ? .playing : .paused)
             NowPlaying.shared.isPlaying = actuallyPlaying
+            NowPlaying.shared.isLoadingTrack = false
             Task { await PlaybackStateService.shared.setPlaying(actuallyPlaying) }
             self.currentVideoId = pendingVideoId
             self.pendingVideoId = nil
@@ -450,6 +451,7 @@ extension PlayerController {
             Log.player.debug(
                 "TRANSITION END_FILE reason=\(reason.rawValue) isEof=\(isEof) isError=\(isError) stoppedVideoId=\(videoId ?? "nil")"
             )
+            if isError || isEof { NowPlaying.shared.isLoadingTrack = false }
             if isError, videoId != nil {
                 Task { await PlaybackStateService.shared.stopTracking() }
             }

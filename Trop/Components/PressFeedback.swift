@@ -40,7 +40,7 @@ private struct ZoomPressLabel: View {
 }
 
 extension View {
-    /// Lights up the row's background and shrinks it slightly while it is touched.
+    /// Lights up the row's background with a brighter outline and shrinks it slightly while it is touched.
     func rowPressFeedback() -> some View { modifier(RowPressFeedback()) }
 }
 
@@ -53,6 +53,10 @@ private struct RowPressFeedback: ViewModifier {
             .background(
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
                     .fill(Color.primary.opacity(isLit ? 0.14 : 0))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .strokeBorder(Color.primary.opacity(isLit ? 0.5 : 0), lineWidth: 1.5)
+                    )
                     .padding(.horizontal, 6)
             )
             .scaleEffect(isLit ? 0.97 : 1)

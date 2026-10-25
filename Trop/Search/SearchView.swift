@@ -359,7 +359,7 @@ struct SearchView: View {
                                 size: 140
                             )
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(ZoomPressStyle())
                     }
                 }
             }

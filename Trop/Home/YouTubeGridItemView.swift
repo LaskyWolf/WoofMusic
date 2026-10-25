@@ -22,6 +22,13 @@ struct YouTubeGridItemView: View {
         }
     }
 
+    private var opensPage: Bool {
+        switch item {
+        case .album, .playlist: return true
+        default: return false
+        }
+    }
+
     private var subtitleText: String {
         switch item {
         case .song(let s):
@@ -44,11 +51,15 @@ struct YouTubeGridItemView: View {
                     .frame(width: artworkSize, height: artworkSize)
                     .clipShape(RoundedRectangle(cornerRadius: 8))
 
-                Text(item.title)
-                    .font(.caption)
-                    .fontWeight(.medium)
-                    .foregroundColor(.primary)
-                    .lineLimit(2)
+                if opensPage {
+                    TitleWithChevron(title: item.title)
+                } else {
+                    Text(item.title)
+                        .font(.caption)
+                        .fontWeight(.medium)
+                        .foregroundColor(.primary)
+                        .lineLimit(2)
+                }
 
                 if !subtitleText.isEmpty {
                     Text(subtitleText)

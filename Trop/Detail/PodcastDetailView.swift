@@ -415,7 +415,6 @@ extension PodcastDetailViewModel {
 struct PodcastDetailView: View {
     let browseId: String
     @State private var viewModel: PodcastDetailViewModel
-    @State private var pendingRoute: DetailRoute?
     @State private var showMoreSheet = false
 
     @Environment(\.dismiss) private var dismiss
@@ -455,7 +454,6 @@ struct PodcastDetailView: View {
                 )
             }
         }
-        .detailRouteSheet(item: $pendingRoute)
     }
 
     @ViewBuilder
@@ -553,7 +551,7 @@ struct PodcastDetailView: View {
                 EpisodeRowView(
                     episode: episode,
                     onTap: { playEpisode(episode, in: podcast) },
-                    onNavigate: { pendingRoute = $0 }
+                    onNavigate: { AppRouter.shared.open($0) }
                 )
 
                 if index < podcast.episodes.count - 1 {

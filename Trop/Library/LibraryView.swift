@@ -177,7 +177,7 @@ struct LibraryView: View {
                         subtitle: playlistSongCounts[playlist.id].map { "\($0) songs" }
                     )
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(ZoomPressStyle())
                 .contextMenu {
                     Button(role: .destructive) {
                         playlistToDelete = playlist
@@ -199,7 +199,7 @@ struct LibraryView: View {
                 NavigationLink(value: info.detailRoute ?? info.route.map(DetailRoute.autoPlaylist)) {
                     shortcutTile(info: info)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(ZoomPressStyle())
             }
         }
         .padding(.horizontal, DesignTokens.screenHPadding)
@@ -242,7 +242,7 @@ struct LibraryView: View {
                         name: artist.name
                     )
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(ZoomPressStyle())
             }
         }
     }
@@ -259,7 +259,7 @@ struct LibraryView: View {
                         subtitle: album.songCount > 0 ? "\(album.songCount) songs" : nil
                     )
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(ZoomPressStyle())
             }
         }
     }
@@ -276,7 +276,7 @@ struct LibraryView: View {
                         subtitle: nil
                     )
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(ZoomPressStyle())
             }
         }
     }
@@ -332,7 +332,7 @@ struct LibraryView: View {
                 .frame(maxWidth: .infinity)
                 .aspectRatio(1, contentMode: .fit)
                 .clipShape(RoundedRectangle(cornerRadius: 12))
-            Text(title).lineLimit(1).font(.callout)
+            TitleWithChevron(title: title, font: .callout, lineLimit: 1)
             if let subtitle {
                 Text(subtitle).font(.caption).foregroundColor(.secondary)
             }

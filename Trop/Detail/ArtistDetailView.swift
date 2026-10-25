@@ -602,7 +602,7 @@ struct ArtistDetailView: View {
                     .padding(.horizontal, 16)
                     .padding(.vertical, 6)
                 })
-                .buttonStyle(.plain)
+                .buttonStyle(ZoomPressStyle())
 
                 if index < songs.count - 1 {
                     Divider()
@@ -625,7 +625,7 @@ struct ArtistDetailView: View {
                         size: 156
                     )
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(ZoomPressStyle())
             }
         }
     }
@@ -643,7 +643,7 @@ struct ArtistDetailView: View {
                         size: 156
                     )
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(ZoomPressStyle())
             }
         }
     }
@@ -671,7 +671,7 @@ struct ArtistDetailView: View {
                         }
                     }
                 })
-                .buttonStyle(.plain)
+                .buttonStyle(ZoomPressStyle())
             }
         }
     }
@@ -689,7 +689,7 @@ struct ArtistDetailView: View {
                         size: 156
                     )
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(ZoomPressStyle())
             }
         }
     }
@@ -710,7 +710,7 @@ struct ArtistDetailView: View {
                     }
                     .frame(width: 120)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(ZoomPressStyle())
             }
         }
     }

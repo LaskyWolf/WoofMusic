@@ -22,6 +22,8 @@ final class NowPlaying {
     var videoId: String?
     var artists: [YTArtist] = []
     var isPlaying = false
+    /// True from the moment a song is requested until its audio is loaded.
+    var isLoadingTrack = false
     var currentTime: TimeInterval = 0
     var duration: TimeInterval = 0
     var progress: Float {

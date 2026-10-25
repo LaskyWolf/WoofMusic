@@ -7,6 +7,28 @@
 
 import SwiftUI
 
+/// Card title followed by a small ">" that says the card opens a page.
+struct TitleWithChevron: View {
+    let title: String
+    var font: Font = .caption
+    var lineLimit = 2
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 3) {
+            Text(title)
+                .font(font)
+                .fontWeight(.medium)
+                .foregroundColor(.primary)
+                .lineLimit(lineLimit)
+            Image(systemName: "chevron.right")
+                .font(.system(size: 9, weight: .bold))
+                .foregroundStyle(.secondary)
+                .padding(.top, 3)
+                .accessibilityHidden(true)
+        }
+    }
+}
+
 /// Square artwork card with two-line title + optional subtitle, shared by the
 /// artist albums carousel and search album carousel. `size` fixes the width
 /// for carousels; nil sizes flexibly for grids.
@@ -23,11 +45,7 @@ struct MediaGridCell: View {
                 .frame(width: size, height: size)
                 .clipShape(RoundedRectangle(cornerRadius: DesignTokens.cardRadius))
 
-            Text(title)
-                .font(.caption)
-                .fontWeight(.medium)
-                .foregroundColor(.primary)
-                .lineLimit(2)
+            TitleWithChevron(title: title)
                 .frame(width: size, alignment: .leading)
 
             if let subtitle, !subtitle.isEmpty {

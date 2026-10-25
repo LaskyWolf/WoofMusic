@@ -251,7 +251,6 @@ extension AlbumDetailViewModel {
 struct AlbumDetailView: View {
     let browseId: String
     @State private var viewModel: AlbumDetailViewModel
-    @State private var pendingRoute: DetailRoute?
     @State private var showMoreSheet = false
 
     @Environment(\.dismiss) private var dismiss
@@ -281,7 +280,6 @@ struct AlbumDetailView: View {
             guard viewModel.isLoading else { return }
             await viewModel.load()
         }
-        .detailRouteSheet(item: $pendingRoute)
     }
 
     @ViewBuilder
@@ -377,7 +375,7 @@ struct AlbumDetailView: View {
                 SongRowView(
                     song: song,
                     onTap: { playSong(song, in: album) },
-                    onNavigate: { pendingRoute = $0 }
+                    onNavigate: { AppRouter.shared.open($0) }
                 )
 
                 if index < album.songs.count - 1 {

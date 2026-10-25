@@ -443,8 +443,12 @@ struct PlaylistDetailView: View {
     @State private var viewModel: PlaylistDetailViewModel
     @State private var playlistEntity: PlaylistEntity?
     @State private var showAddSongs = false
-    @State private var pendingRoute: DetailRoute?
     @State private var deleteError: String?
+    @State private var isSelecting = false
+    @State private var selected: Set<String> = []
+    @State private var rowFrames: [Int: CGRect] = [:]
+    /// While dragging down the checkbox column: true selects the rows passed, false deselects.
+    @State private var dragSelects: Bool?
 
     @Environment(\.dismiss) private var dismiss
 
@@ -476,17 +480,10 @@ struct PlaylistDetailView: View {
         }
         .scrollDisabled(viewModel.isLoading || viewModel.error != nil || viewModel.playlist == nil)
         .miniPlayerTracksScroll()
-        .navigationTitle(viewModel.playlist?.title ?? "")
+        .navigationTitle(isSelecting ? "\(selected.count) selected" : (viewModel.playlist?.title ?? ""))
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            if isEditable {
-                ToolbarItem(placement: .primaryAction) {
-                                        Button(action: { showAddSongs = true }, label: {
-                        Image(systemName: "plus")
-                    })
-                }
-            }
-        }
+        .sensoryFeedback(.selection, trigger: selected)
+        .toolbar { toolbarContent }
         .sheet(isPresented: $showAddSongs) {
             AddSongToPlaylistView(playlistId: playlistId) {
                 await viewModel.load()
@@ -498,7 +495,6 @@ struct PlaylistDetailView: View {
             await viewModel.load()
             await fetchEntity()
         }
-        .detailRouteSheet(item: $pendingRoute)
         .alert("Couldn't delete playlist", isPresented: Binding(
             get: { deleteError != nil },
             set: { if !$0 { deleteError = nil } }
@@ -507,6 +503,70 @@ struct PlaylistDetailView: View {
         } message: {
             Text(deleteError ?? "")
         }
+    }
+
+    // MARK: - Multi-select
+
+    private var songs: [SongItem] { viewModel.playlist?.songs ?? [] }
+
+    private var selectedSongs: [SongItem] {
+        songs.filter { selected.contains($0.videoId) }
+    }
+
+    @ToolbarContentBuilder
+    private var toolbarContent: some ToolbarContent {
+        if isSelecting {
+            ToolbarItemGroup(placement: .primaryAction) {
+                let allSelected = !songs.isEmpty && selected.count == Set(songs.map(\.videoId)).count
+                Button(allSelected ? "Deselect All" : "Select All",
+                       systemImage: allSelected ? "checklist.unchecked" : "checklist.checked") {
+                    selected = allSelected ? [] : Set(songs.map(\.videoId))
+                }
+                BulkSongActionsMenu(
+                    songs: selectedSongs,
+                    onRemove: isEditable ? { Task { await removeSongs(selectedSongs) } } : nil,
+                    onFinished: endSelecting
+                )
+                Button("Done", action: endSelecting)
+            }
+        } else {
+            ToolbarItemGroup(placement: .primaryAction) {
+                if !songs.isEmpty {
+                    Button("Select", systemImage: "checkmark.circle") { isSelecting = true }
+                }
+                if isEditable {
+                    Button("Add Songs", systemImage: "plus") { showAddSongs = true }
+                }
+            }
+        }
+    }
+
+    private func beginSelecting(with song: SongItem) {
+        selected = [song.videoId]
+        isSelecting = true
+    }
+
+    private func endSelecting() {
+        isSelecting = false
+        selected = []
+    }
+
+    private func toggle(_ song: SongItem) {
+        if selected.contains(song.videoId) {
+            selected.remove(song.videoId)
+        } else {
+            selected.insert(song.videoId)
+        }
+    }
+
+    /// Drag down the checkbox column to select (or deselect) every row it crosses.
+    private func dragSelect(atY y: CGFloat) {
+        guard let index = rowFrames.first(where: { $0.value.minY <= y && y < $0.value.maxY })?.key,
+              songs.indices.contains(index) else { return }
+        let id = songs[index].videoId
+        let selects = dragSelects ?? !selected.contains(id)
+        dragSelects = selects
+        if selects { selected.insert(id) } else { selected.remove(id) }
     }
 
     private func fetchEntity() async {
@@ -697,16 +757,17 @@ struct PlaylistDetailView: View {
         // duration starts a network request.
         LazyVStack(spacing: 0) {
             ForEach(Array(playlist.songs.enumerated()), id: \.offset) { index, song in
-                SongRowView(song: song, onTap: { playSong(song, in: playlist) }, onNavigate: { pendingRoute = $0 })
-                .contextMenu {
-                    if isEditable {
-                        Button(role: .destructive) {
-                            Task { await removeSong(song) }
-                        } label: {
-                            Label("Remove from Playlist", systemImage: "minus.circle")
-                        }
-                        .tint(.red)
-                    }
+                SongRowView(
+                    song: song,
+                    onTap: { isSelecting ? toggle(song) : playSong(song, in: playlist) },
+                    onNavigate: { AppRouter.shared.open($0) },
+                    isSelecting: isSelecting,
+                    isSelected: selected.contains(song.videoId),
+                    onSelect: { beginSelecting(with: song) },
+                    onRemove: isEditable ? { Task { await removeSongs([song]) } } : nil
+                )
+                .onGeometryChange(for: CGRect.self) { $0.frame(in: .named("songList")) } action: {
+                    rowFrames[index] = $0
                 }
 
                 if index < playlist.songs.count - 1 {
@@ -715,16 +776,31 @@ struct PlaylistDetailView: View {
                 }
             }
         }
+        .coordinateSpace(name: "songList")
+        .overlay(alignment: .leading) {
+            if isSelecting {
+                Color.clear
+                    .frame(width: 56)
+                    .contentShape(Rectangle())
+                    .gesture(
+                        DragGesture(minimumDistance: 0, coordinateSpace: .named("songList"))
+                            .onChanged { dragSelect(atY: $0.location.y) }
+                            .onEnded { _ in dragSelects = nil }
+                    )
+            }
+        }
     }
 
-    private func removeSong(_ song: SongItem) async {
-        let maps = (try? await DatabaseService.shared.fetchAll(
-            PlaylistSongMap.self,
-            sql: "SELECT * FROM playlist_song_map WHERE playlist_id = ? AND song_id = ? LIMIT 1",
-            arguments: [playlistId, song.videoId]
-        )) ?? []
-        guard let setVideoId = maps.first?.setVideoId else { return }
-        try? await SyncBridge.mutations.removeFromPlaylist(playlistId: playlistId, songId: song.videoId, setVideoId: setVideoId)
+    private func removeSongs(_ songs: [SongItem]) async {
+        for song in songs {
+            let maps = (try? await DatabaseService.shared.fetchAll(
+                PlaylistSongMap.self,
+                sql: "SELECT * FROM playlist_song_map WHERE playlist_id = ? AND song_id = ? LIMIT 1",
+                arguments: [playlistId, song.videoId]
+            )) ?? []
+            guard let setVideoId = maps.first?.setVideoId else { continue }
+            try? await SyncBridge.mutations.removeFromPlaylist(playlistId: playlistId, songId: song.videoId, setVideoId: setVideoId)
+        }
         await viewModel.load()
     }
 
