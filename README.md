@@ -60,7 +60,7 @@ The IPA is unsigned: sideload it with a tool that re-signs apps with your Apple 
 
 Discord Rich Presence uses Discord's Social SDK, a proprietary binary that is not in this repo. Without it the app builds and runs, and Discord login shows an error.
 
-To enable it, download `discord_partner_sdk.xcframework` from the Discord Developer Portal, zip it, host the zip at a private URL and save the URL as the repository secret `DISCORD_SOCIAL_SDK_URL`. For a local build, put the xcframework in `build/discord/`.
+To enable it, download `DiscordSocialSdk-<version>.zip` (the C++ one) from the Discord Developer Portal and attach it to a release tagged `discord-sdk` in a private repository: `gh release create discord-sdk --repo <owner>/<repo> DiscordSocialSdk-<version>.zip`. The workflow downloads it from there. For a local build, put `discord_partner_sdk.xcframework` in `build/discord/`.
 
 ## Notable mentions
 

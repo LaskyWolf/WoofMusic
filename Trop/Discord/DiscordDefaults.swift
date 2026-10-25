@@ -8,7 +8,7 @@
 import Foundation
 
 enum DiscordDefaults {
-    static let appId: String = "1563551993652445258"
+    static let appId: String = "1563918327238107187"
 
     static let oauthToken = "https://discord.com/api/v10/oauth2/token"
 
