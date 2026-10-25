@@ -18,6 +18,7 @@ No ads, native iOS design, DJ-style transitions.
 
 ## Highlights
 
+||||
 | 🎧 **AutoMix** | Beat-matched transitions: matches the tempo of both songs and swaps the bass on the bar. |
 | 🌊 **Smart Crossfade** | Fades into the next song where the current one winds down. |
 | 🌙 **Sleep timer** | 5 to 60 minutes or the end of the song, with a night-sky animation when it ends. |
