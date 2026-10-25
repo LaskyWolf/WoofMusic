@@ -156,34 +156,26 @@ actor PersonalizationService {
         return .dailyDiscover(items: discovered)
     }
 
-    func buildSimilarRecommendations() async -> [HomeSection] {
-        guard await isLoggedIn() else { return [] }
-        guard let topArtists = try? await db.fetchArtists(limit: 3), !topArtists.isEmpty else {
-            return []
+    /// "Similar to <artist>" sections and community playlists, both parsed
+    /// from one browse of each top artist's page.
+    func buildArtistSections() async -> (similar: [HomeSection], community: HomeSection) {
+        guard await isLoggedIn(),
+              let topArtists = try? await db.fetchArtists(limit: 3), !topArtists.isEmpty else {
+            return ([], .fromTheCommunity(items: []))
         }
 
         var sections: [HomeSection] = []
-        for artist in topArtists.prefix(3) {
-            guard sections.count < 3 else { break }
-            guard let related = try? await innerTube.browse(browseId: artist.id),
-                  let items = parseRelatedItems(from: related), !items.isEmpty else { continue }
-            sections.append(.similarRecommendation(items: items, title: "Similar to \(artist.name)"))
-        }
-        return sections
-    }
-
-    func buildFromTheCommunity() async -> HomeSection {
-        guard await isLoggedIn() else { return .fromTheCommunity(items: []) }
-        guard let topArtists = try? await db.fetchArtists(limit: 3), !topArtists.isEmpty else {
-            return .fromTheCommunity(items: [])
-        }
-
         var seenIds = Set<String>()
         var communityPlaylists: [YTItem] = []
 
-        for artist in topArtists {
-            guard communityPlaylists.count < 5 else { break }
+        for artist in topArtists.prefix(3) {
             guard let json = try? await innerTube.browse(browseId: artist.id) else { continue }
+
+            if let items = parseRelatedItems(from: json), !items.isEmpty {
+                sections.append(.similarRecommendation(items: items, title: "Similar to \(artist.name)"))
+            }
+
+            guard communityPlaylists.count < 5 else { continue }
             let playlists = LibraryBrowseParser.extractCommunityPlaylists(from: json)
             for playlist in playlists {
                 let pid = LibraryBrowseParser.normalizePlaylistId(playlist.browseId)
@@ -198,7 +190,7 @@ actor PersonalizationService {
             }
         }
 
-        return .fromTheCommunity(items: communityPlaylists)
+        return (sections, .fromTheCommunity(items: communityPlaylists))
     }
 
     // MARK: - Helpers

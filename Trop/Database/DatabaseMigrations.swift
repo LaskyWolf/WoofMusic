@@ -257,4 +257,9 @@ enum DatabaseMigrations {
             }
         }
     }
+
+    static let v9: (Database) throws -> Void = logged("v9") { db in
+        // History and recency queries filter and sort events by timestamp.
+        try db.execute(sql: "CREATE INDEX IF NOT EXISTS event_on_timestamp ON event(timestamp)")
+    }
 }

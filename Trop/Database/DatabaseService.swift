@@ -74,6 +74,7 @@ actor DatabaseService {
         migrator.registerMigration("v6", migrate: DatabaseMigrations.v6)
         migrator.registerMigration("v7", migrate: DatabaseMigrations.v7)
         migrator.registerMigration("v8", migrate: DatabaseMigrations.v8)
+        migrator.registerMigration("v9", migrate: DatabaseMigrations.v9)
     }
 }
 
@@ -256,15 +257,13 @@ extension DatabaseService {
     func fetchForgottenFavorites(days: Int = 60, limit: Int = 15) async throws -> [SongEntity] {
         try await dbPool.read { db in
             let cutoff = Calendar.current.date(byAdding: .day, value: -days, to: Date()) ?? Date()
-            let df = ISO8601DateFormatter()
-            let cutoffStr = df.string(from: cutoff)
             return try SongEntity.fetchAll(db, sql: """
                 SELECT * FROM song
                 WHERE liked = 1
                 AND id NOT IN (SELECT DISTINCT song_id FROM event WHERE timestamp > ?)
                 ORDER BY total_play_time ASC
                 LIMIT ?
-                """, arguments: [cutoffStr, limit])
+                """, arguments: [cutoff, limit])
         }
     }
 

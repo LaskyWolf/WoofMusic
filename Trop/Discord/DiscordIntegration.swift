@@ -32,22 +32,13 @@ final class DiscordIntegration {
     func start() {
         DiscordRpcManager.shared.initializeIfNeeded()
 
-        // Observe toggle
-        UserDefaults.standard.publisher(for: \.discordRPCEnableValue)
+        // Observe toggle. The publisher emits the current value first, which
+        // starts the periodic sync when Discord is enabled.
+        UserDefaults.standard.publisher(for: \.discordRPCEnable)
             .sink { [weak self] enabled in
                 self?.handleToggle(enabled: enabled)
             }
             .store(in: &cancellables)
-
-        // Observe NowPlaying publisher via Notification? Poll NowPlaying changes
-        // Hook into periodic polling and NowPlaying timerTick via observation
-        periodicTask?.cancel()
-        periodicTask = Task { [weak self] in
-            while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 1_000_000_000)
-                await self?.syncDiscordState()
-            }
-        }
 
         // Observe NowPlaying changes (isPlaying / videoId)
         // Use NotificationCenter from NowPlaying? We'll use Combine timer + manual trigger
@@ -76,8 +67,20 @@ final class DiscordIntegration {
         // After 10 min screen off, disconnect if not playing — handled by system background? Keep simple: do nothing
     }
 
+    /// Polls once a second while enabled, for reconnects and activity timing.
+    private func startPeriodicSync() {
+        guard periodicTask == nil else { return }
+        periodicTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+                await self?.syncDiscordState()
+            }
+        }
+    }
+
     private func handleToggle(enabled: Bool) {
         if enabled {
+            startPeriodicSync()
             intentionalDisconnect = false
             if DiscordRpcManager.shared.isReady() {
                 Task { await syncDiscordState() }
@@ -85,6 +88,8 @@ final class DiscordIntegration {
                 DiscordRpcManager.shared.reconnectWithToken(token)
             }
         } else {
+            periodicTask?.cancel()
+            periodicTask = nil
             if DiscordRpcManager.shared.isReady() {
                 DiscordRpcManager.shared.disconnect()
                 intentionalDisconnect = true
@@ -193,7 +198,9 @@ private enum SettingsKeys {
     static let userStatus = "discordUserStatus"
 }
 private extension UserDefaults {
-    @objc dynamic var discordRPCEnableValue: Bool {
+    /// Named after the defaults key: UserDefaults sends KVO change
+    /// notifications per key, so a different name only emits the initial value.
+    @objc dynamic var discordRPCEnable: Bool {
         object(forKey: "discordRPCEnable") as? Bool ?? true
     }
 }

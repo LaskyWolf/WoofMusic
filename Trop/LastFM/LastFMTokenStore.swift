@@ -15,8 +15,10 @@ final class LastFMTokenStore: @unchecked Sendable {
     private let usernameAccount = "username"
     private let subscriberAccount = "subscriber"
 
-    private let queue = DispatchQueue(label: "com.trop.LastFMTokenStore", attributes: .concurrent)
+    // Serial: reads also write the cache.
+    private let queue = DispatchQueue(label: "com.trop.LastFMTokenStore")
 
+    /// "" caches a missing value, so a logged-out check skips the Keychain.
     private var cachedSessionKey: String?
     private var cachedUsername: String?
 
@@ -38,7 +40,7 @@ final class LastFMTokenStore: @unchecked Sendable {
         queue.sync {
             if let cached = cachedSessionKey { return cached.isEmpty ? nil : cached }
             let val: String? = loadString(for: sessionKeyAccount)
-            cachedSessionKey = val
+            cachedSessionKey = val ?? ""
             return val
         }
     }
@@ -52,7 +54,7 @@ final class LastFMTokenStore: @unchecked Sendable {
                 return fromDefaults
             }
             let val: String? = loadString(for: usernameAccount)
-            cachedUsername = val
+            cachedUsername = val ?? ""
             return val
         }
     }

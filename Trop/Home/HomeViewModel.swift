@@ -167,7 +167,6 @@ final class HomeViewModel {
         async let localTask: Void = storeLocalSections()
         _ = await localTask
         guard generation == loadGeneration else { return }
-        await personalization.drainEnrichments()
 
         async let phase2Work: Void = loadPhase2Sections()
 
@@ -261,15 +260,14 @@ final class HomeViewModel {
 
         async let ap: HomeSection = personalization.buildAccountPlaylists()
         async let dd: HomeSection = personalization.buildDailyDiscover()
-        async let ct: HomeSection = personalization.buildFromTheCommunity()
-        async let sr: [HomeSection] = personalization.buildSimilarRecommendations()
+        async let artistSections = personalization.buildArtistSections()
 
-        let (apResult, ddResult, ctResult, srResults) = await (ap, dd, ct, sr)
+        let (apResult, ddResult, artistResult) = await (ap, dd, artistSections)
         var phase2: [HomeSection] = []
         if !apResult.items.isEmpty { phase2.append(apResult) }
         if !ddResult.items.isEmpty { phase2.append(ddResult) }
-        if !ctResult.items.isEmpty { phase2.append(ctResult) }
-        phase2.append(contentsOf: srResults)
+        if !artistResult.community.items.isEmpty { phase2.append(artistResult.community) }
+        phase2.append(contentsOf: artistResult.similar)
         cachedPhase2Sections = phase2
 
         mergeSections()
@@ -381,6 +379,7 @@ final class HomeViewModel {
         }
 
         var byId: [String: HomeSection] = [:]
+        var firstSeenIds: [String] = []
         for section in filtered {
             if let existing = byId[section.id] {
                 if section.items.count > existing.items.count {
@@ -388,12 +387,18 @@ final class HomeViewModel {
                 }
             } else {
                 byId[section.id] = section
+                firstSeenIds.append(section.id)
             }
         }
 
-        return byId.values.sorted { a, b in
-            sectionWeight(a) > sectionWeight(b)
-        }
+        // Equal weights keep first-seen order; dictionary order changes between runs.
+        return firstSeenIds.compactMap { byId[$0] }
+            .enumerated()
+            .sorted { a, b in
+                let (weightA, weightB) = (sectionWeight(a.element), sectionWeight(b.element))
+                return weightA != weightB ? weightA > weightB : a.offset < b.offset
+            }
+            .map(\.element)
     }
 
     private func applyFilters(_ section: HomeSection) -> HomeSection {

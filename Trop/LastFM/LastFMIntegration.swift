@@ -36,14 +36,13 @@ final class LastFMIntegration {
     var isLoggedIn: Bool { LastFMTokenStore.shared.retrieveSessionKey() != nil }
 
     func start() {
-        // Observe NowPlaying via periodic polling + playState publisher
-        periodicTask?.cancel()
-        periodicTask = Task { [weak self] in
-            while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 1_000_000_000)
-                await self?.syncState()
+        // Observe NowPlaying via periodic polling (only while scrobbling is
+        // enabled; the publisher emits the current value first) + playState publisher
+        UserDefaults.standard.publisher(for: \.lastfmScrobblingEnable)
+            .sink { [weak self] enabled in
+                self?.setPeriodicSync(enabled: enabled)
             }
-        }
+            .store(in: &cancellables)
 
         NotificationCenter.default.addObserver(
             self, selector: #selector(handleNowPlayingChanged), name: .nowPlayingDidChange, object: nil)
@@ -64,6 +63,21 @@ final class LastFMIntegration {
         // Listen for likes if needed (via Notification)
         NotificationCenter.default.addObserver(
             self, selector: #selector(handleLikeNotification(_:)), name: .lastFMLikeChanged, object: nil)
+    }
+
+    private func setPeriodicSync(enabled: Bool) {
+        guard enabled else {
+            periodicTask?.cancel()
+            periodicTask = nil
+            return
+        }
+        guard periodicTask == nil else { return }
+        periodicTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+                await self?.syncState()
+            }
+        }
     }
 
     @objc private func handleNowPlayingChanged() { Task { await syncState() } }
@@ -142,20 +156,28 @@ final class LastFMIntegration {
 
     // MARK: - Scrobble lifecycle (mirrors ScrobbleManager.kt)
 
+    // Settings are typed into free-form text fields; clamp to the ranges the
+    // settings screen states (10–60s, 30–95%, 30–360s).
     private var minSongDuration: Int {
-        UserDefaults.standard.object(forKey: LastFMDefaults.scrobbleMinDurationKey) as? Int ?? LastFMDefaults.defaultScrobbleMinDuration
+        let stored = UserDefaults.standard.object(forKey: LastFMDefaults.scrobbleMinDurationKey) as? Int
+            ?? LastFMDefaults.defaultScrobbleMinDuration
+        return min(max(stored, 10), 60)
     }
     private var scrobbleDelayPercent: Float {
+        let stored: Float
         if let v = UserDefaults.standard.object(forKey: LastFMDefaults.scrobbleDelayPercentKey) as? Double {
-            return Float(v)
+            stored = Float(v)
+        } else if let f = UserDefaults.standard.object(forKey: LastFMDefaults.scrobbleDelayPercentKey) as? Float {
+            stored = f
+        } else {
+            stored = LastFMDefaults.defaultScrobbleDelayPercent
         }
-        if let f = UserDefaults.standard.object(forKey: LastFMDefaults.scrobbleDelayPercentKey) as? Float {
-            return f
-        }
-        return LastFMDefaults.defaultScrobbleDelayPercent
+        return min(max(stored, 0.30), 0.95)
     }
     private var scrobbleDelaySeconds: Int {
-        UserDefaults.standard.object(forKey: LastFMDefaults.scrobbleDelaySecondsKey) as? Int ?? LastFMDefaults.defaultScrobbleDelaySeconds
+        let stored = UserDefaults.standard.object(forKey: LastFMDefaults.scrobbleDelaySecondsKey) as? Int
+            ?? LastFMDefaults.defaultScrobbleDelaySeconds
+        return min(max(stored, 30), 360)
     }
     private var useNowPlaying: Bool {
         UserDefaults.standard.object(forKey: LastFMDefaults.useNowPlayingKey) as? Bool ?? false
@@ -278,5 +300,12 @@ final class LastFMIntegration {
         currentVideoId = nil
         currentSong = nil
         lastScrobbledVideoId = nil
+    }
+}
+
+private extension UserDefaults {
+    /// Named after the defaults key so KVO reports changes made through @AppStorage.
+    @objc dynamic var lastfmScrobblingEnable: Bool {
+        bool(forKey: LastFMDefaults.scrobblingEnabledKey)
     }
 }
