@@ -83,6 +83,10 @@ import UIKit
     var playerBackgroundStyle = Background.gradient
     var leftHandedTabBar = false
 }
+@Observable @MainActor final class SleepTimer {
+    static let shared = SleepTimer()
+    var isCelebrating = false
+}
 @Observable @MainActor final class NowPlaying {
     static let shared = NowPlaying()
     var isBarPresented = true

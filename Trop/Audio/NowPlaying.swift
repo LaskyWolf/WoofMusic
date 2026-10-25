@@ -378,7 +378,7 @@ final class NowPlaying {
             Task { await EpisodePlaybackStore.shared.markPlayed(videoId: finishedId) }
         }
         if SleepTimer.shared.stopsAtSongEnd {
-            SleepTimer.shared.cancel()
+            SleepTimer.shared.finishAtSongEnd()
             pauseAfterLastSong()
             return
         }

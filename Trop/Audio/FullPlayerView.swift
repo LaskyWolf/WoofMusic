@@ -148,6 +148,10 @@ struct FullPlayerView: View {
 
                     Color.clear.frame(height: 8)
                 }
+
+                SleepEndedOverlay(
+                    coverHeight: (geometry.size.height + artworkTopInset) * 0.58 - artworkTopInset
+                )
             }
             .animation(.easeInOut(duration: reduceMotion ? 0.15 : 0.25), value: showQueue)
             .animation(.easeInOut(duration: reduceMotion ? 0.15 : 0.25), value: showLyrics)

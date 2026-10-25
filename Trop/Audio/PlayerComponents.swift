@@ -91,7 +91,8 @@ struct PlayPauseGlyph: View {
                     .tint(color)
                     .transition(.opacity)
             } else {
-                Image(systemName: isPlaying ? "pause.fill" : "play.fill")
+                // A moon replaces the button while the sleep timer animation plays.
+                Image(systemName: SleepTimer.shared.isCelebrating ? "moon.fill" : (isPlaying ? "pause.fill" : "play.fill"))
                     .font(.system(size: size))
                     .foregroundStyle(style)
                     .contentTransition(.symbolEffect(.replace))

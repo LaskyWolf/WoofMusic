@@ -436,6 +436,11 @@ private struct MoodDetailView: View {
     @State private var sections: [ExploreSection]?
     @State private var pendingRoute: DetailRoute?
 
+    init(mood: MoodItem) {
+        self.mood = mood
+        _sections = State(initialValue: MoodDetailCache.sections(for: mood))
+    }
+
     var body: some View {
         Group {
             if let sections {
@@ -465,9 +470,27 @@ private struct MoodDetailView: View {
                 pendingRoute = nil
             }
         }
-        .task {
-            sections = await ExploreViewModel.loadMoodDetail(mood)
+        .task { await refreshIfNeeded() }
+    }
+
+    /// Loads the page only when it is not cached yet or the cached copy is old.
+    /// A refresh replaces what is on screen only when the content really changed.
+    private func refreshIfNeeded() async {
+        guard !MoodDetailCache.isFresh(mood) else { return }
+        let loaded = await ExploreViewModel.loadMoodDetail(mood)
+        // A failed request returns nothing: keep the cached page.
+        if loaded.isEmpty {
+            if sections == nil { sections = [] }
+            return
         }
+        MoodDetailCache.store(loaded, for: mood)
+        if sections.map(Self.signature) != Self.signature(loaded) { sections = loaded }
+    }
+
+    private static func signature(_ sections: [ExploreSection]) -> String {
+        sections.map { section in
+            section.title + "|" + section.items.map(\.id).joined(separator: ",") + "|\(section.moods.count)"
+        }.joined(separator: ";")
     }
 }
 
