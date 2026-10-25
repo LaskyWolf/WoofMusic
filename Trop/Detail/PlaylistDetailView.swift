@@ -906,7 +906,7 @@ private struct CollaboratorBadge: View {
                             Text(person.name)
                             if person.isOwner { Text("Playlist owner") }
                         } icon: {
-                            Image(uiImage: icons[person.name] ?? Self.icon(avatar: nil, crowned: person.isOwner))
+                            Image(uiImage: icons[person.name] ?? CollaboratorIcon.make(avatar: nil, crowned: person.isOwner))
                                 .renderingMode(.original)
                         }
                         .labelStyle(.titleAndIcon)
@@ -950,13 +950,15 @@ private struct CollaboratorBadge: View {
                 if let url = person.avatarUrl.flatMap(URL.init) {
                     avatar = try? await ArtworkLoader.image(for: url)
                 }
-                icons[person.name] = Self.icon(avatar: avatar, crowned: person.isOwner)
+                icons[person.name] = CollaboratorIcon.make(avatar: avatar, crowned: person.isOwner)
             }
         }
     }
+}
 
+enum CollaboratorIcon {
     /// Round picture for a menu row; the owner gets a tilted gold crown on the top left.
-    private static func icon(avatar: UIImage?, crowned: Bool) -> UIImage {
+    static func make(avatar: UIImage?, crowned: Bool) -> UIImage {
         let canvas = CGSize(width: 44, height: 44)
         let face = CGRect(x: 5, y: 8, width: 34, height: 34)
         return UIGraphicsImageRenderer(size: canvas).image { context in

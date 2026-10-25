@@ -39,15 +39,6 @@ struct SongActionsMenu<MenuLabel: View>: View {
     @State private var isResolvingArtist = false
     @State private var adderAvatar: UIImage?
 
-    /// Round 36 pt picture for the menu row.
-    private static func circle(_ image: UIImage) -> UIImage {
-        let size = CGSize(width: 36, height: 36)
-        return UIGraphicsImageRenderer(size: size).image { _ in
-            UIBezierPath(ovalIn: CGRect(origin: .zero, size: size)).addClip()
-            image.draw(in: CGRect(origin: .zero, size: size))
-        }
-    }
-
     var body: some View {
         host {
             // Compact icon row at the top, like Apple Music's song menu.
@@ -73,6 +64,8 @@ struct SongActionsMenu<MenuLabel: View>: View {
                         if adder.isOwner { Text("Playlist owner") }
                         if let avatar = adderAvatar {
                             Image(uiImage: avatar).renderingMode(.original)
+                        } else if adder.isOwner {
+                            Image(uiImage: CollaboratorIcon.make(avatar: nil, crowned: true)).renderingMode(.original)
                         } else {
                             Image(systemName: "person.crop.circle.fill")
                         }
@@ -124,7 +117,8 @@ struct SongActionsMenu<MenuLabel: View>: View {
         }
         .task(id: song.addedBy?.avatarUrl) {
             guard let url = song.addedBy?.avatarUrl.flatMap(URL.init) else { return }
-            adderAvatar = (try? await ArtworkLoader.image(for: url)).map(Self.circle)
+            let isOwner = song.addedBy?.isOwner ?? false
+            adderAvatar = (try? await ArtworkLoader.image(for: url)).map { CollaboratorIcon.make(avatar: $0, crowned: isOwner) }
         }
         .confirmationDialog("Go to Artist", isPresented: $showArtistPicker, titleVisibility: .visible) {
             ForEach(song.artists.filter { !$0.name.isEmpty }, id: \.self) { artist in

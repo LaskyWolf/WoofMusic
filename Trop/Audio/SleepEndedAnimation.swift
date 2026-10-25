@@ -305,9 +305,10 @@ private enum GlowImage {
         outset: Double,
         waves: Bool
     ) -> CGImage? {
-        guard strength > 0.001 else { return nil }
+        // Zero or NaN sizes appear while the player is being presented: they would crash the Int conversion below.
+        guard strength > 0.001, size.width > 10, size.height > 10, scale > 0.03 else { return nil }
         let pad = padding * scale
-        let cell = 5 * scale
+        let cell = 8 * scale
         let width = Double(size.width)
         let height = Double(size.height)
         let cols = Int(((width + 2 * pad) / cell).rounded(.up))
