@@ -74,7 +74,7 @@ struct MiniPlayerBarView: View {
         }
         .frame(height: barHeight)
         .frame(maxWidth: .infinity)
-        .overlay(alignment: .bottom) { progressLine }
+        .overlay(alignment: .bottom) { MiniPlayerProgressLine() }
         .clipShape(Capsule())
         .onChange(of: np.videoId) { _, _ in
             dragOffset = 0
@@ -142,7 +142,8 @@ struct MiniPlayerBarView: View {
                         font: .system(size: 13, weight: .semibold),
                         frameHeight: 16,
                         textColor: titleColor,
-                        isPaused: isTransitioning
+                        // Neighbor pages sit off screen; only the current title scrolls.
+                        isPaused: isTransitioning || song.videoId != currentSong?.videoId
                     )
                 }
 
@@ -185,17 +186,6 @@ struct MiniPlayerBarView: View {
                 .contentShape(Rectangle())
         })
         .accessibilityLabel(np.isPlaying ? "Pause" : "Play")
-    }
-
-    private var progressLine: some View {
-        GeometryReader { geo in
-            let progressWidth = max(0, min(geo.size.width, geo.size.width * CGFloat(np.progress)))
-            Rectangle()
-                .fill(.tint)
-                .frame(width: progressWidth, height: 2)
-        }
-        .frame(height: 2)
-        .allowsHitTesting(false)
     }
 
     // MARK: - Data
@@ -287,6 +277,23 @@ struct MiniPlayerBarView: View {
             withAnimation(nil) { dragOffset = 0 }
             isCommitting = false
         }
+    }
+}
+
+/// The bottom progress line. Its own view so only the line, not the whole bar,
+/// redraws as playback advances.
+private struct MiniPlayerProgressLine: View {
+    private let np = NowPlaying.shared
+
+    var body: some View {
+        GeometryReader { geo in
+            let progressWidth = max(0, min(geo.size.width, geo.size.width * CGFloat(np.progress)))
+            Rectangle()
+                .fill(.tint)
+                .frame(width: progressWidth, height: 2)
+        }
+        .frame(height: 2)
+        .allowsHitTesting(false)
     }
 }
 

@@ -61,8 +61,8 @@ struct QueueView: View {
                             .listRowBackground(Color.clear)
                             .listRowSeparator(.hidden)
                     } else {
-                        ForEach(Array(np.queueSongs.enumerated()), id: \.element.videoId) { index, song in
-                            queueRow(song: song, index: index)
+                        ForEach(Array(queueRows.enumerated()), id: \.element.id) { index, row in
+                            queueRow(song: row.song, index: index)
                         }
                         .onMove(perform: np.moveQueueSongs)
                     }
@@ -78,6 +78,17 @@ struct QueueView: View {
                     }
                 }
             }
+        }
+    }
+
+    /// The queue with a unique id per row: the video id, plus a counter for
+    /// repeats, since the same song can be queued more than once.
+    private var queueRows: [(id: String, song: SongItem)] {
+        var seen: [String: Int] = [:]
+        return np.queueSongs.map { song in
+            let count = seen[song.videoId, default: 0]
+            seen[song.videoId] = count + 1
+            return (count == 0 ? song.videoId : "\(song.videoId)#\(count)", song)
         }
     }
 

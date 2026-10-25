@@ -119,27 +119,36 @@ actor LyricsManager {
         }
         guard !candidates.isEmpty else { throw LyricsError.notFound }
 
-        let results = await withTaskGroup(of: ProviderHit?.self) { group in
+        // Returns as soon as no higher-priority provider is still pending,
+        // instead of waiting for every provider (each up to 10 s).
+        let best = await withTaskGroup(of: (Int, ProviderHit?).self, returning: ProviderHit?.self) { group in
             for (index, provider) in candidates {
                 group.addTask {
                     do {
                         let lines = try await Self.withTimeout(seconds: 10) {
                             try await provider.fetch(query: query)
                         }
-                        guard !lines.isEmpty else { return nil }
-                        return ProviderHit(order: index, lines: lines, providerName: provider.name)
+                        guard !lines.isEmpty else { return (index, nil) }
+                        return (index, ProviderHit(order: index, lines: lines, providerName: provider.name))
                     } catch {
-                        return nil
+                        return (index, nil)
                     }
                 }
             }
-            var collected: [ProviderHit] = []
-            for await item in group {
-                if let item { collected.append(item) }
+            var pending = Set(candidates.map(\.index))
+            var winner: ProviderHit?
+            while let item = await group.next() {
+                let (index, hit) = item
+                pending.remove(index)
+                if let hit, hit.order < (winner?.order ?? .max) { winner = hit }
+                if let found = winner, !pending.contains(where: { $0 < found.order }) {
+                    group.cancelAll()
+                    break
+                }
             }
-            return collected
+            return winner
         }
-        guard let best = results.min(by: { $0.order < $1.order }) else {
+        guard let best else {
             throw LyricsError.notFound
         }
         return (best.lines, best.providerName)

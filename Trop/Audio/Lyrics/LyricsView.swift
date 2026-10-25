@@ -17,7 +17,6 @@ struct LyricsView: View {
     @State private var lines: [LyricLine] = []
     @State private var isLoading = true
     @State private var activeIndex: Int = 0
-    @State private var displayTime: TimeInterval = 0
     @State private var instrumentalGaps: [InstrumentalGap] = []
     @State private var romanizedLines: [String?] = []
 
@@ -42,8 +41,8 @@ struct LyricsView: View {
             lyricsBody
                 .layoutPriority(1)
         }
+        .background { LyricsTimeTracker(onTimeChange: updateActiveLine) }
         .task(id: np.videoId) { await loadLyrics() }
-        .onChange(of: np.currentTime) { _, _ in updateActiveLine() }
         .onChange(of: settings.lyricsOffsetSeconds) { _, _ in updateActiveLine() }
         .onChange(of: settings.romanizeCurrentTrack) { _, _ in
             Task { await rebuildRomanization() }
@@ -51,7 +50,6 @@ struct LyricsView: View {
         .onChange(of: LyricsState.shared.refreshToken) { _, _ in
             Task { await loadLyrics() }
         }
-        .task { await runDisplayTimer() }
     }
 
     // MARK: - Header
@@ -237,8 +235,7 @@ struct LyricsView: View {
     /// A lyric line plus its interval ring, which only exists in the hierarchy
     /// while playback is actually inside the gap.
     private func lyricsLineRow(index: Int, line: LyricLine) -> some View {
-        let gap = instrumentalGaps.last(where: { $0.afterIndex == index })
-        let showRing = settings.showIntervalIndicator && gap != nil && isVisibleInGap(gap!)
+        let gap = settings.showIntervalIndicator ? instrumentalGaps.last(where: { $0.afterIndex == index }) : nil
         let romanized = romanization(for: index)
 
         return VStack(spacing: 0) {
@@ -259,17 +256,14 @@ struct LyricsView: View {
                 }
             )
 
-            if showRing, let gap {
-                IntervalIndicatorView(
-                    start: gap.start,
-                    end: gap.end - 0.65,
-                    now: displayTime + settings.lyricsOffsetSeconds,
+            if let gap {
+                InstrumentalGapRing(
+                    gap: gap,
+                    offset: settings.lyricsOffsetSeconds,
                     color: intervalIndicatorColor
                 )
-                .transition(.opacity.combined(with: .scale(scale: 0.6)))
             }
         }
-        .animation(.easeInOut(duration: 0.2), value: showRing)
     }
 
     /// Metrolist's expressiveAccent: white on dynamic (album art) backgrounds,
@@ -333,12 +327,6 @@ struct LyricsView: View {
         return gaps
     }
 
-    /// The ring disappears slightly before vocals resume, like Metrolist's -650ms.
-    private func isVisibleInGap(_ gap: InstrumentalGap) -> Bool {
-        let t = displayTime + settings.lyricsOffsetSeconds
-        return t >= gap.start && t <= gap.end - 0.65
-    }
-
     // MARK: - Romanization
 
     /// Transliterates lines off the main actor when the toggle is on.
@@ -347,22 +335,14 @@ struct LyricsView: View {
             romanizedLines = []
             return
         }
+        let generation = loadGeneration
         let texts = lines.map(\.text)
-        romanizedLines = await Task.detached(priority: .userInitiated) {
+        let romanized = await Task.detached(priority: .userInitiated) {
             texts.map { LyricsRomanizer.romanize($0) }
         }.value
-    }
-
-    /// Fires on an adaptive cadence so letter-sync stays smooth while playing
-    private func runDisplayTimer() async {
-        while !Task.isCancelled {
-            let playing = np.isPlaying
-            let hasSynced = lines.contains { $0.startTime != nil }
-            let interval: UInt64 = (playing && hasSynced) ? 120_000_000 : 500_000_000
-            let t = np.currentTime
-            if t != displayTime { displayTime = t }
-            try? await Task.sleep(nanoseconds: interval)
-        }
+        // A newer song may have loaded while this ran.
+        guard generation == loadGeneration else { return }
+        romanizedLines = romanized
     }
 
     // MARK: - Data
@@ -380,6 +360,7 @@ struct LyricsView: View {
         }
         lines = []
         instrumentalGaps = []
+        romanizedLines = []
         activeIndex = 0
         hasPositionedInitialLyrics = false
         isAutoScrollEnabled = true
@@ -414,6 +395,46 @@ struct LyricsView: View {
         if idx != activeIndex {
             activeIndex = idx
         }
+    }
+}
+
+// MARK: - Playback Tracking
+
+/// Reads `currentTime` so the lyrics list does not: the list redraws only when
+/// the active line changes, not on every playback tick.
+private struct LyricsTimeTracker: View {
+    let onTimeChange: () -> Void
+
+    var body: some View {
+        Color.clear
+            .onChange(of: NowPlaying.shared.currentTime) { _, _ in onTimeChange() }
+    }
+}
+
+/// The interval ring under a line, present only while playback is inside the
+/// gap. Reads `currentTime` itself so only this view follows playback.
+private struct InstrumentalGapRing: View {
+    let gap: LyricsView.InstrumentalGap
+    let offset: Double
+    let color: Color
+
+    var body: some View {
+        let now = NowPlaying.shared.currentTime + offset
+        // The ring disappears slightly before vocals resume, like Metrolist's -650ms.
+        let isVisible = now >= gap.start && now <= gap.end - 0.65
+
+        VStack(spacing: 0) {
+            if isVisible {
+                IntervalIndicatorView(
+                    start: gap.start,
+                    end: gap.end - 0.65,
+                    now: now,
+                    color: color
+                )
+                .transition(.opacity.combined(with: .scale(scale: 0.6)))
+            }
+        }
+        .animation(.easeInOut(duration: 0.2), value: isVisible)
     }
 }
 

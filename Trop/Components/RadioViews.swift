@@ -110,7 +110,7 @@ struct SimilarSongsView: View {
                 )
             } else {
                 List {
-                    ForEach(songs, id: \.videoId) { similar in
+                    ForEach(Array(songs.enumerated()), id: \.offset) { _, similar in
                         SongRowView(
                             song: similar,
                             onTap: {
