@@ -41,13 +41,6 @@ struct ExploreView: View {
                 }
             }
             .onAppear { viewModel.load() }
-            .task(id: viewModel.sections.count) {
-                let urls = viewModel.sections
-                    .flatMap(\.items)
-                    .compactMap(\.thumbnailUrl)
-                    .compactMap(URL.init)
-                await ImagePreloader.shared.preload(urls)
-            }
         }
     }
 
@@ -67,11 +60,16 @@ struct ExploreView: View {
                 description: Text("Try again later.")
             )
         case .failed:
-            ContentUnavailableView(
-                "Explore failed",
-                systemImage: "exclamationmark.triangle",
-                description: Text("Couldn't load Explore. Pull to retry.")
-            )
+            // Wrapped in a ScrollView so the "Pull to retry" gesture works.
+            ScrollView {
+                ContentUnavailableView(
+                    "Explore failed",
+                    systemImage: "exclamationmark.triangle",
+                    description: Text("Couldn't load Explore. Pull to retry.")
+                )
+                .containerRelativeFrame([.horizontal, .vertical])
+            }
+            .refreshable { await viewModel.refresh() }
         }
     }
 
@@ -144,7 +142,7 @@ struct ExploreSectionsList: View {
 
     private func cardsCarousel(_ section: ExploreSection) -> some View {
         HorizontalSection(title: section.title) {
-            HStack(alignment: .top, spacing: 12) {
+            LazyHStack(alignment: .top, spacing: 12) {
                 ForEach(section.items, id: \.id) { item in
                     YouTubeGridItemView(item: item, onTap: {
                         openItem(item)

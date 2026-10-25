@@ -3,6 +3,7 @@
 //  Trop
 //
 
+import ImageIO
 import PhotosUI
 import SwiftUI
 
@@ -41,8 +42,10 @@ struct PlaylistCoverPicker: View {
             guard let newItem else { return }
             Task {
                 if let data = try? await newItem.loadTransferable(type: Data.self),
-                   let picked = UIImage(data: data) {
-                    image = picked.centerCroppedSquare()
+                   let picked = await Task.detached(priority: .userInitiated, operation: {
+                       downsampledSquareCover(from: data)
+                   }).value {
+                    image = picked
                 }
                 item = nil
             }
@@ -69,6 +72,25 @@ struct PlaylistCoverPicker: View {
         .frame(width: 160, height: 160)
         .clipShape(RoundedRectangle(cornerRadius: DesignTokens.tileRadius))
     }
+}
+
+/// Long side of the decoded photo. PlaylistCoverUploader keeps at most
+/// 1024 px, and 2048 leaves the short side above that for common photo shapes.
+private let coverDecodeMaxPixelSize = 2048
+
+/// Decodes the photo already shrunk (not at full camera resolution), then
+/// crops it square. Runs off the main thread.
+private func downsampledSquareCover(from data: Data) -> UIImage? {
+    let options: [CFString: Any] = [
+        kCGImageSourceCreateThumbnailFromImageAlways: true,
+        kCGImageSourceCreateThumbnailWithTransform: true,
+        kCGImageSourceThumbnailMaxPixelSize: coverDecodeMaxPixelSize
+    ]
+    guard let source = CGImageSourceCreateWithData(data as CFData, nil),
+          let cgImage = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else {
+        return nil
+    }
+    return UIImage(cgImage: cgImage).centerCroppedSquare()
 }
 
 /// Edit Playlist: cover and name, saved together with Done.

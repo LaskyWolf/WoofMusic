@@ -271,16 +271,14 @@ struct ArtistDetailView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
-    @State private var scrollOffset: CGFloat = 0
+    /// 0...1 fade of the top bar. Clamped in the scroll-geometry transform, so
+    /// the view only updates while the offset is inside the fade range.
+    @State private var barProgress: CGFloat = 0
     @State private var linkCopied = false
     @State private var linkResetTask: Task<Void, Never>?
 
     private static let barFadeStart: CGFloat = 80
     private static let barFadeDistance: CGFloat = 120
-
-    private var barProgress: CGFloat {
-        min(max((scrollOffset - Self.barFadeStart) / Self.barFadeDistance, 0), 1)
-    }
 
     init(browseId: String) {
         self.browseId = browseId
@@ -304,9 +302,9 @@ struct ArtistDetailView: View {
             .miniPlayerTracksScroll()
             .onScrollGeometryChange(
                 for: CGFloat.self,
-                of: { $0.contentOffset.y },
-                action: { _, newOffset in
-                    scrollOffset = newOffset
+                of: { min(max(($0.contentOffset.y - Self.barFadeStart) / Self.barFadeDistance, 0), 1) },
+                action: { _, newProgress in
+                    barProgress = newProgress
                 }
             )
             .ignoresSafeArea(edges: .top)
@@ -710,7 +708,7 @@ struct ArtistDetailView: View {
                 .padding(.top, 24)
 
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: spacing) {
+                LazyHStack(spacing: spacing) {
                     content()
                 }
                 .padding(.horizontal, 16)
