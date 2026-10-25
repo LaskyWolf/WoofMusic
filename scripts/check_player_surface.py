@@ -85,6 +85,7 @@ import UIKit
 @Observable @MainActor final class NowPlaying {
     static let shared = NowPlaying()
     var isBarPresented = true
+    var isLoadingTrack = false
     var dominantColors: [Color] = [.purple, .black]
     var accentColor: Color? = .purple
 }
