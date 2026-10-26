@@ -24,15 +24,25 @@ final class PlaylistDetailViewModel {
     /// Bumped by each auto-playlist load, so an older load that finishes late
     /// can't overwrite the result of a newer sort or period choice.
     @ObservationIgnored private var autoLoadGeneration = 0
+    /// Shared-playlist header from the last visit, shown until the network load lands.
+    let cachedHeader: PlaylistHeaderSnapshot?
 
     init(playlistId: String) {
         self.playlistId = playlistId
         self.autoRoute = nil
+        self.cachedHeader = PlaylistHeaderCache.snapshot(for: playlistId)
     }
 
     init(autoPlaylistRoute: AutoPlaylistRoute) {
         self.playlistId = ""
         self.autoRoute = autoPlaylistRoute
+        self.cachedHeader = nil
+    }
+
+    /// Collaborators can add and remove songs. Falls back to the cached header
+    /// so the edit buttons don't wait for the network.
+    var isCollaborative: Bool {
+        playlist?.isCollaborative ?? cachedHeader?.isCollaborative ?? false
     }
 
     /// Fetches every playlist page from InnerTube and parses the response.
@@ -68,6 +78,7 @@ final class PlaylistDetailViewModel {
             // Show the playlist first, then save it: 200+ rows take a while to write.
             playlist = parsed
             isLoading = false
+            PlaylistHeaderCache.store(parsed, for: playlistId)
             await persist(parsed, rows: rows, browseId: browseId)
         } catch {
             // A saved copy stays on screen when the refresh fails.
@@ -151,7 +162,7 @@ final class PlaylistDetailViewModel {
             arguments: [playlistId]
         )
         let songItems = songs.toSongItems()
-        return PlaylistDetailInfo(
+        var info = PlaylistDetailInfo(
             title: entity.name,
             authorName: nil,
             authorBrowseId: nil,
@@ -163,6 +174,8 @@ final class PlaylistDetailViewModel {
             playlistId: playlistId,
             songs: songItems
         )
+        if let cachedHeader { info.apply(cachedHeader) }
+        return info
     }
 
     private func loadAutoPlaylist(route: AutoPlaylistRoute) async {
@@ -450,12 +463,12 @@ struct PlaylistDetailView: View {
     }
 
     var isEditable: Bool {
-        playlistEntity?.isEditable == true && viewModel.autoRoute == nil
+        (playlistEntity?.isEditable == true || viewModel.playlist?.isEditable == true) && viewModel.autoRoute == nil
     }
 
     /// Owners and collaborators can add and remove songs; only owners delete the playlist.
     var canEditSongs: Bool {
-        isEditable || (viewModel.playlist?.isCollaborative == true && viewModel.autoRoute == nil)
+        isEditable || (viewModel.isCollaborative && viewModel.autoRoute == nil)
     }
 
     var body: some View {
@@ -727,11 +740,6 @@ struct PlaylistDetailView: View {
                     onRemove: canEditSongs ? { Task { await removeSongs([song]) } } : nil
                 )
                 .trackRowFrame(selection, index: index)
-
-                if index < playlist.songs.count - 1 {
-                    Divider()
-                        .padding(.leading, 68)
-                }
             }
         }
         .songSelectionColumn(selection, songs: playlist.songs)
@@ -849,6 +857,7 @@ struct AddSongToPlaylistView: View {
                                 }
                             }
                             .padding(.vertical, 2)
+                            .listRowSeparator(.hidden)
                         }
                     }
                     .searchable(text: $searchText, prompt: "Search songs")

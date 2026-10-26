@@ -164,8 +164,7 @@ struct LibraryView: View {
                     itemCell(
                         url: playlist.thumbnailUrl,
                         title: playlist.name,
-                        subtitle: playlistSongCounts[playlist.id].map { "\($0) songs" },
-                        isLast: playlist.id == playlists.last?.id
+                        subtitle: playlistSongCounts[playlist.id].map { "\($0) songs" }
                     )
                 }
                 .buttonStyle(ZoomPressStyle(scale: pressScale))
@@ -196,34 +195,60 @@ struct LibraryView: View {
             }
         }
         .padding(.horizontal, DesignTokens.screenHPadding)
+        // The chip bar already pads 8pt below; this doubles the gap to the tiles.
+        .padding(.top, 8)
         .padding(.bottom, DesignTokens.sectionGap)
     }
 
+    /// Same look as Explore's mood cards, in the accent colour.
     private func shortcutTile(info: AutoPlaylistInfo) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
+        let accent = settings.accentColor
+        let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
+        return ZStack(alignment: .bottomLeading) {
+            LinearGradient(
+                colors: [accent, accent.mix(with: .black, by: 0.3)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            // Light from above, so the tile reads as a raised surface.
+            LinearGradient(colors: [.white.opacity(0.16), .clear], startPoint: .top, endPoint: .center)
+
+            // Larger than the tile and tilted left, so the tile edge crops it.
             Image(systemName: info.icon)
-                .font(.title3)
-            Spacer(minLength: 12)
-            Text(info.title)
-                .font(.subheadline.weight(.semibold))
-                .lineLimit(1)
-                .minimumScaleFactor(0.85)
-            Group {
-                if info.id == "downloads" {
-                    DownloadsSubtitle()
-                } else if let subtitle = info.subtitle {
-                    Text(subtitle)
+                .font(.system(size: 64, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.3))
+                .rotationEffect(.degrees(-18))
+                .offset(x: 20, y: 10)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(info.title)
+                    .font(.subheadline.weight(.bold))
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.8)
+                    .multilineTextAlignment(.leading)
+                Group {
+                    if info.id == "downloads" {
+                        DownloadsSubtitle()
+                    } else if let subtitle = info.subtitle {
+                        Text(subtitle)
+                    }
                 }
+                .font(.caption2.weight(.semibold))
+                .opacity(0.85)
+                .lineLimit(1)
             }
-            .font(.caption)
-            .opacity(0.8)
-            .lineLimit(1)
+            .foregroundStyle(.white)
+            .shadow(color: .black.opacity(0.3), radius: 2, y: 1)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(12)
         }
-        .foregroundStyle(.white)
-        .padding(12)
-        .frame(maxWidth: .infinity, minHeight: 92, alignment: .leading)
-        .background(autoPlaylistGradient(), in: .rect(cornerRadius: 14, style: .continuous))
-        .contentShape(.rect(cornerRadius: 14, style: .continuous))
+        .frame(maxWidth: .infinity)
+        .frame(height: 108)
+        .clipShape(shape)
+        .contentShape(shape)
+        .shadow(color: accent.opacity(0.4), radius: 6, y: 4)
         .accessibilityElement(children: .combine)
     }
 
@@ -238,8 +263,7 @@ struct LibraryView: View {
                             url: artist.thumbnailUrl,
                             title: artist.name,
                             subtitle: artist.isPodcastChannel ? "Podcast Channel" : "Artist",
-                            isCircular: true,
-                            isLast: artist.id == artists.last?.id
+                            isCircular: true
                         )
                     } else {
                         artistCell(
@@ -265,8 +289,7 @@ struct LibraryView: View {
                         title: album.title,
                         subtitle: isList
                             ? albumDetails(album)
-                            : (album.songCount > 0 ? "\(album.songCount) songs" : nil),
-                        isLast: album.id == albums.last?.id
+                            : (album.songCount > 0 ? "\(album.songCount) songs" : nil)
                     )
                 }
                 .buttonStyle(ZoomPressStyle(scale: pressScale))
@@ -286,8 +309,7 @@ struct LibraryView: View {
                         title: podcast.name,
                         // The library stores no author, so the row names the kind.
                         subtitle: isList ? "Podcast" : nil,
-                        opensPage: false,
-                        isLast: podcast.id == podcasts.last?.id
+                        opensPage: false
                     )
                 }
                 .buttonStyle(ZoomPressStyle(scale: pressScale))
@@ -337,19 +359,10 @@ struct LibraryView: View {
         .padding(.vertical, 8)
     }
 
-    private func autoPlaylistGradient() -> LinearGradient {
-        let accent = settings.accentColor
-        return LinearGradient(
-            colors: [accent.opacity(0.55), accent],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-        )
-    }
-
     @ViewBuilder
-    private func itemCell(url: String?, title: String, subtitle: String?, opensPage: Bool = true, isLast: Bool = false) -> some View {
+    private func itemCell(url: String?, title: String, subtitle: String?, opensPage: Bool = true) -> some View {
         if isList {
-            listRow(url: url, title: title, subtitle: subtitle, isCircular: false, isLast: isLast)
+            listRow(url: url, title: title, subtitle: subtitle, isCircular: false)
         } else {
             gridCell(url: url, title: title, subtitle: subtitle, opensPage: opensPage)
         }
@@ -369,41 +382,9 @@ struct LibraryView: View {
         }
     }
 
-    /// List layout: artwork on the left, title over a details line, a separator
-    /// under every row but the last (inset to the text, like Downloads).
-    private func listRow(url: String?, title: String, subtitle: String?, isCircular: Bool, isLast: Bool) -> some View {
-        HStack(spacing: DesignTokens.rowSpacing) {
-            AsyncImageView(url: url)
-                .frame(width: DesignTokens.thumbMedium, height: DesignTokens.thumbMedium)
-                .clipShape(isCircular
-                    ? AnyShape(Circle())
-                    : AnyShape(RoundedRectangle(cornerRadius: DesignTokens.cardRadius, style: .continuous)))
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.subheadline)
-                    .fontWeight(.medium)
-                    .foregroundColor(.primary)
-                    .lineLimit(1)
-                if let subtitle, !subtitle.isEmpty {
-                    Text(subtitle)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                        .lineLimit(1)
-                }
-            }
-
-            Spacer(minLength: 0)
-        }
-        .padding(.horizontal, DesignTokens.screenHPadding)
-        .padding(.vertical, DesignTokens.rowVPadding)
-        .contentShape(Rectangle())
-        .overlay(alignment: .bottom) {
-            if !isLast {
-                Divider()
-                    .padding(.leading, DesignTokens.screenHPadding + DesignTokens.thumbMedium + DesignTokens.rowSpacing)
-            }
-        }
+    private func listRow(url: String?, title: String, subtitle: String?, isCircular: Bool) -> some View {
+        MediaListRow(url: url, title: title, subtitle: subtitle, isCircular: isCircular)
+            .padding(.horizontal, DesignTokens.screenHPadding)
     }
 
     /// "12 songs • 45:30" from what the library stores (it keeps no artist or year).

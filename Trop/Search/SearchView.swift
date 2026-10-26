@@ -195,9 +195,6 @@ struct SearchView: View {
                         }
                         .tint(.red)
                     }
-
-                    Divider()
-                        .padding(.leading, 16)
                 }
             }
         }

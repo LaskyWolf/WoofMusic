@@ -394,11 +394,6 @@ struct AlbumDetailView: View {
                     onSelect: { selection.begin(with: song) }
                 )
                 .trackRowFrame(selection, index: index)
-
-                if index < album.songs.count - 1 {
-                    Divider()
-                        .padding(.leading, 68)
-                }
             }
         }
         .songSelectionColumn(selection, songs: album.songs)

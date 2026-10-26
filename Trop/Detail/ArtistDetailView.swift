@@ -270,6 +270,7 @@ struct ArtistDetailView: View {
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.isInRouterSheet) private var isInRouterSheet
 
     /// 0...1 fade of the top bar. Clamped in the scroll-geometry transform, so
     /// the view only updates while the offset is inside the fade range.
@@ -334,8 +335,11 @@ struct ArtistDetailView: View {
 
             topBarCopyLinkButton
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 6)
+        // A sheet has no status bar above it: inset the bar so the round
+        // buttons clear the sheet's top corners.
+        .padding(.horizontal, isInRouterSheet ? 20 : 8)
+        .padding(.top, isInRouterSheet ? 18 : 6)
+        .padding(.bottom, 6)
         .background(
             Color(.systemBackground)
                 .opacity(barProgress)
@@ -557,24 +561,20 @@ struct ArtistDetailView: View {
 
     @ViewBuilder
     private func songsSection(songs: [SongItem]) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 0) {
             Text("Songs")
                 .font(.title2)
                 .fontWeight(.bold)
                 .padding(.horizontal, 16)
                 .padding(.top, 20)
+                .padding(.bottom, 4)
 
-            ForEach(Array(songs.enumerated()), id: \.offset) { index, song in
+            ForEach(Array(songs.enumerated()), id: \.offset) { _, song in
                 SongRowView(
                     song: song,
                     onTap: { playSong(song) },
                     onNavigate: { AppRouter.shared.open($0) }
                 )
-
-                if index < songs.count - 1 {
-                    Divider()
-                        .padding(.leading, 72)
-                }
             }
         }
     }

@@ -5,6 +5,7 @@
 //  Created by 686udjie on 21/08/2026.
 //
 
+import GRDB
 import SwiftUI
 
 /// The "⋯" song menu: a native pull-down menu, like Apple Music.
@@ -367,15 +368,9 @@ private struct ArtistPickerSheet: View {
                 Button {
                     onPick(artist)
                 } label: {
-                    HStack {
-                        Label(artist.name, systemImage: "music.mic")
-                            .foregroundStyle(.primary)
-                        Spacer()
-                        Image(systemName: "chevron.right")
-                            .font(.footnote.weight(.semibold))
-                            .foregroundStyle(.tertiary)
-                    }
+                    ArtistPickerRow(artist: artist)
                 }
+                .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
             }
             .listStyle(.plain)
             .navigationTitle("Go to Artist")
@@ -390,33 +385,123 @@ private struct ArtistPickerSheet: View {
     }
 }
 
+/// Profile picture, name and kind of act. The picture comes from the library
+/// when the artist is saved, otherwise from the artist page.
+private struct ArtistPickerRow: View {
+    let artist: YTArtist
+    @State private var thumbnailUrl: String?
+
+    private static let avatarSize: CGFloat = 52
+
+    var body: some View {
+        HStack(spacing: DesignTokens.menuRowSpacing) {
+            ZStack {
+                Circle().fill(Color(.tertiarySystemFill))
+                if let thumbnailUrl {
+                    AsyncImageView(url: thumbnailUrl)
+                } else {
+                    Image(systemName: "person.fill")
+                        .font(.title3)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .frame(width: Self.avatarSize, height: Self.avatarSize)
+            .clipShape(Circle())
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(artist.name)
+                    .font(.body.weight(.medium))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                ArtistKindLabel(name: artist.name)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 0)
+
+            Image(systemName: "chevron.right")
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(.tertiary)
+        }
+        .padding(.vertical, 6)
+        .contentShape(Rectangle())
+        .accessibilityElement(children: .combine)
+        .task(id: artist.id) {
+            thumbnailUrl = await Self.thumbnailUrl(browseId: artist.id)
+        }
+    }
+
+    private static func thumbnailUrl(browseId: String?) async -> String? {
+        guard let browseId else { return nil }
+        let pixels = Int(avatarSize * 3)
+        if let saved = try? await DatabaseService.shared.fetchOne(ArtistEntity.self, key: browseId)?.thumbnailUrl {
+            return ArtworkURLs.sized(saved, width: pixels, height: pixels)
+        }
+        guard let json = try? await InnerTubeClient.tropShared.browse(browseId: browseId) else { return nil }
+        let page = ArtistDetailViewModel.parseArtistDetail(from: json, browseId: browseId)
+        return ArtworkURLs.sized(page.thumbnailUrl, width: pixels, height: pixels)
+    }
+}
+
 // MARK: - Sleep Timer Picker
 
-/// The sleep timer options; picking one starts it and closes the sheet.
+/// A countdown wheel with Cancel and Start, like the Clock app's timer,
+/// plus an End of Song option.
 private struct SleepTimerSheet: View {
     @Environment(\.dismiss) private var dismiss
+    @State private var duration: TimeInterval
+
+    private static let lastMinutesKey = "sleepTimerLastMinutes"
+    private static let defaultMinutes = 15
+
+    init() {
+        let saved = UserDefaults.standard.integer(forKey: Self.lastMinutesKey)
+        let minutes = SleepTimer.shared.minutes ?? (saved > 0 ? saved : Self.defaultMinutes)
+        _duration = State(initialValue: TimeInterval(minutes * 60))
+    }
 
     var body: some View {
         let timer = SleepTimer.shared
+        let minutes = Int(duration / 60)
         NavigationStack {
-            List {
-                option("End of Song", systemImage: "music.note", isSelected: timer.stopsAtSongEnd) {
-                    timer.stopAtSongEnd()
-                }
-                ForEach(SleepTimer.presetMinutes, id: \.self) { minutes in
-                    option(minutes == 60 ? "1 Hour" : "\(minutes) Minutes", systemImage: "timer",
-                           isSelected: timer.minutes == minutes) {
-                        timer.start(minutes: minutes)
-                    }
-                }
+            VStack(spacing: 20) {
                 if timer.isActive {
-                    Button("Turn Off Timer", systemImage: "moon.zzz", role: .destructive) {
+                    SleepTimerStatus(timer: timer)
+                }
+
+                CountdownPicker(duration: $duration)
+                    .frame(maxWidth: .infinity)
+
+                HStack {
+                    ClockRoundButton(title: "Cancel", systemImage: "xmark", isAccent: false) {
                         timer.cancel()
+                    }
+                    .disabled(!timer.isActive)
+                    Spacer()
+                    ClockRoundButton(title: "Start", systemImage: "play.fill", isAccent: true) {
+                        UserDefaults.standard.set(minutes, forKey: Self.lastMinutesKey)
+                        timer.start(minutes: minutes)
                         dismiss()
                     }
+                    .disabled(minutes < 1)
                 }
+
+                Button {
+                    timer.stopAtSongEnd()
+                    dismiss()
+                } label: {
+                    Label("End of Song", systemImage: "music.note")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.large)
+                .accessibilityAddTraits(timer.stopsAtSongEnd ? .isSelected : [])
             }
-            .listStyle(.plain)
+            .padding(.horizontal, 20)
+            .padding(.top, 8)
+            .frame(maxHeight: .infinity, alignment: .top)
             .navigationTitle("Sleep Timer")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -425,27 +510,111 @@ private struct SleepTimerSheet: View {
                 }
             }
         }
-        .appSheetChrome()
+        // Tall enough for the status line, the 216pt wheel, the buttons and
+        // End of Song; large stays available for big Dynamic Type sizes.
+        .appSheetChrome([.height(580), .large])
     }
+}
 
-    private func option(_ title: String, systemImage: String, isSelected: Bool,
-                        action: @escaping () -> Void) -> some View {
-        Button {
-            action()
-            dismiss()
-        } label: {
-            HStack {
-                Label(title, systemImage: systemImage)
-                    .foregroundStyle(.primary)
-                Spacer()
-                if isSelected {
-                    Image(systemName: "checkmark")
-                        .fontWeight(.semibold)
-                        .foregroundStyle(.tint)
+/// One line saying the timer runs and when it pauses playback.
+private struct SleepTimerStatus: View {
+    let timer: SleepTimer
+
+    var body: some View {
+        Group {
+            if let endsAt = timer.endsAt {
+                TimelineView(.periodic(from: .now, by: 1)) { context in
+                    Label {
+                        Text("\(Self.countdown(endsAt.timeIntervalSince(context.date))) left · pauses at \(endsAt.formatted(date: .omitted, time: .shortened))")
+                            .monospacedDigit()
+                    } icon: {
+                        Image(systemName: "moon.zzz.fill")
+                    }
                 }
+            } else {
+                Label("Pauses when this song ends", systemImage: "moon.zzz.fill")
             }
         }
-        .accessibilityAddTraits(isSelected ? .isSelected : [])
+        .font(.subheadline.weight(.medium))
+        .foregroundStyle(.tint)
+    }
+
+    /// "12:34" or "1:05:00".
+    private static func countdown(_ seconds: TimeInterval) -> String {
+        let total = max(Int(seconds.rounded(.up)), 0)
+        let hours = total / 3600
+        let minutes = total / 60 % 60
+        let secs = total % 60
+        return hours > 0
+            ? String(format: "%d:%02d:%02d", hours, minutes, secs)
+            : String(format: "%d:%02d", minutes, secs)
+    }
+}
+
+/// The Clock app's round timer button: a tinted disc inside a thin ring.
+private struct ClockRoundButton: View {
+    let title: String
+    let systemImage: String
+    let isAccent: Bool
+    let action: () -> Void
+    @Environment(\.isEnabled) private var isEnabled
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(.title2.weight(.semibold))
+                .foregroundStyle(isAccent ? AnyShapeStyle(.tint) : AnyShapeStyle(.primary))
+                .frame(width: 72, height: 72)
+                .background(disc)
+                .padding(4)
+                .overlay(disc.mask { Circle().strokeBorder(lineWidth: 2) })
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .opacity(isEnabled ? 1 : 0.4)
+        .accessibilityLabel(title)
+    }
+
+    @ViewBuilder private var disc: some View {
+        if isAccent {
+            Circle().fill(.tint).opacity(0.22)
+        } else {
+            Circle().fill(Color(.tertiarySystemFill))
+        }
+    }
+}
+
+/// UIDatePicker in countdown mode: the Clock app's hours and min wheels.
+/// It never goes below one minute.
+private struct CountdownPicker: UIViewRepresentable {
+    @Binding var duration: TimeInterval
+
+    func makeUIView(context: Context) -> UIDatePicker {
+        let picker = UIDatePicker()
+        picker.datePickerMode = .countDownTimer
+        picker.preferredDatePickerStyle = .wheels
+        picker.addTarget(context.coordinator, action: #selector(Coordinator.changed(_:)), for: .valueChanged)
+        // Set after the first layout pass: a countdown picker configured
+        // before it is on screen skips its first value change.
+        let initial = duration
+        Task { @MainActor in picker.countDownDuration = initial }
+        return picker
+    }
+
+    func updateUIView(_ picker: UIDatePicker, context: Context) {
+        context.coordinator.duration = $duration
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator(duration: $duration) }
+
+    final class Coordinator: NSObject {
+        var duration: Binding<TimeInterval>
+
+        init(duration: Binding<TimeInterval>) { self.duration = duration }
+
+        @objc func changed(_ sender: UIDatePicker) {
+            duration.wrappedValue = sender.countDownDuration
+        }
     }
 }
 
@@ -460,6 +629,7 @@ struct AddSongToPlaylistSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var playlists: [PlaylistEntity] = []
+    @State private var songCounts: [String: Int] = [:]
     @State private var isLoading = true
     @State private var addedTo: Set<String> = []
     @State private var showNewPlaylistAlert = false
@@ -480,27 +650,29 @@ struct AddSongToPlaylistSheet: View {
                     )
                 } else {
                     List(playlists, id: \.id) { playlist in
+                        let isAdded = addedTo.contains(playlist.id)
                         Button {
                             addTo(playlist)
                         } label: {
-                            HStack {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(playlist.name)
-                                        .foregroundStyle(.primary)
-                                    if let count = playlist.remoteSongCount {
-                                        Text("\(count) songs")
-                                            .font(.footnote)
-                                            .foregroundStyle(.secondary)
-                                    }
-                                }
-                                Spacer()
-                                if addedTo.contains(playlist.id) {
+                            HStack(spacing: 12) {
+                                MediaListRow(
+                                    url: playlist.thumbnailUrl,
+                                    title: playlist.name,
+                                    subtitle: (songCounts[playlist.id] ?? playlist.remoteSongCount).map { "\($0) songs" }
+                                )
+                                if isAdded {
                                     Image(systemName: "checkmark")
+                                        .fontWeight(.semibold)
                                         .foregroundStyle(.green)
                                 }
                             }
                         }
+                        .accessibilityAddTraits(isAdded ? .isSelected : [])
+                        .listRowSeparator(.hidden)
+                        .listRowBackground(Color.clear)
+                        .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
                     }
+                    .listStyle(.plain)
                 }
             }
             .navigationTitle("Add to Playlist")
@@ -538,7 +710,23 @@ struct AddSongToPlaylistSheet: View {
 
     private func loadPlaylists() async {
         playlists = (try? await DatabaseService.shared.fetchPlaylists(limit: 100)) ?? []
+        songCounts = (try? await Self.fetchSongCounts()) ?? [:]
         isLoading = false
+    }
+
+    /// Saved songs per playlist, counted like the Library list.
+    private static func fetchSongCounts() async throws -> [String: Int] {
+        let rows: [(String, Int)] = try await DatabaseService.shared.read { db in
+            try Row.fetchAll(
+                db,
+                sql: "SELECT playlist_id, COUNT(*) as cnt "
+                    + "FROM playlist_song_map "
+                    + "WHERE EXISTS (SELECT 1 FROM song WHERE id = song_id) "
+                    + "GROUP BY playlist_id"
+            )
+            .map { ($0["playlist_id"] as String, $0["cnt"] as Int) }
+        }
+        return Dictionary(uniqueKeysWithValues: rows)
     }
 
     private func addTo(_ playlist: PlaylistEntity) {

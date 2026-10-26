@@ -169,7 +169,7 @@ struct ShimmerLoadingView: View {
                     ShimmerFill(radius: 8).aspectRatio(1, contentMode: .fit)
                 }
             }
-            .padding(.horizontal, DesignTokens.screenHPadding)
+            .padding(.horizontal, DesignTokens.screenHPadding + 20)
 
             HStack(spacing: 6) {
                 ForEach(0..<3, id: \.self) { _ in

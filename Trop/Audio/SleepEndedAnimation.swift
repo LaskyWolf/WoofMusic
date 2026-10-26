@@ -142,20 +142,18 @@ private struct SleepAnimationFrame: View {
     // MARK: - Title
 
     private func titleView(strength: Double) -> some View {
-        let fontSize = size.width * 0.145
-        return Text(SleepTimer.shared.message)
+        let fontSize = size.width * 0.17
+        // Script swashes reach past the glyphs' advance width, and Text clips
+        // ink outside its own box. En spaces on both ends widen that box.
+        return Text("\u{2002}\(SleepTimer.shared.message)\u{2002}")
             .font(.custom("GreatVibes-Regular", size: fontSize))
             .lineLimit(1)
             .minimumScaleFactor(0.5)
             .foregroundStyle(.white)
-            // The scale factor only sees the letters' advance width, not the
-            // swashes that reach past it. Capping the advance at 72% of the
-            // width keeps the swashes on screen.
-            .frame(maxWidth: size.width * 0.72)
             // Blur and shadows draw only inside the box, so it gets room for
             // the swashes.
-            .padding(.horizontal, fontSize * 0.6)
-            .padding(.vertical, fontSize * 0.2)
+            .padding(.horizontal, fontSize * 0.25)
+            .padding(.vertical, fontSize * 0.15)
             .shadow(color: Color(red: 0.04, green: 0.03, blue: 0.24).opacity(0.6), radius: 8, y: 2)
             .shadow(color: Color(red: 0.67, green: 0.63, blue: 1).opacity(0.5), radius: 12)
             .scaleEffect(0.94 + 0.06 * strength)

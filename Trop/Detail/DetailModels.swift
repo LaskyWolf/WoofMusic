@@ -69,3 +69,51 @@ struct PodcastDetailInfo {
     var isSubscribed: Bool
     var episodes: [EpisodeItem]
 }
+
+/// Header fields of a shared playlist from its last network load. Lets the
+/// edit buttons and collaborator avatars show on reopen before the refresh.
+struct PlaylistHeaderSnapshot: Codable, Equatable {
+    var isCollaborative: Bool
+    var collaboratorAvatarUrls: [String]
+    var collaboratorsPanelParams: String?
+    var descriptionText: String?
+}
+
+/// Snapshots by playlist id, kept in memory and in UserDefaults.
+/// Only shared playlists are stored: ownership already lives in the playlist table.
+@MainActor
+enum PlaylistHeaderCache {
+    private static let key = "playlistHeaderCache"
+    private static var entries: [String: PlaylistHeaderSnapshot] = {
+        guard let data = UserDefaults.standard.data(forKey: key) else { return [:] }
+        return (try? JSONDecoder().decode([String: PlaylistHeaderSnapshot].self, from: data)) ?? [:]
+    }()
+
+    static func snapshot(for playlistId: String) -> PlaylistHeaderSnapshot? {
+        entries[playlistId]
+    }
+
+    static func store(_ info: PlaylistDetailInfo, for playlistId: String) {
+        let isShared = info.isCollaborative || !info.collaboratorAvatarUrls.isEmpty
+        let snapshot = isShared ? PlaylistHeaderSnapshot(
+            isCollaborative: info.isCollaborative,
+            collaboratorAvatarUrls: info.collaboratorAvatarUrls,
+            collaboratorsPanelParams: info.collaboratorsPanelParams,
+            descriptionText: info.descriptionText
+        ) : nil
+        guard entries[playlistId] != snapshot else { return }
+        entries[playlistId] = snapshot
+        if let data = try? JSONEncoder().encode(entries) {
+            UserDefaults.standard.set(data, forKey: key)
+        }
+    }
+}
+
+extension PlaylistDetailInfo {
+    mutating func apply(_ snapshot: PlaylistHeaderSnapshot) {
+        isCollaborative = snapshot.isCollaborative
+        collaboratorAvatarUrls = snapshot.collaboratorAvatarUrls
+        collaboratorsPanelParams = snapshot.collaboratorsPanelParams
+        descriptionText = descriptionText ?? snapshot.descriptionText
+    }
+}

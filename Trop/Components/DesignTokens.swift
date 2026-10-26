@@ -44,5 +44,6 @@ enum DesignTokens {
 
     static let thumbSmall: CGFloat = 40
     static let thumbMedium: CGFloat = 48
+    static let thumbLarge: CGFloat = 60
     static let heroArtwork: CGFloat = 200
 }

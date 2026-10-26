@@ -98,15 +98,18 @@ struct FullPlayerView: View {
                             .padding(.top, 20)
                             .padding(.bottom, 16)
 
+                        // Hidden under an open panel: the glass is see-through.
                         PlayerLyricPreview(lines: syncedLyrics)
+                            .opacity(showQueue || showLyrics ? 0 : 1)
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .contentShape(Rectangle())
                     .gesture(playerSwipe())
+                    // No bottom padding: the panel covers the lyric line and the
+                    // progress bar's touch area leaves the gap above its track.
                     .overlay {
                         playerPanel
                             .padding(.horizontal, 20)
-                            .padding(.bottom, 12)
                     }
 
                     // No top padding: the bar's touch area already leaves a gap

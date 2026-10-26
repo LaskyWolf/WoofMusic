@@ -82,8 +82,15 @@ private struct RouterSheetModifier: ViewModifier {
                 DetailRouteDestinationView(route: route)
                     .detailRouteDestinations()
             }
+            .environment(\.isInRouterSheet, true)
         }
     }
+}
+
+extension EnvironmentValues {
+    /// True for pages shown by `routerSheet()`, so custom top bars can clear
+    /// the sheet's rounded corners.
+    @Entry var isInRouterSheet = false
 }
 
 extension View {
