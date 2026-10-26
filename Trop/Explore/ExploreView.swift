@@ -316,6 +316,21 @@ private enum MoodFamily {
 
     /// Families with two or more genres become one group card that opens a
     /// dialog with its genres. Everything else keeps its place.
+    /// An icon per sub-genre from its title. Two genres never share one: the
+    /// second falls back to the next free icon of the family's set.
+    static func uniqueIcons(for members: [MoodItem]) -> [UUID: String] {
+        let spare = ["music.note", "music.note.list", "headphones", "speaker.wave.2.fill", "star.fill", "heart.fill", "bolt.fill", "sparkles", "globe", "flame.fill"]
+        var used = Set<String>()
+        var icons: [UUID: String] = [:]
+        for mood in members {
+            var icon = MoodCard.symbol(for: mood.title)
+            if used.contains(icon) { icon = spare.first { !used.contains($0) } ?? icon }
+            used.insert(icon)
+            icons[mood.id] = icon
+        }
+        return icons
+    }
+
     static func entries(for moods: [MoodItem]) -> [Entry] {
         var members: [String: [MoodItem]] = [:]
         for mood in moods { if let f = family(of: mood.title) { members[f, default: []].append(mood) } }
@@ -352,8 +367,6 @@ private struct MoodCarousel: View {
     /// Fractional index of the card at the centre. Unbounded: `offset(of:)` wraps it.
     @State private var position: Double = 0
     @State private var dragStart: Double?
-    /// The family whose genres the dialog lists.
-    @State private var openGroup: (family: String, members: [MoodItem])?
 
     /// Finger travel that moves the row by one card: the arc's slope at the centre.
     private static let dragStep: Double = 75
@@ -394,20 +407,24 @@ private struct MoodCarousel: View {
         }
         .frame(maxWidth: .infinity)
         .frame(height: Self.height - Self.arcDrop, alignment: .bottom)
-        // Fixed on the centre slot, so the dialog points at the centre card.
+        // A family on the centre card opens the native pop-up menu anchored to
+        // it. The pan still wins on a drag, so swiping over it keeps working.
         .overlay(alignment: .bottom) {
-            Color.clear
-                .frame(width: Self.centreSize.width, height: Self.centreSize.height)
-                .allowsHitTesting(false)
-                .confirmationDialog(
-                    openGroup?.family ?? "",
-                    isPresented: Binding(get: { openGroup != nil }, set: { if !$0 { openGroup = nil } }),
-                    titleVisibility: .visible
-                ) {
-                    ForEach(openGroup?.members ?? []) { mood in
-                        Button(mood.title) { router.searchPath.append(mood) }
+            if case .group(_, let members) = centreEntry.kind {
+                Menu {
+                    let icons = MoodFamily.uniqueIcons(for: members)
+                    ForEach(members) { mood in
+                        Button { router.searchPath.append(mood) } label: {
+                            Label(mood.title, systemImage: icons[mood.id] ?? "music.note")
+                        }
                     }
+                } label: {
+                    Color.clear
+                        .frame(width: Self.centreSize.width, height: Self.centreSize.height)
+                        .contentShape(Rectangle())
                 }
+                .accessibilityHidden(true)
+            }
         }
         .padding(.bottom, Self.arcDrop)
         .contentShape(Rectangle())
@@ -493,10 +510,11 @@ private struct MoodCarousel: View {
         }
     }
 
-    /// A genre opens its page; a family lists its genres in a dialog.
+    /// A genre opens its page. A family on the centre card is handled by its
+    /// menu; tapping a side family only brings it to the centre.
     private func open(_ entry: MoodFamily.Entry) {
         switch entry.kind {
-        case .group(let family, let members): openGroup = (family, members)
+        case .group: break
         case .mood(let mood, _): router.searchPath.append(mood)
         }
     }
