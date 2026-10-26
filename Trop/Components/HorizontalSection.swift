@@ -12,14 +12,22 @@ import SwiftUI
 /// standard edge padding and the shared section gap below.
 struct HorizontalSection<Content: View>: View {
     let title: String
+    /// Snaps to the children of the content's `scrollTargetLayout()`. The
+    /// children bring their own side insets, so the edge padding is dropped.
+    var snapsToItems = false
     @ViewBuilder let content: () -> Content
 
     var body: some View {
         VStack(alignment: .leading, spacing: DesignTokens.titleContentGap) {
             NavigationTitleView(title: title)
-            ScrollView(.horizontal, showsIndicators: false) {
+            let scroll = ScrollView(.horizontal, showsIndicators: false) {
                 content()
-                    .padding(.horizontal, DesignTokens.screenHPadding)
+                    .padding(.horizontal, snapsToItems ? 0 : DesignTokens.screenHPadding)
+            }
+            if snapsToItems {
+                scroll.scrollTargetBehavior(.viewAligned)
+            } else {
+                scroll
             }
         }
         .padding(.bottom, DesignTokens.sectionGap)

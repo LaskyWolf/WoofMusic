@@ -640,8 +640,14 @@ struct AddSongToPlaylistSheet: View {
         NavigationStack {
             Group {
                 if isLoading {
-                    ProgressView()
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    // Same rows and insets as the playlist list below.
+                    VStack(spacing: 0) {
+                        ForEach(0..<6, id: \.self) { _ in
+                            ShimmerMediaRow()
+                                .padding(.horizontal, 16)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                 } else if playlists.isEmpty {
                     ContentUnavailableView(
                         "No Playlists",

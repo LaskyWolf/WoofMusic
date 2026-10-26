@@ -4,7 +4,9 @@
 //
 
 import Foundation
+import CoreText
 import SwiftUI
+import UIKit
 
 /// Plays over the full player around the end of the sleep timer.
 ///
@@ -145,7 +147,9 @@ private struct SleepAnimationFrame: View {
         let fontSize = size.width * 0.17
         // Script swashes reach past the glyphs' advance width, and Text clips
         // ink outside its own box. En spaces on both ends widen that box.
-        return Text("\u{2002}\(SleepTimer.shared.message)\u{2002}")
+        let text = "\u{2002}\(SleepTimer.shared.message)\u{2002}"
+        let inkOffset = Self.inkCentreOffset(text, fontName: "GreatVibes-Regular", size: fontSize)
+        return Text(text)
             .font(.custom("GreatVibes-Regular", size: fontSize))
             .lineLimit(1)
             .minimumScaleFactor(0.5)
@@ -156,11 +160,30 @@ private struct SleepAnimationFrame: View {
             .padding(.vertical, fontSize * 0.15)
             .shadow(color: Color(red: 0.04, green: 0.03, blue: 0.24).opacity(0.6), radius: 8, y: 2)
             .shadow(color: Color(red: 0.67, green: 0.63, blue: 1).opacity(0.5), radius: 12)
+            // Centre the letters' ink, not their box: the swashes lean left and up.
+            .offset(inkOffset)
             .scaleEffect(0.94 + 0.06 * strength)
             .blur(radius: (1 - strength) * 12)
             .opacity(strength)
             .frame(width: size.width)
             .position(x: size.width / 2, y: size.height / 2)
+    }
+
+    /// How far to move the text so its drawn letters, not its layout box,
+    /// sit in the middle. Script fonts put the ink well off the box centre.
+    private static func inkCentreOffset(_ text: String, fontName: String, size: CGFloat) -> CGSize {
+        guard let font = UIFont(name: fontName, size: size) else { return .zero }
+        let line = CTLineCreateWithAttributedString(NSAttributedString(string: text, attributes: [.font: font]))
+        var ascent: CGFloat = 0
+        var descent: CGFloat = 0
+        let advance = CGFloat(CTLineGetTypographicBounds(line, &ascent, &descent, nil))
+        let ink = CTLineGetBoundsWithOptions(line, .useGlyphPathBounds)
+        guard !ink.isNull, !ink.isEmpty else { return .zero }
+        // Core Text measures up from the baseline; SwiftUI offsets point down.
+        return CGSize(
+            width: advance / 2 - ink.midX,
+            height: ink.midY - (ascent - descent) / 2
+        )
     }
 
     // MARK: - Particles

@@ -7,6 +7,13 @@
 
 import SwiftUI
 
+/// Pushes the search page onto the Search tab's stack (Explore is its root).
+struct SearchRoute: Hashable {
+    static let placeholder = "Songs, artists, albums"
+}
+
+/// Recent searches and results. Pushed from Explore's search bar; detail
+/// destinations come from Explore's NavigationStack.
 struct SearchView: View {
     @Environment(SettingsStore.self) private var settings
     @State private var viewModel = SearchViewModel()
@@ -16,33 +23,31 @@ struct SearchView: View {
     @State private var pendingRoute: DetailRoute?
 
     var body: some View {
-        NavigationStack(path: $router.searchPath) {
-            VStack(spacing: 0) {
-                searchTopBar
+        VStack(spacing: 0) {
+            searchTopBar
 
-                content
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .contentShape(Rectangle())
-                    .simultaneousGesture(TapGesture().onEnded { fieldFocused = false })
-                    .scrollDismissesKeyboard(.interactively)
+            content
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .contentShape(Rectangle())
+                .simultaneousGesture(TapGesture().onEnded { fieldFocused = false })
+                .scrollDismissesKeyboard(.interactively)
+        }
+        .frame(maxHeight: .infinity, alignment: .top)
+        .toolbar(.hidden, for: .navigationBar)
+        .toolbar(fieldFocused ? .hidden : .visible, for: .tabBar)
+        .onChange(of: pendingRoute) { _, route in
+            if let route {
+                router.searchPath.append(route)
+                pendingRoute = nil
             }
-            .frame(maxHeight: .infinity, alignment: .top)
-            .toolbar(.hidden, for: .navigationBar)
-            .toolbar(fieldFocused ? .hidden : .visible, for: .tabBar)
-            .detailRouteDestinations()
-            .onChange(of: pendingRoute) { _, route in
-                if let route {
-                    router.searchPath.append(route)
-                    pendingRoute = nil
-                }
-            }
-            .onAppear {
-                viewModel.loadSearchHistory()
-                focusIfSearchTab()
-            }
-            .onChange(of: router.selectedTabIndex) { _, _ in
-                focusIfSearchTab()
-            }
+        }
+        .onAppear { viewModel.loadSearchHistory() }
+        .task {
+            // Raises the keyboard once the push has started. Coming back from a
+            // result's page keeps the keyboard down so the results stay visible.
+            guard viewModel.phase == .idle else { return }
+            try? await Task.sleep(for: .milliseconds(150))
+            fieldFocused = true
         }
     }
 
@@ -54,7 +59,7 @@ struct SearchView: View {
             HStack(spacing: 8) {
                 Image(systemName: "magnifyingglass")
                     .foregroundStyle(.secondary)
-                TextField("Search", text: $viewModel.fieldText)
+                TextField(SearchRoute.placeholder, text: $viewModel.fieldText)
                     .focused($fieldFocused)
                     .submitLabel(.search)
                     .autocorrectionDisabled()
@@ -78,6 +83,12 @@ struct SearchView: View {
             )
 
             sortMenu
+
+            Button("Cancel") {
+                fieldFocused = false
+                if !router.searchPath.isEmpty { router.searchPath.removeLast() }
+            }
+            .foregroundStyle(settings.accentColor)
         }
         .padding(.horizontal, DesignTokens.screenHPadding)
         .padding(.vertical, 8)
@@ -106,14 +117,6 @@ struct SearchView: View {
         .accessibilityLabel("Sort results")
     }
 
-    /// Focuses the field (raising the keyboard) whenever the Search tab
-    /// becomes active.
-    private func focusIfSearchTab() {
-        if AppRouter.shared.selectedTabIndex == 3 {
-            fieldFocused = true
-        }
-    }
-
     // MARK: - Content
 
     @ViewBuilder
@@ -136,12 +139,20 @@ struct SearchView: View {
         }
     }
 
+    /// Same shape as `searchResultsList`: filter chips, a section title, song rows.
     private var loadingView: some View {
-        VStack {
-            Spacer()
-            ShimmerLoadingView()
-            Spacer()
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                ShimmerChips(count: 5)
+                ShimmerSectionTitle(width: 90)
+                    .padding(.bottom, DesignTokens.titleContentGap)
+                ForEach(0..<8, id: \.self) { _ in
+                    ShimmerListItem()
+                }
+            }
         }
+        .scrollIndicators(.hidden)
+        .scrollDisabled(true)
     }
 
     // MARK: - Submission

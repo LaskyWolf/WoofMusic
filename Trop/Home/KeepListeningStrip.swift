@@ -5,7 +5,8 @@
 
 import SwiftUI
 
-/// Keep Listening as one compact bar: covers fanned in a stack, spread out on tap.
+/// Keep Listening as one card: the title on top, covers fanned in a stack
+/// below it, spread out on tap.
 struct KeepListeningStrip: View {
     let title: String
     let items: [YTItem]
@@ -14,53 +15,85 @@ struct KeepListeningStrip: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isExpanded = false
 
-    private static let coverSize: CGFloat = 40
-    private static let barPadding: CGFloat = 6
-    private static let stackedStep: CGFloat = 16
-    private static let spreadStep: CGFloat = 46
+    static let coverSize: CGFloat = 60
+    static let coverRadius: CGFloat = 10
+    static let cardPadding: CGFloat = 12
+    static let cardRadius: CGFloat = 18
+    /// Room for the tilted covers' corners inside the scroll view's clip.
+    static let tiltRoom: CGFloat = 4
+    static let stackedStep: CGFloat = 24
+    private static let spreadStep: CGFloat = 66
+    static let stackedTilt: Double = 5
     private static let stackedLimit = 8
-    private static let barColor = Color(.secondarySystemBackground)
+    static let cardColor = Color(.secondarySystemBackground)
 
     var body: some View {
-        VStack(alignment: .leading, spacing: DesignTokens.titleContentGap) {
-            NavigationTitleView(title: title)
-            bar
-                .padding(.horizontal, DesignTokens.screenHPadding)
-        }
-        .padding(.bottom, DesignTokens.sectionGap)
-        // Folds back once the strip scrolls off screen or Home is left.
-        .onScrollVisibilityChange(threshold: 0.1) { visible in
-            if !visible { isExpanded = false }
-        }
-        .onDisappear { isExpanded = false }
+        card
+            .padding(.horizontal, DesignTokens.screenHPadding)
+            .padding(.bottom, DesignTokens.sectionGap)
+            // Folds back once the card scrolls off screen or Home is left.
+            .onScrollVisibilityChange(threshold: 0.1) { visible in
+                if !visible { isExpanded = false }
+            }
+            .onDisappear { isExpanded = false }
     }
 
-    private var bar: some View {
-        HStack(spacing: 0) {
+    private var card: some View {
+        let shape = RoundedRectangle(cornerRadius: Self.cardRadius, style: .continuous)
+        return VStack(alignment: .leading, spacing: 8 - Self.tiltRoom) {
+            header
+                .padding(.horizontal, Self.cardPadding)
+
+            // Edge to edge inside the card, so spread covers scroll under its rounded edge.
             ScrollView(.horizontal, showsIndicators: false) {
                 stack
-                    .padding(Self.barPadding)
+                    .padding(.horizontal, Self.cardPadding)
+                    .padding(.vertical, Self.tiltRoom)
             }
             .scrollDisabled(!isExpanded)
+        }
+        .padding(.top, Self.cardPadding)
+        .padding(.bottom, Self.cardPadding - Self.tiltRoom)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Self.cardColor, in: shape)
+        .clipShape(shape)
+        .contentShape(shape)
+        .onTapGesture { if !isExpanded { toggle() } }
+    }
+
+    private var header: some View {
+        HStack(alignment: .firstTextBaseline) {
+            Text(title)
+                .font(.title3)
+                .fontWeight(.bold)
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+                .accessibilityAddTraits(.isHeader)
+
+            Spacer(minLength: 8)
 
             if isExpanded {
                 Button(action: toggle) {
                     Image(systemName: "chevron.left")
                         .font(.footnote.weight(.semibold))
                         .foregroundStyle(.secondary)
-                        .frame(width: 40, height: Self.coverSize + Self.barPadding * 2)
+                        .frame(minWidth: 44, minHeight: 44)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("Collapse Keep listening")
+                // Full 44pt target without making the header taller.
+                .padding(.vertical, -12)
+                .padding(.trailing, -14)
+                .accessibilityLabel("Collapse \(title)")
                 .transition(.opacity)
+            } else {
+                Text("Tap to spread")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
+                    .transition(.opacity)
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Self.barColor, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .contentShape(Rectangle())
-        .onTapGesture { if !isExpanded { toggle() } }
     }
 
     private var stack: some View {
@@ -71,7 +104,7 @@ struct KeepListeningStrip: View {
                 let isShown = index < shownCount
                 cover(for: item)
                     // Rotate before offsetting, so each cover turns around its own centre.
-                    .rotationEffect(.degrees(isExpanded ? 0 : (index.isMultiple(of: 2) ? -4 : 4)))
+                    .rotationEffect(.degrees(isExpanded ? 0 : (index.isMultiple(of: 2) ? -Self.stackedTilt : Self.stackedTilt)))
                     // Hidden extras wait under the last stacked cover.
                     .offset(x: CGFloat(min(index, shownCount - 1)) * step)
                     .opacity(isShown ? 1 : 0)
@@ -125,16 +158,16 @@ struct KeepListeningStrip: View {
         let image = AsyncImageView(url: item.thumbnailUrl)
             .frame(width: Self.coverSize, height: Self.coverSize)
         // Artists are round, everything else a rounded square; the border in
-        // the bar colour separates overlapping covers.
+        // the card colour separates overlapping covers.
         if case .artist = item {
             image
                 .clipShape(Circle())
-                .overlay(Circle().strokeBorder(Self.barColor, lineWidth: 2))
+                .overlay(Circle().strokeBorder(Self.cardColor, lineWidth: 2))
         } else {
-            let shape = RoundedRectangle(cornerRadius: DesignTokens.cardRadius, style: .continuous)
+            let shape = RoundedRectangle(cornerRadius: Self.coverRadius, style: .continuous)
             image
                 .clipShape(shape)
-                .overlay(shape.strokeBorder(Self.barColor, lineWidth: 2))
+                .overlay(shape.strokeBorder(Self.cardColor, lineWidth: 2))
         }
     }
 

@@ -206,15 +206,16 @@ struct LibraryView: View {
         .padding(.bottom, DesignTokens.sectionGap)
     }
 
-    /// A dark card with the list's first artworks fanned at the top.
+    /// A dark card with the list's first artworks fanned at the top, over a big
+    /// tinted symbol cropped by the corner like Explore's mood cards.
     private func shortcutTile(info: AutoPlaylistInfo) -> some View {
         let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
         return VStack(alignment: .leading, spacing: 0) {
             Group {
                 if info.id == "downloads" {
-                    DownloadsCovers(icon: info.icon, tint: info.tint)
+                    DownloadsCovers()
                 } else {
-                    ShortcutCovers(urls: info.covers, icon: info.icon, tint: info.tint)
+                    ShortcutCovers(urls: info.covers)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -242,7 +243,21 @@ struct LibraryView: View {
         .padding(10)
         .frame(maxWidth: .infinity)
         .frame(height: 116)
-        .background(Color(.secondarySystemBackground), in: shape)
+        .background {
+            ZStack {
+                Color(.secondarySystemBackground)
+                // Larger than the corner and tilted left, so the card edge crops it.
+                Image(systemName: info.icon)
+                    .font(.system(size: 66, weight: .semibold))
+                    .foregroundStyle(info.tint.opacity(0.4))
+                    .rotationEffect(.degrees(-18))
+                    // MoodCard's placement (x 24, y 12 at 84 pt), scaled to 66 pt.
+                    .offset(x: 19, y: 9)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
+            }
+            .clipShape(shape)
+            .accessibilityHidden(true)
+        }
         .contentShape(shape)
         .accessibilityElement(children: .combine)
     }
@@ -405,31 +420,78 @@ struct LibraryView: View {
 
     // MARK: - Loading Skeleton
 
+    /// Same order as `feedContent`: chips, the three shortcut tiles, then
+    /// sections in the layout chosen in Settings (grid or list).
     private var librarySkeleton: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                ShimmerChips(count: 4, width: 88)
+                ShimmerChips(count: LibraryFilter.allCases.count, width: 88)
+
+                HStack(spacing: 10) {
+                    ForEach(0..<autoPlaylists.count, id: \.self) { _ in shortcutTileSkeleton }
+                }
+                .padding(.horizontal, DesignTokens.screenHPadding)
+                .padding(.top, 8)
+                .padding(.bottom, DesignTokens.sectionGap)
 
                 ForEach(0..<2, id: \.self) { _ in
-                    ShimmerSectionTitle(width: 130)
-                        .padding(.bottom, DesignTokens.titleContentGap)
-
-                    LazyVGrid(columns: gridColumns, spacing: 16) {
-                        ForEach(0..<6, id: \.self) { _ in
-                            VStack(alignment: .leading, spacing: 6) {
-                                ShimmerFill(radius: 12)
-                                    .aspectRatio(1, contentMode: .fit)
-                                ShimmerBlock(width: 110, height: 15, radius: 4)
-                                ShimmerBlock(width: 70, height: 12, radius: 4)
+                    VStack(alignment: .leading, spacing: DesignTokens.titleContentGap) {
+                        ShimmerSectionTitle(width: 130)
+                        if isList {
+                            VStack(spacing: 0) {
+                                ForEach(0..<6, id: \.self) { _ in
+                                    ShimmerMediaRow()
+                                        .padding(.horizontal, DesignTokens.screenHPadding)
+                                }
                             }
+                        } else {
+                            LazyVGrid(columns: gridColumns, spacing: 16) {
+                                ForEach(0..<6, id: \.self) { _ in
+                                    VStack(alignment: .leading, spacing: 6) {
+                                        ShimmerFill(radius: 12)
+                                            .aspectRatio(1, contentMode: .fit)
+                                        ShimmerBlock(width: 110, height: 15, radius: 4)
+                                        ShimmerBlock(width: 70, height: 12, radius: 4)
+                                    }
+                                }
+                            }
+                            .padding(.horizontal, DesignTokens.screenHPadding)
                         }
                     }
-                    .padding(.horizontal, DesignTokens.screenHPadding)
                     .padding(.bottom, DesignTokens.sectionGap)
                 }
             }
         }
         .scrollIndicators(.hidden)
+        .allowsHitTesting(false)
+    }
+
+    /// `shortcutTile` without content: the dark 116pt card, two fanned covers
+    /// at the top and the title lines at the bottom. The symbol is left out.
+    private var shortcutTileSkeleton: some View {
+        let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
+        return VStack(alignment: .leading, spacing: 0) {
+            ZStack(alignment: .topLeading) {
+                ShimmerBlock(width: 42, height: 42, radius: 7)
+                    .rotationEffect(.degrees(-8))
+                    .offset(x: 2, y: 6)
+                ShimmerBlock(width: 42, height: 42, radius: 7)
+                    .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .strokeBorder(Color(.secondarySystemBackground), lineWidth: 2))
+                    .rotationEffect(.degrees(6))
+                    .offset(x: 24, y: 2)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+
+            VStack(alignment: .leading, spacing: 4) {
+                ShimmerBlock(width: 70, height: 13, radius: 4)
+                ShimmerBlock(width: 50, height: 10, radius: 4)
+            }
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity)
+        .frame(height: 116)
+        .background(Color(.secondarySystemBackground), in: shape)
     }
 
     // MARK: - Data Loading
@@ -630,20 +692,13 @@ private struct DownloadsSubtitle: View {
 
 // MARK: - Shortcut Covers
 
-/// Up to two artworks fanned like a small stack, or the tinted symbol when the list is empty.
+/// Up to two artworks fanned like a small stack; nothing when the list is empty,
+/// so the tile's big symbol stands alone.
 private struct ShortcutCovers: View {
     let urls: [String]
-    let icon: String
-    let tint: Color
 
     var body: some View {
-        if urls.isEmpty {
-            Image(systemName: icon)
-                .font(.system(size: 22, weight: .semibold))
-                .foregroundStyle(tint)
-                .frame(width: 48, height: 48)
-                .background(tint.opacity(0.16), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-        } else {
+        if !urls.isEmpty {
             let isStack = urls.count > 1
             ZStack(alignment: .topLeading) {
                 if isStack {
@@ -656,11 +711,6 @@ private struct ShortcutCovers: View {
                     .offset(x: isStack ? 24 : 2, y: 2)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .overlay(alignment: .topTrailing) {
-                Image(systemName: icon)
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(tint)
-            }
         }
     }
 
@@ -676,14 +726,10 @@ private struct ShortcutCovers: View {
 private struct DownloadsCovers: View {
     // Not private: a private stored property would make the memberwise init private.
     @ObservedObject var downloadManager = DownloadManager.shared
-    let icon: String
-    let tint: Color
 
     var body: some View {
         ShortcutCovers(
-            urls: Array(downloadManager.tracks.lazy.compactMap(\.thumbnailUrl).filter { !$0.isEmpty }.prefix(2)),
-            icon: icon,
-            tint: tint
+            urls: Array(downloadManager.tracks.lazy.compactMap(\.thumbnailUrl).filter { !$0.isEmpty }.prefix(2))
         )
     }
 }

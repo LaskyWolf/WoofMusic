@@ -445,7 +445,9 @@ final class SettingsStore {
             .color ?? AccentPreset.all[0].color
         accentName = d.string(forKey: Keys.accentName) ?? AccentPreset.all[0].name
         playerBackgroundStyle = Self.loadEnum(Keys.playerBackgroundStyle, default: .dynamic)
-        defaultTab = Self.load(Keys.defaultTab, default: 0)
+        // Tab 2 was Explore, now the Search tab's root page: a saved 2 opens Search.
+        let savedTab = Self.load(Keys.defaultTab, default: 0)
+        defaultTab = savedTab == 2 ? 3 : savedTab
         libraryLayout = Self.loadEnum(Keys.libraryLayout, default: .grid)
         lyricsFontSize = Self.load(Keys.lyricsFontSize, default: 17)
         lyricsAlignment = Self.loadEnum(Keys.lyricsAlignment, default: .center)

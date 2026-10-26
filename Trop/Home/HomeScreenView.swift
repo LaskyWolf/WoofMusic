@@ -93,7 +93,7 @@ struct HomeScreenView: View {
                 }
 
                 if viewModel.isChipLoading {
-                    ShimmerLoadingView(showsChips: false)
+                    ShimmerLoadingView(isChipFeed: true)
                 } else {
                     // Keyed by section id, so a new section fades in instead of popping in.
                     ForEach(viewModel.homeSections) { section in
@@ -246,7 +246,7 @@ struct HomeScreenView: View {
     }
 
     /// Extra side inset of a Quick Picks page, on top of the screen margin.
-    private static let quickPicksPageInset: CGFloat = 20
+    static let quickPicksPageInset: CGFloat = 20
 
     private func quickPicksPage(_ cards: [(SongItem, Bool)], queue: [SongItem], columns: Int) -> some View {
         LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: columns), spacing: 8) {
@@ -264,21 +264,28 @@ struct HomeScreenView: View {
 
     private func songsSection(_ section: HomeSection) -> some View {
         let queue = section.items.compactMap { if case .song(let s) = $0 { return s } else { return nil } }
-        return HorizontalSection(title: section.displayTitle) {
-            LazyHGrid(rows: Array(repeating: GridItem(.fixed(60)), count: 4), spacing: DesignTokens.cardSpacing) {
+        // Columns a bit narrower than the screen, so the next column's artwork
+        // peeks at the right edge; scrolling snaps one column at a time.
+        return HorizontalSection(title: section.displayTitle, snapsToItems: true) {
+            LazyHGrid(rows: Array(repeating: GridItem(.fixed(YouTubeListItemView.rowHeight), spacing: 8), count: 4), spacing: 0) {
                 ForEach(section.items.indices, id: \.self) { i in
                     let item = section.items[i]
-                    if case .song(let s) = item {
-                        YouTubeListItemView(item: item, onTap: { handleSongTap(s, in: queue) }, onNavigate: { pendingRoute = $0 })
-                            .frame(width: 280)
-                    } else {
-                        YouTubeListItemView(item: item, onTap: { handleItemTap(item) }, onNavigate: { pendingRoute = $0 })
-                            .frame(width: 280)
+                    Group {
+                        if case .song(let s) = item {
+                            YouTubeListItemView(item: item, onTap: { handleSongTap(s, in: queue) }, onNavigate: { pendingRoute = $0 })
+                        } else {
+                            YouTubeListItemView(item: item, onTap: { handleItemTap(item) }, onNavigate: { pendingRoute = $0 })
+                        }
                     }
+                    .containerRelativeFrame(.horizontal) { width, _ in width - Self.songColumnPeek }
                 }
             }
+            .scrollTargetLayout()
         }
     }
+
+    /// How much of the next song column shows at the right edge.
+    static let songColumnPeek: CGFloat = 40
 
     private func mixedSection(_ section: HomeSection) -> some View {
         let queue = section.items.compactMap { if case .song(let s) = $0 { return s } else { return nil } }

@@ -21,7 +21,9 @@ enum QuickAction: String {
         let router = AppRouter.shared
         switch action {
         case .search:
+            // The Search tab opens on Explore; the search page sits on top of it.
             router.selectedTabIndex = 3
+            router.searchPath = NavigationPath([SearchRoute()])
         case .downloads:
             router.selectedTabIndex = 1
             router.libraryPath = NavigationPath([DetailRoute.downloads])

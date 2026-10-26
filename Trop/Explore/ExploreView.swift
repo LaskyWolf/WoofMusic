@@ -16,15 +16,18 @@ struct ExploreView: View {
     private let accountState = AccountState.shared
 
     var body: some View {
-        NavigationStack(path: $router.explorePath) {
+        // Explore is the Search tab's root page, so it pushes onto `searchPath`.
+        NavigationStack(path: $router.searchPath) {
             VStack(spacing: 0) {
                 TabHeaderView(
                     title: "Explore",
                     accountIsLoggedIn: accountState.isLoggedIn,
                     accountImageUrl: accountState.accountImageUrl,
-                    onHistory: { router.explorePath.append(DetailRoute.history) },
-                    onAccount: { router.explorePath.append(DetailRoute.settings) }
+                    onHistory: { router.searchPath.append(DetailRoute.history) },
+                    onAccount: { router.searchPath.append(DetailRoute.settings) }
                 )
+
+                searchBar
 
                 content
             }
@@ -34,14 +37,41 @@ struct ExploreView: View {
             .navigationDestination(for: MoodItem.self) { mood in
                 MoodDetailView(mood: mood)
             }
+            .navigationDestination(for: SearchRoute.self) { _ in
+                SearchView()
+            }
             .onChange(of: pendingRoute) { _, route in
                 if let route {
-                    router.explorePath.append(route)
+                    router.searchPath.append(route)
                     pendingRoute = nil
                 }
             }
             .onAppear { viewModel.load() }
         }
+    }
+
+    /// Looks like the search page's field; tapping it opens that page with the
+    /// keyboard up. Sits where Home and Library show their filter chips.
+    private var searchBar: some View {
+        Button {
+            router.searchPath.append(SearchRoute())
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass")
+                Text(SearchRoute.placeholder)
+                Spacer(minLength: 0)
+            }
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(Capsule().fill(Color(.systemGray5).opacity(0.6)))
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, DesignTokens.screenHPadding)
+        .padding(.vertical, 8)
+        .accessibilityLabel("Search")
+        .accessibilityHint(SearchRoute.placeholder)
     }
 
     // MARK: - Content
@@ -116,27 +146,35 @@ struct ExploreSectionsList: View {
 
     // MARK: - Rows
 
-    /// Song rows in a 4-row grid scrolling horizontally.
+    /// Song rows in a 4-row grid scrolling horizontally, one column per swipe.
+    /// A column is the screen width minus `songColumnPeek`, so the next one shows.
+    /// Not HorizontalSection: paging needs content margins instead of padding,
+    /// or the snapped column would lose its edge inset.
     private func songGrid(_ section: ExploreSection) -> some View {
-        HorizontalSection(title: section.title) {
-            LazyHGrid(
-                rows: [
-                    GridItem(.flexible(), spacing: 0),
-                    GridItem(.flexible(), spacing: 0),
-                    GridItem(.flexible(), spacing: 0),
-                    GridItem(.flexible(), spacing: 0)
-                ],
-                spacing: DesignTokens.cardSpacing
-            ) {
-                ForEach(section.items, id: \.id) { item in
-                    YouTubeListItemView(item: item, onTap: {
-                        openItem(item)
-                    }, onNavigate: { pendingRoute.wrappedValue = $0 })
-                    .frame(width: 320, alignment: .leading)
+        VStack(alignment: .leading, spacing: DesignTokens.titleContentGap) {
+            NavigationTitleView(title: section.title)
+            ScrollView(.horizontal, showsIndicators: false) {
+                LazyHGrid(rows: Self.songRows, spacing: DesignTokens.cardSpacing) {
+                    ForEach(section.items, id: \.id) { item in
+                        YouTubeListItemView(item: item, onTap: {
+                            openItem(item)
+                        }, onNavigate: { pendingRoute.wrappedValue = $0 })
+                        .containerRelativeFrame(.horizontal, alignment: .leading) { width, _ in
+                            width - Self.songColumnPeek
+                        }
+                    }
                 }
+                .scrollTargetLayout()
             }
+            .scrollTargetBehavior(.viewAligned)
         }
+        .padding(.bottom, DesignTokens.sectionGap)
     }
+
+    /// Four 64 pt song rows per column.
+    static let songRows = Array(repeating: GridItem(.fixed(64), spacing: 8), count: 4)
+    /// How much of the next column peeks in from the trailing edge.
+    static let songColumnPeek: CGFloat = 40
 
     // MARK: - Cards carousel
 
@@ -173,7 +211,7 @@ struct ExploreSectionsList: View {
         YTItemRouter.route(
             item,
             playSong: { PlaybackQueue.playSingleWithRadio($0, log: Log.explore) },
-            appendRoute: { router.explorePath.append($0) }
+            appendRoute: { router.searchPath.append($0) }
         )
     }
 }
@@ -213,23 +251,8 @@ private enum MoodFamily {
         return families.first { $0.words.contains { title.contains($0) } }?.name
     }
 
-    /// An icon per sub-genre from its title. Two genres never share one: the
-    /// second falls back to the next free icon of the family's set.
-    static func uniqueIcons(for members: [MoodItem]) -> [UUID: String] {
-        let spare = ["music.note", "music.note.list", "headphones", "speaker.wave.2.fill", "star.fill", "heart.fill", "bolt.fill", "sparkles", "globe", "flame.fill"]
-        var used = Set<String>()
-        var icons: [UUID: String] = [:]
-        for mood in members {
-            var icon = MoodCard.symbol(for: mood.title)
-            if used.contains(icon) { icon = spare.first { !used.contains($0) } ?? icon }
-            used.insert(icon)
-            icons[mood.id] = icon
-        }
-        return icons
-    }
-
     /// Families with two or more genres become one group card that opens a
-    /// pop-up with its genres. Everything else keeps its place.
+    /// dialog with its genres. Everything else keeps its place.
     static func entries(for moods: [MoodItem]) -> [Entry] {
         var members: [String: [MoodItem]] = [:]
         for mood in moods { if let f = family(of: mood.title) { members[f, default: []].append(mood) } }
@@ -248,9 +271,15 @@ private enum MoodFamily {
     }
 }
 
-/// One looping row of mood cards stacked like Cover Flow: the centre card is the
-/// biggest and on top, its neighbours shrink, dim and slide behind it. Swipe or tap
-/// a side card to bring it to the centre; tap the centre card to open it.
+/// One looping row of mood cards stacked on an arc: the centre card is the
+/// biggest and on top; its neighbours shrink, dim, drop and tilt outwards like a
+/// fanned hand. Swipe or tap a side card to bring it to the centre; tap the
+/// centre card to open it.
+///
+/// Every card is the same plain view whatever its distance, so a gesture in
+/// flight never loses its view. A UIKit pan drives the drag: it starts only on
+/// a horizontal swipe (vertical ones scroll the page) and cancels the tap under
+/// the finger once it starts.
 private struct MoodCarousel: View {
     let entries: [MoodFamily.Entry]
 
@@ -260,31 +289,66 @@ private struct MoodCarousel: View {
     /// Fractional index of the card at the centre. Unbounded: `offset(of:)` wraps it.
     @State private var position: Double = 0
     @State private var dragStart: Double?
-    @State private var isVerticalDrag = false
+    /// The family whose genres the dialog lists.
+    @State private var openGroup: (family: String, members: [MoodItem])?
 
-    private let centreSize = CGSize(width: 170, height: 120)
-    /// Per step away from the centre.
-    private let shrink = CGSize(width: 34, height: 24)
-    private let spacing: Double = 62
+    /// Finger travel that moves the row by one card: the arc's slope at the centre.
+    private static let dragStep: Double = 75
     /// About two neighbours per side; the third one peeks in while dragging.
-    private let visibleRange: Double = 2.6
+    private static let visibleRange: Double = 2.6
+    static let centreSize = CGSize(width: 160, height: 116)
+    /// Room under the centre card for the side cards to drop into.
+    static let arcDrop: CGFloat = 70
+    static let height: CGFloat = 200
+
+    /// Size, position and tilt of a card `distance` steps from the centre.
+    /// Shared with the skeleton so the placeholder has the same shape.
+    static func layout(_ distance: Double) -> (size: CGSize, x: CGFloat, y: CGFloat, angle: Angle) {
+        let step = abs(distance)
+        let size = CGSize(
+            width: max(96, centreSize.width - 30 * CGFloat(step)),
+            height: max(72, centreSize.height - 20 * CGFloat(step))
+        )
+        let x = CGFloat(sin(distance * 0.5) * 150)
+        let y = CGFloat((1 - cos(distance * 0.5)) * 90)
+        return (size, x, y, .degrees(distance * 9))
+    }
 
     var body: some View {
-        ZStack {
+        ZStack(alignment: .bottom) {
             ForEach(Array(entries.enumerated()), id: \.element.id) { index, entry in
                 let distance = offset(of: index)
-                if abs(distance) <= visibleRange {
-                    card(entry, distance: distance)
-                        .offset(x: CGFloat(distance * spacing))
-                        .brightness(-0.1 * abs(distance))
+                if abs(distance) <= Self.visibleRange {
+                    let layout = Self.layout(distance)
+                    moodCard(entry, size: layout.size, textOpacity: max(0, 1 - abs(distance)))
+                        .brightness(-0.18 * abs(distance))
+                        .rotationEffect(layout.angle, anchor: .bottom)
+                        .offset(x: layout.x, y: layout.y)
+                        .onTapGesture { tap(index) }
                         .zIndex(-abs(distance))
                 }
             }
         }
         .frame(maxWidth: .infinity)
-        .frame(height: 140)
+        .frame(height: Self.height - Self.arcDrop, alignment: .bottom)
+        // Fixed on the centre slot, so the dialog points at the centre card.
+        .overlay(alignment: .bottom) {
+            Color.clear
+                .frame(width: Self.centreSize.width, height: Self.centreSize.height)
+                .allowsHitTesting(false)
+                .confirmationDialog(
+                    openGroup?.family ?? "",
+                    isPresented: Binding(get: { openGroup != nil }, set: { if !$0 { openGroup = nil } }),
+                    titleVisibility: .visible
+                ) {
+                    ForEach(openGroup?.members ?? []) { mood in
+                        Button(mood.title) { router.searchPath.append(mood) }
+                    }
+                }
+        }
+        .padding(.bottom, Self.arcDrop)
         .contentShape(Rectangle())
-        .simultaneousGesture(drag)
+        .gesture(HorizontalPan(onChange: dragChanged, onEnd: dragEnded))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(title(of: centreEntry))
         .accessibilityValue("\(centreIndex + 1) of \(entries.count)")
@@ -299,51 +363,16 @@ private struct MoodCarousel: View {
         }
         .accessibilityAction { open(centreEntry) }
         .accessibilityActions {
-            // A family's genres, since VoiceOver can't open the Menu from here.
+            // A family's genres, so VoiceOver reaches them without the dialog.
             if case .group(_, let members) = centreEntry.kind {
                 ForEach(members) { mood in
-                    Button(mood.title) { router.explorePath.append(mood) }
+                    Button(mood.title) { router.searchPath.append(mood) }
                 }
             }
         }
     }
 
     // MARK: Cards
-
-    @ViewBuilder
-    private func card(_ entry: MoodFamily.Entry, distance: Double) -> some View {
-        let step = abs(distance)
-        let size = CGSize(width: centreSize.width - shrink.width * CGFloat(step), height: centreSize.height - shrink.height * CGFloat(step))
-        // Text fades out as the card leaves the centre.
-        let textOpacity = max(0, 1 - step)
-        if step < 0.5 {
-            switch entry.kind {
-            case .group(let family, let members):
-                // Native pop-up: pick the sub-genre without leaving the page.
-                Menu {
-                    let icons = MoodFamily.uniqueIcons(for: members)
-                    ForEach(members) { mood in
-                        Button { router.explorePath.append(mood) } label: {
-                            Label(mood.title, systemImage: icons[mood.id] ?? "music.note")
-                        }
-                    }
-                } label: {
-                    moodCard(entry, size: size, textOpacity: textOpacity)
-                }
-                .buttonStyle(ZoomPressStyle())
-            case .mood(let mood, _):
-                NavigationLink(value: mood) {
-                    moodCard(entry, size: size, textOpacity: textOpacity)
-                }
-                .buttonStyle(ZoomPressStyle())
-            }
-        } else {
-            Button { settle(to: (position + distance).rounded()) } label: {
-                moodCard(entry, size: size, textOpacity: textOpacity)
-            }
-            .buttonStyle(ZoomPressStyle())
-        }
-    }
 
     private func moodCard(_ entry: MoodFamily.Entry, size: CGSize, textOpacity: Double) -> MoodCard {
         switch entry.kind {
@@ -391,8 +420,22 @@ private struct MoodCarousel: View {
         }
     }
 
+    /// The only tap path: a side card comes to the centre, the centre card opens.
+    private func tap(_ index: Int) {
+        let distance = offset(of: index)
+        if abs(distance) < 0.5 {
+            open(entries[index])
+        } else {
+            settle(to: (position + distance).rounded())
+        }
+    }
+
+    /// A genre opens its page; a family lists its genres in a dialog.
     private func open(_ entry: MoodFamily.Entry) {
-        if case .mood(let mood, _) = entry.kind { router.explorePath.append(mood) }
+        switch entry.kind {
+        case .group(let family, let members): openGroup = (family, members)
+        case .mood(let mood, _): router.searchPath.append(mood)
+        }
     }
 
     private func settle(to target: Double) {
@@ -403,28 +446,63 @@ private struct MoodCarousel: View {
         }
     }
 
-    /// Horizontal only: a mostly vertical drag is left to the page's ScrollView.
-    private var drag: some Gesture {
-        DragGesture(minimumDistance: 10)
-            .onChanged { value in
-                if dragStart == nil && !isVerticalDrag {
-                    if abs(value.translation.width) > abs(value.translation.height) {
-                        dragStart = position
-                    } else {
-                        isVerticalDrag = true
-                    }
-                }
-                guard let start = dragStart else { return }
-                position = start - Double(value.translation.width) / spacing
-            }
-            .onEnded { value in
-                isVerticalDrag = false
-                guard let start = dragStart else { return }
-                dragStart = nil
-                // A flick carries on a few cards, then snaps to the nearest one.
-                let flick = -Double(value.predictedEndTranslation.width) / spacing
-                settle(to: (start + min(max(flick, -4), 4)).rounded())
-            }
+    private func dragChanged(_ translation: CGFloat) {
+        if dragStart == nil { dragStart = position }
+        guard let start = dragStart else { return }
+        position = start - Double(translation) / Self.dragStep
+    }
+
+    /// A flick carries on up to four cards, then snaps to the nearest one.
+    private func dragEnded(_ translation: CGFloat, _ velocity: CGFloat) {
+        guard let start = dragStart else { return }
+        dragStart = nil
+        // About the distance a scroll view's deceleration would add.
+        let projected = Double(translation + velocity * 0.25) / Self.dragStep
+        settle(to: (start - min(max(projected, -4), 4)).rounded())
+    }
+}
+
+/// A horizontal-only pan. It begins only when the finger moves more sideways
+/// than up or down, so the page's vertical scroll keeps working, and it cancels
+/// the touches under it (the card taps) once it begins.
+private struct HorizontalPan: UIGestureRecognizerRepresentable {
+    var onChange: (CGFloat) -> Void
+    /// Translation and velocity on the x axis, in points and points per second.
+    var onEnd: (CGFloat, CGFloat) -> Void
+
+    func makeUIGestureRecognizer(context: Context) -> UIPanGestureRecognizer {
+        let pan = UIPanGestureRecognizer()
+        pan.maximumNumberOfTouches = 1
+        pan.cancelsTouchesInView = true
+        pan.delegate = context.coordinator
+        return pan
+    }
+
+    func handleUIGestureRecognizerAction(_ recognizer: UIPanGestureRecognizer, context: Context) {
+        let translation = recognizer.translation(in: recognizer.view).x
+        switch recognizer.state {
+        case .began, .changed:
+            onChange(translation)
+        case .ended:
+            onEnd(translation, recognizer.velocity(in: recognizer.view).x)
+        case .cancelled, .failed:
+            onEnd(translation, 0)
+        default:
+            break
+        }
+    }
+
+    func makeCoordinator(converter: CoordinateSpaceConverter) -> Coordinator {
+        Coordinator()
+    }
+
+    @MainActor
+    final class Coordinator: NSObject, UIGestureRecognizerDelegate {
+        func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+            guard let pan = gestureRecognizer as? UIPanGestureRecognizer else { return true }
+            let velocity = pan.velocity(in: pan.view)
+            return abs(velocity.x) > abs(velocity.y)
+        }
     }
 }
 
@@ -621,7 +699,7 @@ private struct MoodDetailView: View {
         .navigationBarTitleDisplayMode(.large)
         .onChange(of: pendingRoute) { _, route in
             if let route {
-                AppRouter.shared.explorePath.append(route)
+                AppRouter.shared.searchPath.append(route)
                 pendingRoute = nil
             }
         }
@@ -652,45 +730,29 @@ private struct MoodDetailView: View {
 
 // MARK: - Explore tab skeleton
 
-/// Loading placeholder mirroring the Explore tab: album cards (title only),
-/// the Trending song rows, then the moods carousel — the same
-/// shimmer animation as Home, composed for this layout.
+/// Loading placeholder mirroring the Explore tab: album cards, the Trending
+/// song columns, then the moods carousel. The section builders mirror
+/// `ExploreSectionsList`, so the mood page skeleton reuses them.
 private struct ExploreSkeletonView: View {
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
-                // Card carousel: square cover, title and subtitle, like the real cards.
-                skeletonSection(titleWidth: 220) {
-                    HStack(alignment: .top, spacing: DesignTokens.cardSpacing) {
-                        ForEach(0..<5, id: \.self) { _ in
-                            ShimmerCard()
-                        }
-                    }
-                }
-                // Song rows: four rows scrolling sideways, 320 wide.
-                skeletonSection(titleWidth: 120) {
-                    LazyHGrid(
-                        rows: Array(repeating: GridItem(.flexible(), spacing: 0), count: 4),
-                        spacing: DesignTokens.cardSpacing
-                    ) {
-                        ForEach(0..<8, id: \.self) { _ in
-                            ShimmerRow()
-                                .frame(width: 320, alignment: .leading)
-                        }
-                    }
-                }
-                // Moods: the stacked carousel, centre card on top of its neighbours.
+                Self.cardsSection(titleWidth: 220)
+                Self.songsSection(titleWidth: 120)
+                // Moods: the arc, centre card on top of its neighbours.
                 VStack(alignment: .leading, spacing: DesignTokens.titleContentGap) {
                     ShimmerSectionTitle(width: 80)
-                    ZStack {
-                        ShimmerBlock(width: 102, height: 72, radius: 14).offset(x: -124)
-                        ShimmerBlock(width: 102, height: 72, radius: 14).offset(x: 124)
-                        ShimmerBlock(width: 136, height: 96, radius: 14).offset(x: -62)
-                        ShimmerBlock(width: 136, height: 96, radius: 14).offset(x: 62)
-                        ShimmerBlock(width: 170, height: 120, radius: 14)
+                    ZStack(alignment: .bottom) {
+                        ForEach([-2.0, 2.0, -1.0, 1.0, 0.0], id: \.self) { distance in
+                            let layout = MoodCarousel.layout(distance)
+                            ShimmerBlock(width: layout.size.width, height: layout.size.height, radius: 14)
+                                .rotationEffect(layout.angle, anchor: .bottom)
+                                .offset(x: layout.x, y: layout.y)
+                        }
                     }
                     .frame(maxWidth: .infinity)
-                    .frame(height: 140)
+                    .frame(height: MoodCarousel.height - MoodCarousel.arcDrop, alignment: .bottom)
+                    .padding(.bottom, MoodCarousel.arcDrop)
                 }
                 .padding(.bottom, DesignTokens.sectionGap)
             }
@@ -699,8 +761,35 @@ private struct ExploreSkeletonView: View {
         .allowsHitTesting(false)
     }
 
-    /// Same structure as `HorizontalSection`: a title over a sideways-scrolling row.
-    private func skeletonSection<Content: View>(
+    /// Card carousel: square cover, title and subtitle, like the real cards.
+    static func cardsSection(titleWidth: CGFloat) -> some View {
+        section(titleWidth: titleWidth) {
+            HStack(alignment: .top, spacing: DesignTokens.cardSpacing) {
+                ForEach(0..<5, id: \.self) { _ in
+                    ShimmerCard()
+                }
+            }
+        }
+    }
+
+    /// Song columns like `songGrid`: four rows each, the next column peeking in.
+    static func songsSection(titleWidth: CGFloat) -> some View {
+        section(titleWidth: titleWidth) {
+            LazyHGrid(rows: ExploreSectionsList.songRows, spacing: DesignTokens.cardSpacing) {
+                ForEach(0..<8, id: \.self) { _ in
+                    ShimmerListItem()
+                        .containerRelativeFrame(.horizontal, alignment: .leading) { width, _ in
+                            width - ExploreSectionsList.songColumnPeek
+                        }
+                }
+            }
+            // The rows carry their own 16 pt inset, like the real song grid.
+            .padding(.leading, -DesignTokens.screenHPadding)
+        }
+    }
+
+    /// A title over a sideways row with the same content margins as `songGrid`.
+    private static func section<Content: View>(
         titleWidth: CGFloat,
         @ViewBuilder content: () -> Content
     ) -> some View {
@@ -708,8 +797,8 @@ private struct ExploreSkeletonView: View {
             ShimmerSectionTitle(width: titleWidth)
             ScrollView(.horizontal, showsIndicators: false) {
                 content()
-                    .padding(.horizontal, DesignTokens.screenHPadding)
             }
+            .contentMargins(.horizontal, DesignTokens.screenHPadding, for: .scrollContent)
         }
         .padding(.bottom, DesignTokens.sectionGap)
     }
@@ -717,45 +806,18 @@ private struct ExploreSkeletonView: View {
 
 // MARK: - Mood detail skeleton
 
-/// Loading placeholder mirroring the mood page layout: a vertical song
-/// list followed by large playlist cards.
+/// Loading placeholder mirroring the mood page, which renders through
+/// `ExploreSectionsList`: song columns, then card carousels.
 private struct MoodDetailSkeletonView: View {
     var body: some View {
         ScrollView {
-            LazyVStack(alignment: .leading, spacing: 2) {
-                VStack(alignment: .leading, spacing: 0) {
-                    ShimmerSectionTitle(width: 80)
-                    VStack(spacing: 0) {
-                        ForEach(0..<5, id: \.self) { _ in
-                            HStack(spacing: 12) {
-                                ShimmerRow(titleWidth: 190, subtitleWidth: 130)
-                                ShimmerBlock(width: 90, height: 20, radius: 4)
-                            }
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 6)
-                        }
-                    }
-                }
-                skeletonCardsSection(titleWidth: 200)
-                skeletonCardsSection(titleWidth: 220)
+            LazyVStack(alignment: .leading, spacing: 0) {
+                ExploreSkeletonView.songsSection(titleWidth: 80)
+                ExploreSkeletonView.cardsSection(titleWidth: 200)
+                ExploreSkeletonView.cardsSection(titleWidth: 220)
             }
-            .padding(.bottom, 16)
         }
         .scrollIndicators(.hidden)
-    }
-
-    private func skeletonCardsSection(titleWidth: CGFloat) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            ShimmerSectionTitle(width: titleWidth)
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(alignment: .top, spacing: 12) {
-                    ForEach(0..<4, id: \.self) { _ in
-                        ShimmerCard(showsSubtitle: false)
-                    }
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 4)
-            }
-        }
+        .allowsHitTesting(false)
     }
 }
