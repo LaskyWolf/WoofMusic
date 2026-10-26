@@ -455,8 +455,9 @@ final class HomeViewModel {
 
     private func sectionWeight(_ section: HomeSection) -> Int {
         switch section {
+        // Keep Listening is a small strip that sits directly above Quick Picks.
+        case .keepListening: return 110
         case .quickPicks: return 100
-        case .keepListening: return 80
         case .forgottenFavorites: return 60
         case .homePageSection(_, let index): return 40 - index
         case .dailyDiscover: return 70

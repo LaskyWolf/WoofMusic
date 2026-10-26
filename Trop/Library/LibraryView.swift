@@ -15,6 +15,8 @@ struct LibraryView: View {
     @State private var albums: [AlbumEntity] = []
     @State private var podcasts: [PodcastEntity] = []
     @State private var likedSongCount = 0
+    /// First artworks of Liked Songs and My Top 100, keyed by shortcut id.
+    @State private var shortcutCovers: [String: [String]] = [:]
     @State private var isLoading = true
     @State private var selectedFilter: LibraryFilter?
     @State private var showCreateDialog = false
@@ -38,10 +40,14 @@ struct LibraryView: View {
 
     private var autoPlaylists: [AutoPlaylistInfo] {
         [
-            AutoPlaylistInfo(id: "liked", title: "Liked Songs", icon: "heart.fill", subtitle: "\(likedSongCount) songs", route: .likedSongs),
-            AutoPlaylistInfo(id: "top100", title: "My Top 100", icon: "trophy.fill", subtitle: "Most played", route: .topSongs(limit: 100)),
-            // Subtitle comes from DownloadsSubtitle, so only it redraws on download changes.
-            AutoPlaylistInfo(id: "downloads", title: "Downloads", icon: "arrow.down.circle.fill",
+            AutoPlaylistInfo(id: "liked", title: "Liked Songs", icon: "heart.fill", tint: .pink,
+                             covers: shortcutCovers["liked"] ?? [],
+                             subtitle: "\(likedSongCount) songs", route: .likedSongs),
+            AutoPlaylistInfo(id: "top100", title: "My Top 100", icon: "trophy.fill", tint: .orange,
+                             covers: shortcutCovers["top100"] ?? [],
+                             subtitle: "Most played", route: .topSongs(limit: 100)),
+            // Covers and subtitle come from DownloadManager views, so only they redraw on download changes.
+            AutoPlaylistInfo(id: "downloads", title: "Downloads", icon: "arrow.down.circle.fill", tint: .blue,
                              subtitle: nil, route: nil, detailRoute: .downloads)
         ]
     }
@@ -200,34 +206,26 @@ struct LibraryView: View {
         .padding(.bottom, DesignTokens.sectionGap)
     }
 
-    /// Same look as Explore's mood cards, in the accent colour.
+    /// A dark card with the list's first artworks fanned at the top.
     private func shortcutTile(info: AutoPlaylistInfo) -> some View {
-        let accent = settings.accentColor
         let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
-        return ZStack(alignment: .bottomLeading) {
-            LinearGradient(
-                colors: [accent, accent.mix(with: .black, by: 0.3)],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            // Light from above, so the tile reads as a raised surface.
-            LinearGradient(colors: [.white.opacity(0.16), .clear], startPoint: .top, endPoint: .center)
+        return VStack(alignment: .leading, spacing: 0) {
+            Group {
+                if info.id == "downloads" {
+                    DownloadsCovers(icon: info.icon, tint: info.tint)
+                } else {
+                    ShortcutCovers(urls: info.covers, icon: info.icon, tint: info.tint)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .accessibilityHidden(true)
 
-            // Larger than the tile and tilted left, so the tile edge crops it.
-            Image(systemName: info.icon)
-                .font(.system(size: 64, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.3))
-                .rotationEffect(.degrees(-18))
-                .offset(x: 20, y: 10)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
-                .accessibilityHidden(true)
-
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 1) {
                 Text(info.title)
-                    .font(.subheadline.weight(.bold))
-                    .lineLimit(2)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
                     .minimumScaleFactor(0.8)
-                    .multilineTextAlignment(.leading)
                 Group {
                     if info.id == "downloads" {
                         DownloadsSubtitle()
@@ -235,20 +233,17 @@ struct LibraryView: View {
                         Text(subtitle)
                     }
                 }
-                .font(.caption2.weight(.semibold))
-                .opacity(0.85)
+                .font(.caption)
+                .foregroundStyle(.secondary)
                 .lineLimit(1)
             }
-            .foregroundStyle(.white)
-            .shadow(color: .black.opacity(0.3), radius: 2, y: 1)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(12)
         }
+        .padding(10)
         .frame(maxWidth: .infinity)
-        .frame(height: 108)
-        .clipShape(shape)
+        .frame(height: 116)
+        .background(Color(.secondarySystemBackground), in: shape)
         .contentShape(shape)
-        .shadow(color: accent.opacity(0.4), radius: 6, y: 4)
         .accessibilityElement(children: .combine)
     }
 
@@ -456,11 +451,27 @@ struct LibraryView: View {
             async let albumsFetch = DatabaseService.shared.fetchAllAlbums()
             async let podcastsFetch = DatabaseService.shared.fetchAllPodcasts()
             async let countFetch = DatabaseService.shared.fetchAllLikedSongCount()
+            // Same order as the Liked Songs and My Top 100 pages open with.
+            async let coversFetch = DatabaseService.shared.read { db in
+                try [
+                    "liked": String.fetchAll(
+                        db,
+                        sql: "SELECT thumbnail_url FROM song WHERE liked = 1 AND thumbnail_url <> '' "
+                            + "ORDER BY create_date DESC LIMIT 2"
+                    ),
+                    "top100": String.fetchAll(
+                        db,
+                        sql: "SELECT thumbnail_url FROM song WHERE total_play_time > 0 AND thumbnail_url <> '' "
+                            + "ORDER BY total_play_time DESC LIMIT 2"
+                    )
+                ]
+            }
             artists = try await artistsFetch
             playlists = try await playlistsFetch.filter { !Self.hiddenPlaylistIds.contains($0.id) }
             albums = try await albumsFetch
             podcasts = try await podcastsFetch.filter { !Self.hiddenPlaylistIds.contains($0.id) }
             likedSongCount = try await countFetch
+            shortcutCovers = try await coversFetch
 
             let rows: [(String, Int)] = try await DatabaseService.shared.read { db in
                 try Row.fetchAll(
@@ -617,12 +628,74 @@ private struct DownloadsSubtitle: View {
     }
 }
 
+// MARK: - Shortcut Covers
+
+/// Up to two artworks fanned like a small stack, or the tinted symbol when the list is empty.
+private struct ShortcutCovers: View {
+    let urls: [String]
+    let icon: String
+    let tint: Color
+
+    var body: some View {
+        if urls.isEmpty {
+            Image(systemName: icon)
+                .font(.system(size: 22, weight: .semibold))
+                .foregroundStyle(tint)
+                .frame(width: 48, height: 48)
+                .background(tint.opacity(0.16), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        } else {
+            let isStack = urls.count > 1
+            ZStack(alignment: .topLeading) {
+                if isStack {
+                    cover(urls[1])
+                        .rotationEffect(.degrees(-8))
+                        .offset(x: 2, y: 6)
+                }
+                cover(urls[0])
+                    .rotationEffect(.degrees(isStack ? 6 : 0))
+                    .offset(x: isStack ? 24 : 2, y: 2)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .overlay(alignment: .topTrailing) {
+                Image(systemName: icon)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(tint)
+            }
+        }
+    }
+
+    private func cover(_ url: String) -> some View {
+        AsyncImageView(url: url)
+            .frame(width: 42, height: 42)
+            .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+            .shadow(color: .black.opacity(0.3), radius: 3, y: 2)
+    }
+}
+
+/// Observes DownloadManager on its own, like DownloadsSubtitle, and shows the newest downloads.
+private struct DownloadsCovers: View {
+    // Not private: a private stored property would make the memberwise init private.
+    @ObservedObject var downloadManager = DownloadManager.shared
+    let icon: String
+    let tint: Color
+
+    var body: some View {
+        ShortcutCovers(
+            urls: Array(downloadManager.tracks.lazy.compactMap(\.thumbnailUrl).filter { !$0.isEmpty }.prefix(2)),
+            icon: icon,
+            tint: tint
+        )
+    }
+}
+
 // MARK: - AutoPlaylist Info
 
 struct AutoPlaylistInfo: Identifiable {
     let id: String
     let title: String
     let icon: String
+    let tint: Color
+    var covers: [String] = []
     let subtitle: String?
     let route: AutoPlaylistRoute?
     var detailRoute: DetailRoute?

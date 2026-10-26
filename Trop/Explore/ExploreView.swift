@@ -85,7 +85,7 @@ struct ExploreView: View {
 
 // MARK: - Shared section list
 
-/// Renders Explore sections (song grids, card carousels, mood grids).
+/// Renders Explore sections (song grids, card carousels, the moods carousel).
 /// Shared by the Explore tab and mood category pages.
 struct ExploreSectionsList: View {
     @ObservedObject private var router = AppRouter.shared
@@ -154,43 +154,16 @@ struct ExploreSectionsList: View {
 
     // MARK: - Moods grid
 
+    @ViewBuilder
     private func moodsGrid(_ section: ExploreSection) -> some View {
         let entries = MoodFamily.entries(for: section.moods)
-        return HorizontalSection(title: "Moods") {
-            // Two-row grid scrolling horizontally: all 50+ moods reachable
-            // without a dominating vertical wall.
-            LazyHGrid(
-                rows: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)],
-                spacing: 10
-            ) {
-                ForEach(entries) { entry in
-                    switch entry.kind {
-                    case .group(let family, let members):
-                        // Native pop-up: pick the sub-genre without leaving the page.
-                        Menu {
-                            let icons = MoodFamily.uniqueIcons(for: members)
-                            ForEach(members) { mood in
-                                Button { router.explorePath.append(mood) } label: {
-                                    Label(mood.title, systemImage: icons[mood.id] ?? "music.note")
-                                }
-                            }
-                        } label: {
-                            MoodCard(
-                                title: family,
-                                color: MoodCard.swatch(family: family, title: family),
-                                subtitle: "\(members.count) genres",
-                                trailingSymbol: "chevron.up.chevron.down"
-                            )
-                        }
-                        .buttonStyle(ZoomPressStyle())
-                    case .mood(let mood, let family):
-                        NavigationLink(value: mood) {
-                            MoodCard(title: mood.title, color: MoodCard.swatch(family: family, title: mood.title))
-                        }
-                        .buttonStyle(ZoomPressStyle())
-                    }
-                }
+        if !entries.isEmpty {
+            // Not HorizontalSection: its horizontal ScrollView would fight the carousel drag.
+            VStack(alignment: .leading, spacing: DesignTokens.titleContentGap) {
+                NavigationTitleView(title: "Moods")
+                MoodCarousel(entries: entries)
             }
+            .padding(.bottom, DesignTokens.sectionGap)
         }
     }
 
@@ -275,6 +248,186 @@ private enum MoodFamily {
     }
 }
 
+/// One looping row of mood cards stacked like Cover Flow: the centre card is the
+/// biggest and on top, its neighbours shrink, dim and slide behind it. Swipe or tap
+/// a side card to bring it to the centre; tap the centre card to open it.
+private struct MoodCarousel: View {
+    let entries: [MoodFamily.Entry]
+
+    @ObservedObject private var router = AppRouter.shared
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    /// Fractional index of the card at the centre. Unbounded: `offset(of:)` wraps it.
+    @State private var position: Double = 0
+    @State private var dragStart: Double?
+    @State private var isVerticalDrag = false
+
+    private let centreSize = CGSize(width: 170, height: 120)
+    /// Per step away from the centre.
+    private let shrink = CGSize(width: 34, height: 24)
+    private let spacing: Double = 62
+    /// About two neighbours per side; the third one peeks in while dragging.
+    private let visibleRange: Double = 2.6
+
+    var body: some View {
+        ZStack {
+            ForEach(Array(entries.enumerated()), id: \.element.id) { index, entry in
+                let distance = offset(of: index)
+                if abs(distance) <= visibleRange {
+                    card(entry, distance: distance)
+                        .offset(x: CGFloat(distance * spacing))
+                        .brightness(-0.1 * abs(distance))
+                        .zIndex(-abs(distance))
+                }
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .frame(height: 140)
+        .contentShape(Rectangle())
+        .simultaneousGesture(drag)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(title(of: centreEntry))
+        .accessibilityValue("\(centreIndex + 1) of \(entries.count)")
+        .accessibilityHint("Swipe up or down to change mood.")
+        .accessibilityAddTraits(.isButton)
+        .accessibilityAdjustableAction { direction in
+            switch direction {
+            case .increment: settle(to: position.rounded() + 1)
+            case .decrement: settle(to: position.rounded() - 1)
+            @unknown default: break
+            }
+        }
+        .accessibilityAction { open(centreEntry) }
+        .accessibilityActions {
+            // A family's genres, since VoiceOver can't open the Menu from here.
+            if case .group(_, let members) = centreEntry.kind {
+                ForEach(members) { mood in
+                    Button(mood.title) { router.explorePath.append(mood) }
+                }
+            }
+        }
+    }
+
+    // MARK: Cards
+
+    @ViewBuilder
+    private func card(_ entry: MoodFamily.Entry, distance: Double) -> some View {
+        let step = abs(distance)
+        let size = CGSize(width: centreSize.width - shrink.width * CGFloat(step), height: centreSize.height - shrink.height * CGFloat(step))
+        // Text fades out as the card leaves the centre.
+        let textOpacity = max(0, 1 - step)
+        if step < 0.5 {
+            switch entry.kind {
+            case .group(let family, let members):
+                // Native pop-up: pick the sub-genre without leaving the page.
+                Menu {
+                    let icons = MoodFamily.uniqueIcons(for: members)
+                    ForEach(members) { mood in
+                        Button { router.explorePath.append(mood) } label: {
+                            Label(mood.title, systemImage: icons[mood.id] ?? "music.note")
+                        }
+                    }
+                } label: {
+                    moodCard(entry, size: size, textOpacity: textOpacity)
+                }
+                .buttonStyle(ZoomPressStyle())
+            case .mood(let mood, _):
+                NavigationLink(value: mood) {
+                    moodCard(entry, size: size, textOpacity: textOpacity)
+                }
+                .buttonStyle(ZoomPressStyle())
+            }
+        } else {
+            Button { settle(to: (position + distance).rounded()) } label: {
+                moodCard(entry, size: size, textOpacity: textOpacity)
+            }
+            .buttonStyle(ZoomPressStyle())
+        }
+    }
+
+    private func moodCard(_ entry: MoodFamily.Entry, size: CGSize, textOpacity: Double) -> MoodCard {
+        switch entry.kind {
+        case .group(let family, let members):
+            MoodCard(
+                title: family,
+                color: MoodCard.swatch(family: family, title: family),
+                subtitle: "\(members.count) genres",
+                trailingSymbol: "chevron.up.chevron.down",
+                size: size,
+                textOpacity: textOpacity
+            )
+        case .mood(let mood, let family):
+            MoodCard(
+                title: mood.title,
+                color: MoodCard.swatch(family: family, title: mood.title),
+                size: size,
+                textOpacity: textOpacity
+            )
+        }
+    }
+
+    // MARK: Position
+
+    /// Signed distance of a card from the centre, wrapped into (-n/2, n/2] so
+    /// the row loops: past the last mood comes the first again.
+    private func offset(of index: Int) -> Double {
+        let count = Double(entries.count)
+        var distance = (Double(index) - position).truncatingRemainder(dividingBy: count)
+        if distance > count / 2 { distance -= count } else if distance <= -count / 2 { distance += count }
+        return distance
+    }
+
+    private var centreIndex: Int {
+        let count = entries.count
+        return (Int(position.rounded()) % count + count) % count
+    }
+
+    private var centreEntry: MoodFamily.Entry { entries[centreIndex] }
+
+    private func title(of entry: MoodFamily.Entry) -> String {
+        switch entry.kind {
+        case .group(let family, _): family
+        case .mood(let mood, _): mood.title
+        }
+    }
+
+    private func open(_ entry: MoodFamily.Entry) {
+        if case .mood(let mood, _) = entry.kind { router.explorePath.append(mood) }
+    }
+
+    private func settle(to target: Double) {
+        if reduceMotion {
+            position = target
+        } else {
+            withAnimation(.spring(response: 0.4, dampingFraction: 0.86)) { position = target }
+        }
+    }
+
+    /// Horizontal only: a mostly vertical drag is left to the page's ScrollView.
+    private var drag: some Gesture {
+        DragGesture(minimumDistance: 10)
+            .onChanged { value in
+                if dragStart == nil && !isVerticalDrag {
+                    if abs(value.translation.width) > abs(value.translation.height) {
+                        dragStart = position
+                    } else {
+                        isVerticalDrag = true
+                    }
+                }
+                guard let start = dragStart else { return }
+                position = start - Double(value.translation.width) / spacing
+            }
+            .onEnded { value in
+                isVerticalDrag = false
+                guard let start = dragStart else { return }
+                dragStart = nil
+                // A flick carries on a few cards, then snaps to the nearest one.
+                let flick = -Double(value.predictedEndTranslation.width) / spacing
+                settle(to: (start + min(max(flick, -4), 4)).rounded())
+            }
+    }
+}
+
 /// A colored mood tile, like Apple Music's category cards. The color is a
 /// Pantone color, picked from the family (or the title) so a category keeps its
 /// color between launches. YouTube Music's own colors are muddy, so unused.
@@ -283,6 +436,9 @@ private struct MoodCard: View {
     let color: Color
     var subtitle: String?
     var trailingSymbol: String?
+    var size = CGSize(width: 172, height: 100)
+    /// Title, subtitle and chevron; the carousel fades them on side cards.
+    var textOpacity: Double = 1
 
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
@@ -323,6 +479,7 @@ private struct MoodCard: View {
             .padding(.leading, 12)
             .padding(.trailing, 36)
             .padding(.bottom, 12)
+            .opacity(textOpacity)
 
             if let trailingSymbol {
                 Image(systemName: trailingSymbol)
@@ -330,9 +487,10 @@ private struct MoodCard: View {
                     .foregroundStyle(.white.opacity(0.9))
                     .padding(10)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                    .opacity(textOpacity)
             }
         }
-        .frame(width: 172, height: 100)
+        .frame(width: size.width, height: size.height)
         .clipShape(shape)
         .shadow(color: color.opacity(0.4), radius: 6, y: 4)
     }
@@ -495,7 +653,7 @@ private struct MoodDetailView: View {
 // MARK: - Explore tab skeleton
 
 /// Loading placeholder mirroring the Explore tab: album cards (title only),
-/// the 2-row moods grid, then a vertical Trending song list — the same
+/// the Trending song rows, then the moods carousel — the same
 /// shimmer animation as Home, composed for this layout.
 private struct ExploreSkeletonView: View {
     var body: some View {
@@ -506,17 +664,6 @@ private struct ExploreSkeletonView: View {
                     HStack(alignment: .top, spacing: DesignTokens.cardSpacing) {
                         ForEach(0..<5, id: \.self) { _ in
                             ShimmerCard()
-                        }
-                    }
-                }
-                // Moods: two rows of 172 x 100 cards.
-                skeletonSection(titleWidth: 80) {
-                    LazyHGrid(
-                        rows: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)],
-                        spacing: 10
-                    ) {
-                        ForEach(0..<12, id: \.self) { _ in
-                            ShimmerBlock(width: 172, height: 100, radius: 14)
                         }
                     }
                 }
@@ -532,6 +679,20 @@ private struct ExploreSkeletonView: View {
                         }
                     }
                 }
+                // Moods: the stacked carousel, centre card on top of its neighbours.
+                VStack(alignment: .leading, spacing: DesignTokens.titleContentGap) {
+                    ShimmerSectionTitle(width: 80)
+                    ZStack {
+                        ShimmerBlock(width: 102, height: 72, radius: 14).offset(x: -124)
+                        ShimmerBlock(width: 102, height: 72, radius: 14).offset(x: 124)
+                        ShimmerBlock(width: 136, height: 96, radius: 14).offset(x: -62)
+                        ShimmerBlock(width: 136, height: 96, radius: 14).offset(x: 62)
+                        ShimmerBlock(width: 170, height: 120, radius: 14)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 140)
+                }
+                .padding(.bottom, DesignTokens.sectionGap)
             }
         }
         .scrollIndicators(.hidden)

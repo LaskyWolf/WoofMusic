@@ -176,7 +176,7 @@ struct HomeScreenView: View {
         case .quickPicks:
             quickPicksSection(section)
         case .keepListening:
-            mixedSection(section)
+            keepListeningSection(section)
         case .forgottenFavorites:
             songsSection(section)
         case .homePageSection(let sectionData, _):
@@ -293,6 +293,18 @@ struct HomeScreenView: View {
                         YouTubeGridItemView(item: item, onTap: { handleItemTap(item) })
                     }
                 }
+            }
+        }
+    }
+
+    /// Same taps as `mixedSection`: songs play within the section's songs, the rest route.
+    private func keepListeningSection(_ section: HomeSection) -> some View {
+        let queue = section.items.compactMap { if case .song(let s) = $0 { return s } else { return nil } }
+        return KeepListeningStrip(title: section.displayTitle, items: section.items) { item in
+            if case .song(let s) = item, !queue.isEmpty {
+                handleSongTap(s, in: queue)
+            } else {
+                handleItemTap(item)
             }
         }
     }

@@ -52,6 +52,7 @@ final class ExploreViewModel {
             Log.explore.debug("Explore fetch ok topKeys=\((json.keys.sorted()))")
             sections = HomePageParser.parseExploreSections(from: json)
             await applyRegionalTrending(region: region)
+            moveMoodsUnderTrending()
             let moodCount = sections.reduce(0) { $0 + $1.moods.count }
             Log.explore.debug(
                 "Explore loaded: " +
@@ -85,6 +86,16 @@ final class ExploreViewModel {
         guard !songs.isEmpty else { return }
         sections[index].items = songs.map(YTItem.song)
         sections[index].kind = .rows
+    }
+
+    /// Puts the Moods section right under Trending. Without a Trending
+    /// section the order stays as Explore sent it.
+    private func moveMoodsUnderTrending() {
+        guard let moodsIndex = sections.firstIndex(where: { $0.kind == .moods }),
+              sections.contains(where: { $0.title.lowercased().contains("trending") }) else { return }
+        let moods = sections.remove(at: moodsIndex)
+        guard let trending = sections.firstIndex(where: { $0.title.lowercased().contains("trending") }) else { return }
+        sections.insert(moods, at: trending + 1)
     }
 
     // MARK: - Moods
