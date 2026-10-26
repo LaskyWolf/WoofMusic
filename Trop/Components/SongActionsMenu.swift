@@ -452,6 +452,8 @@ private struct ArtistPickerRow: View {
 private struct SleepTimerSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var duration: TimeInterval
+    /// Measured height of the sheet's content; the first value is replaced on the first layout.
+    @State private var contentHeight: CGFloat = 520
 
     private static let lastMinutesKey = "sleepTimerLastMinutes"
     private static let defaultMinutes = 15
@@ -465,54 +467,69 @@ private struct SleepTimerSheet: View {
     var body: some View {
         let timer = SleepTimer.shared
         let minutes = Int(duration / 60)
-        NavigationStack {
-            VStack(spacing: 20) {
-                if timer.isActive {
-                    SleepTimerStatus(timer: timer)
-                }
+        VStack(spacing: 20) {
+            header
 
-                CountdownPicker(duration: $duration)
-                    .frame(maxWidth: .infinity)
-
-                HStack {
-                    ClockRoundButton(title: "Cancel", systemImage: "xmark", isAccent: false) {
-                        timer.cancel()
-                    }
-                    .disabled(!timer.isActive)
-                    Spacer()
-                    ClockRoundButton(title: "Start", systemImage: "play.fill", isAccent: true) {
-                        UserDefaults.standard.set(minutes, forKey: Self.lastMinutesKey)
-                        timer.start(minutes: minutes)
-                        dismiss()
-                    }
-                    .disabled(minutes < 1)
-                }
-
-                Button {
-                    timer.stopAtSongEnd()
-                    dismiss()
-                } label: {
-                    Label("End of Song", systemImage: "music.note")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.large)
-                .accessibilityAddTraits(timer.stopsAtSongEnd ? .isSelected : [])
+            if timer.isActive {
+                SleepTimerStatus(timer: timer)
             }
-            .padding(.horizontal, 20)
-            .padding(.top, 8)
-            .frame(maxHeight: .infinity, alignment: .top)
-            .navigationTitle("Sleep Timer")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { dismiss() }
+
+            CountdownPicker(duration: $duration)
+                .frame(maxWidth: .infinity)
+
+            HStack {
+                ClockRoundButton(title: "Cancel", systemImage: "xmark", isAccent: false) {
+                    timer.cancel()
                 }
+                .disabled(!timer.isActive)
+                Spacer()
+                ClockRoundButton(title: "Start", systemImage: "play.fill", isAccent: true) {
+                    UserDefaults.standard.set(minutes, forKey: Self.lastMinutesKey)
+                    timer.start(minutes: minutes)
+                    dismiss()
+                }
+                .disabled(minutes < 1)
+            }
+
+            Button {
+                timer.stopAtSongEnd()
+                dismiss()
+            } label: {
+                Label("End of Song", systemImage: "music.note")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.large)
+            .accessibilityAddTraits(timer.stopsAtSongEnd ? .isSelected : [])
+        }
+        .padding(.horizontal, 20)
+        .padding(.top, 16)
+        .padding(.bottom, 20)
+        .fixedSize(horizontal: false, vertical: true)
+        .onGeometryChange(for: CGFloat.self) { proxy in
+            proxy.size.height
+        } action: { height in
+            contentHeight = height
+        }
+        .frame(maxHeight: .infinity, alignment: .top)
+        // As tall as the content, so nothing is left empty under End of Song;
+        // large stays available for big Dynamic Type sizes.
+        .appSheetChrome([.height(contentHeight), .large])
+    }
+
+    /// Inline title with Done, in place of a navigation bar, so the measured
+    /// height covers the whole sheet.
+    private var header: some View {
+        ZStack {
+            Text("Sleep Timer")
+                .font(.headline)
+                .accessibilityAddTraits(.isHeader)
+            HStack {
+                Spacer()
+                Button("Done") { dismiss() }
+                    .fontWeight(.semibold)
             }
         }
-        // Tall enough for the status line, the 216pt wheel, the buttons and
-        // End of Song; large stays available for big Dynamic Type sizes.
-        .appSheetChrome([.height(580), .large])
     }
 }
 
@@ -551,7 +568,7 @@ private struct SleepTimerStatus: View {
     }
 }
 
-/// The Clock app's round timer button: a tinted disc inside a thin ring.
+/// The Clock app's round timer button: a tinted disc.
 private struct ClockRoundButton: View {
     let title: String
     let systemImage: String
@@ -566,8 +583,6 @@ private struct ClockRoundButton: View {
                 .foregroundStyle(isAccent ? AnyShapeStyle(.tint) : AnyShapeStyle(.primary))
                 .frame(width: 72, height: 72)
                 .background(disc)
-                .padding(4)
-                .overlay(disc.mask { Circle().strokeBorder(lineWidth: 2) })
                 .contentShape(Circle())
         }
         .buttonStyle(.plain)
