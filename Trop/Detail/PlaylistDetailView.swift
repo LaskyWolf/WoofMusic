@@ -595,7 +595,7 @@ struct PlaylistDetailView: View {
                 } else {
                     RoundedRectangle(cornerRadius: 12)
                         .fill(LinearGradient(colors: [.blue, .purple], startPoint: .topLeading, endPoint: .bottomTrailing))
-                        .frame(width: 200, height: 200)
+                        .frame(width: DesignTokens.heroArtwork, height: DesignTokens.heroArtwork)
                         .overlay(
                             Image(systemName: "music.note.list")
                                 .font(.system(size: 60))
@@ -664,6 +664,10 @@ struct PlaylistDetailView: View {
             )
         }
         .padding(.vertical, 16)
+        .frame(maxWidth: .infinity)
+        .background(alignment: .top) {
+            BlurredArtworkBackdrop(url: playlist.thumbnailUrl ?? playlist.songs.first?.thumbnailUrl)
+        }
     }
 
     @ViewBuilder

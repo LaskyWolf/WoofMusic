@@ -368,6 +368,10 @@ struct AlbumDetailView: View {
             )
         }
         .padding(.vertical, 16)
+        .frame(maxWidth: .infinity)
+        .background(alignment: .top) {
+            BlurredArtworkBackdrop(url: album.thumbnailUrl)
+        }
         .sheet(isPresented: $showMoreSheet) {
             if let album = viewModel.album {
                 AlbumMoreSheet(

@@ -57,7 +57,7 @@ enum DesignTokens {
     /// Large covers: carousel cards (Home, Explore, Search, artist pages)
     /// and Library's grid layout.
     static let artLarge: CGFloat = 160
-    static let heroArtwork: CGFloat = 200
+    static let heroArtwork: CGFloat = artLarge
     /// Height of the row under each tab title: Explore's search bar and the
     /// Home, Library and Search filter chips, so the pages line up. A minimum,
     /// so large Dynamic Type sizes can still grow it.

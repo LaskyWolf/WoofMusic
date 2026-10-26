@@ -269,7 +269,6 @@ struct ArtistDetailView: View {
     @State private var viewModel: ArtistDetailViewModel
 
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     /// 0...1 fade of the top bar. Clamped in the scroll-geometry transform, so
     /// the view only updates while the offset is inside the fade range.
@@ -277,7 +276,7 @@ struct ArtistDetailView: View {
     @State private var linkCopied = false
     @State private var linkResetTask: Task<Void, Never>?
 
-    private static let barFadeStart: CGFloat = 80
+    private static let barFadeStart: CGFloat = 120
     private static let barFadeDistance: CGFloat = 120
 
     init(browseId: String) {
@@ -307,7 +306,6 @@ struct ArtistDetailView: View {
                     barProgress = newProgress
                 }
             )
-            .ignoresSafeArea(edges: .top)
             .toolbar(.hidden, for: .navigationBar)
             .task {
                 guard viewModel.isLoading else { return }
@@ -451,91 +449,78 @@ struct ArtistDetailView: View {
         }
     }
 
-    @ViewBuilder
+    /// Centred header over the blurred avatar: large round avatar, name,
+    /// subscribers, then Subscribe, Shuffle and Play. Same layout as the
+    /// playlist and album headers.
     private func header(for artist: ArtistDetailInfo) -> some View {
-        if horizontalSizeClass == .regular {
-            GeometryReader { proxy in
-                headerBanner(
-                    for: artist,
-                    size: CGSize(width: proxy.size.width, height: Self.iPadBannerHeight)
-                )
-            }
-            .frame(height: Self.iPadBannerHeight)
-            .accessibilityElement(children: .contain)
-        } else {
-            // iPhone: full-width square banner.
-            GeometryReader { proxy in
-                headerBanner(for: artist, size: proxy.size)
-            }
-            .aspectRatio(1, contentMode: .fit)
-            .accessibilityElement(children: .contain)
-        }
-    }
+        VStack(spacing: 12) {
+            AsyncImageView(url: ArtworkURLs.sized(artist.thumbnailUrl, width: 1200, height: 1200))
+                .frame(width: DesignTokens.artLarge, height: DesignTokens.artLarge)
+                .clipShape(Circle())
+                .shadow(color: .black.opacity(0.2), radius: 12, y: 4)
 
-    private static let iPadBannerHeight: CGFloat = 400
-
-    private func headerBanner(for artist: ArtistDetailInfo, size: CGSize) -> some View {
-        ZStack(alignment: .bottomLeading) {
-            Color(.systemGray5)
-
-            AsyncImageView(
-                url: ArtworkURLs.sized(artist.thumbnailUrl, width: 1200, height: 1200),
-                contentMode: .fill
-            )
-            .frame(width: size.width, height: size.height)
-            .clipped()
-
-            LinearGradient(
-                colors: [.clear, .black.opacity(0.18), .black.opacity(0.78)],
-                startPoint: .center,
-                endPoint: .bottom
-            )
-
-            VStack(alignment: .leading, spacing: 14) {
+            VStack(spacing: 4) {
                 Text(artist.name)
-                    .font(.system(size: 34, weight: .bold, design: .rounded))
-                    .foregroundStyle(.white)
+                    .font(.title2.weight(.bold))
+                    .multilineTextAlignment(.center)
                     .lineLimit(2)
-                    .shadow(color: .black.opacity(0.35), radius: 4, y: 2)
-
-                HStack(spacing: 12) {
-                    Button(action: { toggleSubscribe(artist) }, label: {
-                        Text(artist.isSubscribed ? "Subscribed" : "Subscribe")
-                            .font(.subheadline.weight(.bold))
-                            .foregroundStyle(artist.isSubscribed ? Color.white : Color.black)
-                            .padding(.horizontal, 20)
-                            .frame(height: 44)
-                            .glassEffect(
-                                artist.isSubscribed ? .regular.interactive() : .regular.tint(.white.opacity(0.9)).interactive(),
-                                in: .capsule
-                            )
-                    })
-                    .buttonStyle(.plain)
-
-                    Spacer(minLength: 0)
-
-                    if let subText = artist.subscriberCountText, !subText.isEmpty {
-                        Text(subscriberLabel(for: subText))
-                            .font(.subheadline)
-                            .foregroundStyle(.white.opacity(0.88))
-                            .lineLimit(1)
-                    }
-
-                    Button(action: { shufflePlay(artist) }, label: {
-                        Image(systemName: "shuffle")
-                            .font(.title3.weight(.bold))
-                            .foregroundStyle(.white)
-                            .frame(width: 52, height: 52)
-                            .background(Circle().fill(Color.accentColor))
-                    })
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Shuffle artist")
+                if let subText = artist.subscriberCountText, !subText.isEmpty {
+                    Text(subscriberLabel(for: subText))
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
                 }
             }
-            .padding(.horizontal, horizontalSizeClass == .regular ? 32 : 20)
-            .padding(.bottom, 24)
+            .padding(.horizontal, 24)
+
+            HStack(spacing: 20) {
+                Button(action: { toggleSubscribe(artist) }, label: {
+                    Image(systemName: artist.isSubscribed ? "person.fill.checkmark" : "person.badge.plus")
+                        .font(.title3)
+                        .foregroundStyle(artist.isSubscribed ? Color.accentColor : .primary)
+                        .contentTransition(.symbolEffect(.replace))
+                        .frame(width: 48, height: 48)
+                        .background(Circle().fill(Color(.secondarySystemGroupedBackground)))
+                })
+                .buttonStyle(.plain)
+                .accessibilityLabel(artist.isSubscribed ? "Unsubscribe" : "Subscribe")
+
+                Button(action: { shufflePlay(artist) }, label: {
+                    Image(systemName: "shuffle")
+                        .font(.title2.weight(.bold))
+                        .foregroundStyle(.white)
+                        .frame(width: 64, height: 64)
+                        .background(Circle().fill(Color.accentColor))
+                        .shadow(color: Color.accentColor.opacity(0.4), radius: 10, y: 4)
+                })
+                .buttonStyle(.plain)
+                .accessibilityLabel("Shuffle artist")
+
+                Button(action: { playAll(artist) }, label: {
+                    Image(systemName: "play.fill")
+                        .font(.title3)
+                        .foregroundStyle(.primary)
+                        .frame(width: 48, height: 48)
+                        .background(Circle().fill(Color(.secondarySystemGroupedBackground)))
+                })
+                .buttonStyle(.plain)
+                .accessibilityLabel("Play songs")
+                .disabled(artist.songs.isEmpty)
+            }
+            .padding(.top, 4)
         }
+        // Room for the top bar's round buttons above the avatar.
+        .padding(.top, Self.topBarHeight + 8)
+        .padding(.bottom, 16)
+        .frame(maxWidth: .infinity)
+        .background(alignment: .top) {
+            BlurredArtworkBackdrop(url: ArtworkURLs.sized(artist.thumbnailUrl, width: 1200, height: 1200))
+        }
+        .accessibilityElement(children: .contain)
     }
+
+    /// The top bar: 18pt top inset, 40pt buttons, 6pt bottom inset.
+    private static let topBarHeight: CGFloat = 64
 
     private func subscriberLabel(for count: String) -> String {
         count.localizedCaseInsensitiveContains("subscriber") ? count : "\(count) subscribers"
@@ -675,6 +660,10 @@ struct ArtistDetailView: View {
 
     private func shufflePlay(_ artist: ArtistDetailInfo) {
         PlaybackQueue.playShuffled(artist.songs, log: Log.artistDetail, context: "Shuffle playback")
+    }
+
+    private func playAll(_ artist: ArtistDetailInfo) {
+        PlaybackQueue.play(artist.songs, log: Log.artistDetail, context: "Playback")
     }
 
     private func playSong(_ song: SongItem) {
