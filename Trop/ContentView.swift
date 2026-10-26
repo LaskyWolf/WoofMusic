@@ -16,50 +16,53 @@ struct ContentView: View {
     @Namespace private var playerTransition
     @State private var scrollState = MiniPlayerScrollState()
 
-    var body: some View {
-        TabView(selection: $selectedTab) {
-            // Right-to-left puts the first tab on the right, so the left-handed layout
-            // declares them in reverse: on screen they stay Home, Library.
-            if settings.leftHandedTabBar {
-                libraryTab
-                homeTab
-            } else {
-                homeTab
-                libraryTab
-            }
+    @State private var safeBottom: CGFloat = 0
+    @State private var isKeyboardVisible = false
 
-            // Explore lives in the Search tab; its search bar opens the search page.
-            Tab("Search", systemImage: "magnifyingglass", value: 3, role: .search) {
-                ExploreView().environment(\.layoutDirection, .leftToRight)
+    var body: some View {
+        // The system tab bar is hidden on every tab; TabView stays so each tab keeps its state.
+        TabView(selection: $selectedTab) {
+            Tab("Home", systemImage: "house.fill", value: 0) {
+                tabPage(HomeScreenView())
+            }
+            Tab("Library", systemImage: "music.note.square.stack", value: 1) {
+                tabPage(LibraryView())
+            }
+            // Explore is tab 3: AppRouter and the quick actions use that index.
+            Tab("Explore", systemImage: "magnifyingglass", value: 3) {
+                tabPage(ExploreView())
             }
         }
-        // Right-to-left moves Search to the left; every page inside is set back to left-to-right.
-        .environment(\.layoutDirection, settings.leftHandedTabBar ? .rightToLeft : .leftToRight)
-        .tabBarMinimizeBehavior(.onScrollDown)
-            .tabViewBottomAccessory(isEnabled: nowPlaying.isBarPresented) {
-                MiniPlayerBarView(onExpand: expandPlayer, isTransitioning: isExpanded)
-                    .environment(\.layoutDirection, .leftToRight)
-                    .matchedTransitionSource(id: "nowPlaying", in: playerTransition) { source in
-                        source.clipShape(RoundedRectangle(cornerRadius: 24))
-                    }
-            }
-            .background {
-                backgroundLayer
-            }
-            .environment(scrollState)
-            .accessibilityHidden(isExpanded)
-            .fullScreenCover(isPresented: $isExpanded) {
-                GeometryReader { proxy in
-                    FullPlayerView(
-                        onCollapse: collapsePlayer,
-                        artworkTopInset: proxy.safeAreaInsets.top
-                    )
+        .overlay(alignment: .bottom) {
+            tabBar
+        }
+        .background {
+            backgroundLayer
+        }
+        .background {
+            // Ignores the keyboard so the bar's position comes from the home indicator only.
+            Color.clear
+                .ignoresSafeArea(.keyboard)
+                .onGeometryChange(for: CGFloat.self) { proxy in
+                    proxy.safeAreaInsets.bottom
+                } action: { bottom in
+                    safeBottom = bottom
                 }
-                .navigationTransition(.zoom(sourceID: "nowPlaying", in: playerTransition))
-                .presentationBackground(.clear)
-                .environment(scrollState)
-                .accessibilityAction(.escape, collapsePlayer)
+        }
+        .environment(scrollState)
+        .accessibilityHidden(isExpanded)
+        .fullScreenCover(isPresented: $isExpanded) {
+            GeometryReader { proxy in
+                FullPlayerView(
+                    onCollapse: collapsePlayer,
+                    artworkTopInset: proxy.safeAreaInsets.top
+                )
             }
+            .navigationTransition(.zoom(sourceID: "nowPlaying", in: playerTransition))
+            .presentationBackground(.clear)
+            .environment(scrollState)
+            .accessibilityAction(.escape, collapsePlayer)
+        }
         .onAppear {
             AppRouter.shared.selectedTabIndex = selectedTab
             QuickAction.performPending()
@@ -70,6 +73,8 @@ struct ContentView: View {
         }
         .onChange(of: selectedTab) { _, newValue in
             AppRouter.shared.selectedTabIndex = newValue
+            // A new page starts at the top, so the bar starts expanded.
+            scrollState.isInline = false
         }
         .onReceive(AppRouter.shared.$activeRoute) { route in
             // A detail page was opened from an overlay: collapse the player so
@@ -81,22 +86,66 @@ struct ContentView: View {
         .onReceive(AppRouter.shared.$playerExpandToken.dropFirst()) { _ in
             expandPlayer()
         }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
+            isKeyboardVisible = true
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
+            isKeyboardVisible = false
+        }
         .onChange(of: nowPlaying.isBarPresented) { _, presented in
             if !presented { collapsePlayer() }
         }
         .simultaneousGesture(backSwipeGesture)
     }
 
-    private var homeTab: some TabContent<Int> {
-        Tab("Home", systemImage: "house.fill", value: 0) {
-            HomeScreenView().environment(\.layoutDirection, .leftToRight)
+    private var tabBar: some View {
+        AppTabBar(
+            selection: $selectedTab,
+            isMinimized: scrollState.isInline,
+            isLeftHanded: settings.leftHandedTabBar,
+            showsMiniPlayer: nowPlaying.isBarPresented,
+            onRestore: { scrollState.isInline = false },
+            onReselect: { _ in reselectTab() }
+        ) {
+            MiniPlayerBarView(onExpand: expandPlayer, isTransitioning: isExpanded)
+                .matchedTransitionSource(id: "nowPlaying", in: playerTransition) { source in
+                    source.clipShape(RoundedRectangle(cornerRadius: 24))
+                }
         }
+        .padding(.horizontal, AppTabBarMetrics.horizontalMargin)
+        .padding(.bottom, AppTabBarMetrics.bottomGap(safeBottom: safeBottom))
+        // Stays behind the keyboard like the system tab bar, and fades out while it is up.
+        .ignoresSafeArea(edges: .bottom)
+        .opacity(isKeyboardVisible ? 0 : 1)
+        .allowsHitTesting(!isKeyboardVisible)
+        .accessibilityHidden(isKeyboardVisible)
+        .animation(.easeInOut(duration: 0.2), value: isKeyboardVisible)
     }
 
-    private var libraryTab: some TabContent<Int> {
-        Tab("Library", systemImage: "music.note.square.stack", value: 1) {
-            LibraryView().environment(\.layoutDirection, .leftToRight)
+    /// Room each page leaves under its content so the last rows clear the bar.
+    private var tabBarInset: CGFloat {
+        guard !isKeyboardVisible else { return 0 }
+        let barTop = AppTabBarMetrics.bottomGap(safeBottom: safeBottom)
+            + AppTabBarMetrics.expandedHeight(showsMiniPlayer: nowPlaying.isBarPresented)
+        return max(0, barTop - safeBottom)
+    }
+
+    private func tabPage(_ page: some View) -> some View {
+        page
+            .toolbar(.hidden, for: .tabBar)
+            // A bar, not a plain inset, so scroll views get the soft edge effect under the tab bar.
+            .safeAreaBar(edge: .bottom, spacing: 0) {
+                Color.clear.frame(height: tabBarInset)
+            }
+    }
+
+    /// Tapping the selected tab again pops its navigation stack to the root, like the system tab bar.
+    private func reselectTab() {
+        let router = AppRouter.shared
+        while router.activePathDepth > 0 {
+            router.popActiveRoute()
         }
+        router.tabReselectToken += 1
     }
 
     private func expandPlayer() {

@@ -1,5 +1,5 @@
 //
-//  SearchView.swift
+//  SearchResultsView.swift
 //  Trop
 //
 //  Created by 686udjie on 03/07/2026.
@@ -7,114 +7,30 @@
 
 import SwiftUI
 
-/// Pushes the search page onto the Search tab's stack (Explore is its root).
-struct SearchRoute: Hashable {
-    static let placeholder = "Songs, artists, albums"
-}
-
-/// Recent searches and results. Pushed from Explore's search bar; detail
-/// destinations come from Explore's NavigationStack.
-struct SearchView: View {
+/// Recent searches and results, shown under Explore's search field while it
+/// is active. Explore owns the field and the view model; detail destinations
+/// come from Explore's NavigationStack.
+struct SearchResultsView: View {
     @Environment(SettingsStore.self) private var settings
-    @State private var viewModel = SearchViewModel()
+    let viewModel: SearchViewModel
+    var fieldFocused: FocusState<Bool>.Binding
     @ObservedObject private var router = AppRouter.shared
-    @FocusState private var fieldFocused: Bool
 
     @State private var pendingRoute: DetailRoute?
 
     var body: some View {
-        VStack(spacing: 0) {
-            searchTopBar
-
-            content
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .contentShape(Rectangle())
-                .simultaneousGesture(TapGesture().onEnded { fieldFocused = false })
-                .scrollDismissesKeyboard(.interactively)
-        }
-        .frame(maxHeight: .infinity, alignment: .top)
-        .toolbar(.hidden, for: .navigationBar)
-        .toolbar(fieldFocused ? .hidden : .visible, for: .tabBar)
-        .onChange(of: pendingRoute) { _, route in
-            if let route {
-                router.searchPath.append(route)
-                pendingRoute = nil
-            }
-        }
-        .onAppear { viewModel.loadSearchHistory() }
-        .task {
-            // Raises the keyboard once the push has started. Coming back from a
-            // result's page keeps the keyboard down so the results stay visible.
-            guard viewModel.phase == .idle else { return }
-            try? await Task.sleep(for: .milliseconds(150))
-            fieldFocused = true
-        }
-    }
-
-    // MARK: - Top bar
-
-    /// Search field + sort menu pinned above the filter chips.
-    private var searchTopBar: some View {
-        HStack(spacing: 10) {
-            HStack(spacing: 8) {
-                Image(systemName: "magnifyingglass")
-                    .foregroundStyle(.secondary)
-                TextField(SearchRoute.placeholder, text: $viewModel.fieldText)
-                    .focused($fieldFocused)
-                    .submitLabel(.search)
-                    .autocorrectionDisabled()
-                    .onSubmit { submit(nil) }
-                if !viewModel.fieldText.isEmpty {
-                    Button {
-                        viewModel.fieldText = ""
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundStyle(.secondary)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Clear search")
+        content
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .contentShape(Rectangle())
+            .simultaneousGesture(TapGesture().onEnded { fieldFocused.wrappedValue = false })
+            .scrollDismissesKeyboard(.interactively)
+            .onChange(of: pendingRoute) { _, route in
+                if let route {
+                    router.searchPath.append(route)
+                    pendingRoute = nil
                 }
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
-            .background(
-                Capsule()
-                    .fill(Color(.systemGray5).opacity(0.6))
-            )
-
-            sortMenu
-
-            Button("Cancel") {
-                fieldFocused = false
-                if !router.searchPath.isEmpty { router.searchPath.removeLast() }
-            }
-            .foregroundStyle(settings.accentColor)
-        }
-        .padding(.horizontal, DesignTokens.screenHPadding)
-        .padding(.vertical, 8)
-    }
-
-    private var sortMenu: some View {
-        Menu {
-            ForEach(SearchSort.allCases, id: \.self) { option in
-                Button {
-                    viewModel.sort = option
-                } label: {
-                    if viewModel.sort == option {
-                        Label(option.title, systemImage: "checkmark")
-                    } else {
-                        Text(option.title)
-                    }
-                }
-            }
-        } label: {
-            Image(systemName: "arrow.up.arrow.down")
-                .font(.body)
-                .foregroundStyle(.primary)
-                .frame(width: 44, height: 44)
-                .background(Circle().fill(Color(.systemGray5).opacity(0.6)))
-        }
-        .accessibilityLabel("Sort results")
+            .onAppear { viewModel.loadSearchHistory() }
     }
 
     // MARK: - Content
@@ -157,12 +73,9 @@ struct SearchView: View {
 
     // MARK: - Submission
 
-    private func submit(_ text: String? = nil) {
-        if let text {
-            viewModel.fieldText = text
-        }
-        fieldFocused = false
-        viewModel.submit()
+    private func submit(_ text: String) {
+        fieldFocused.wrappedValue = false
+        viewModel.submit(text)
     }
 
     private var searchHistoryView: some View {

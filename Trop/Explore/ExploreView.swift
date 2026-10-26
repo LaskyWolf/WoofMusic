@@ -5,13 +5,21 @@
 // Created by 686udjie on 11/09/2026.
 //
 
+import Combine
 import SwiftUI
 
 struct ExploreView: View {
+    @Environment(SettingsStore.self) private var settings
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var viewModel = ExploreViewModel()
+    @State private var searchModel = SearchViewModel()
     @ObservedObject private var router = AppRouter.shared
 
     @State private var pendingRoute: DetailRoute?
+    /// True from the first tap on the field until Cancel: the search UI
+    /// replaces Explore's content, even with the keyboard down.
+    @State private var isSearching = false
+    @FocusState private var fieldFocused: Bool
 
     private let accountState = AccountState.shared
 
@@ -29,7 +37,21 @@ struct ExploreView: View {
 
                 searchBar
 
-                content
+                // Search crossfades over Explore in place; Explore stays loaded
+                // underneath so Cancel returns to it instantly.
+                ZStack(alignment: .top) {
+                    content
+                        .opacity(isSearching ? 0 : 1)
+                        .blur(radius: isSearching && !reduceMotion ? 6 : 0)
+                        .allowsHitTesting(!isSearching)
+                        .accessibilityHidden(isSearching)
+
+                    if isSearching {
+                        SearchResultsView(viewModel: searchModel, fieldFocused: $fieldFocused)
+                            .transition(.opacity)
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             }
             .frame(maxHeight: .infinity, alignment: .top)
             .toolbar(.hidden, for: .navigationBar)
@@ -37,41 +59,119 @@ struct ExploreView: View {
             .navigationDestination(for: MoodItem.self) { mood in
                 MoodDetailView(mood: mood)
             }
-            .navigationDestination(for: SearchRoute.self) { _ in
-                SearchView()
-            }
             .onChange(of: pendingRoute) { _, route in
                 if let route {
                     router.searchPath.append(route)
                     pendingRoute = nil
                 }
             }
-            .onAppear { viewModel.load() }
+            .onChange(of: fieldFocused) { _, focused in
+                guard focused, !isSearching else { return }
+                withAnimation(searchAnimation) { isSearching = true }
+            }
+            .onReceive(router.$tabReselectToken.dropFirst()) { _ in
+                // Tapping the Explore tab again closes search.
+                if router.selectedTabIndex == 3, isSearching { cancelSearch() }
+            }
+            .onChange(of: router.focusSearchField) { _, requested in
+                if requested { consumeFocusRequest() }
+            }
+            .onAppear {
+                viewModel.load()
+                consumeFocusRequest()
+            }
         }
     }
 
-    /// Looks like the search page's field; tapping it opens that page with the
-    /// keyboard up. Sits where Home and Library show their filter chips.
+    /// Exponential ease-out; Reduce Motion gets a short plain crossfade
+    /// (no blur, and the Cancel button fades instead of sliding).
+    private var searchAnimation: Animation {
+        reduceMotion ? .easeInOut(duration: 0.2) : .timingCurve(0.16, 1, 0.3, 1, duration: 0.4)
+    }
+
+    /// Real field that never moves. Focusing it swaps Explore for the search
+    /// UI below; Cancel slides in on the trailing side. Sits where Home and
+    /// Library show their filter chips.
     private var searchBar: some View {
-        Button {
-            router.searchPath.append(SearchRoute())
-        } label: {
+        HStack(spacing: 10) {
             HStack(spacing: 8) {
                 Image(systemName: "magnifyingglass")
-                Text(SearchRoute.placeholder)
-                Spacer(minLength: 0)
+                    .foregroundStyle(.secondary)
+                TextField(SearchViewModel.placeholder, text: $searchModel.fieldText)
+                    .focused($fieldFocused)
+                    .submitLabel(.search)
+                    .autocorrectionDisabled()
+                    .onSubmit {
+                        fieldFocused = false
+                        searchModel.submit()
+                    }
+                if !searchModel.fieldText.isEmpty {
+                    Button {
+                        searchModel.fieldText = ""
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Clear search")
+                }
             }
-            .foregroundStyle(.secondary)
             .padding(.horizontal, 12)
-            .padding(.vertical, 10)
+            .padding(.vertical, 6)
+            .frame(minHeight: DesignTokens.controlHeight)
             .background(Capsule().fill(Color(.systemGray5).opacity(0.6)))
-            .contentShape(Capsule())
+
+            if isSearching {
+                Group {
+                    sortMenu
+                    Button("Cancel", action: cancelSearch)
+                        .foregroundStyle(settings.accentColor)
+                }
+                .transition(reduceMotion ? .opacity : .move(edge: .trailing).combined(with: .opacity))
+            }
         }
-        .buttonStyle(.plain)
         .padding(.horizontal, DesignTokens.screenHPadding)
         .padding(.vertical, 8)
-        .accessibilityLabel("Search")
-        .accessibilityHint(SearchRoute.placeholder)
+    }
+
+    private var sortMenu: some View {
+        Menu {
+            ForEach(SearchSort.allCases, id: \.self) { option in
+                Button {
+                    searchModel.sort = option
+                } label: {
+                    if searchModel.sort == option {
+                        Label(option.title, systemImage: "checkmark")
+                    } else {
+                        Text(option.title)
+                    }
+                }
+            }
+        } label: {
+            Image(systemName: "arrow.up.arrow.down")
+                .font(.body)
+                .foregroundStyle(.primary)
+                .frame(width: DesignTokens.controlHeight, height: DesignTokens.controlHeight)
+                .background(Circle().fill(Color(.systemGray5).opacity(0.6)))
+        }
+        .accessibilityLabel("Sort results")
+    }
+
+    private func cancelSearch() {
+        fieldFocused = false
+        searchModel.cancel()
+        withAnimation(searchAnimation) { isSearching = false }
+    }
+
+    /// Home Screen "Search" quick action: focus the field in place.
+    private func consumeFocusRequest() {
+        guard router.focusSearchField else { return }
+        router.focusSearchField = false
+        Task {
+            // The tab switch must land before the field can take focus.
+            try? await Task.sleep(for: .milliseconds(150))
+            fieldFocused = true
+        }
     }
 
     // MARK: - Content
@@ -452,13 +552,28 @@ private struct MoodCarousel: View {
         position = start - Double(translation) / Self.dragStep
     }
 
-    /// A flick carries on up to four cards, then snaps to the nearest one.
+    /// Lands on the card under the finger, plus up to two more for a flick.
+    /// The cap applies to the flick only: capping the whole drag sent a long
+    /// swipe back to the fourth card.
     private func dragEnded(_ translation: CGFloat, _ velocity: CGFloat) {
-        guard let start = dragStart else { return }
+        guard dragStart != nil else { return }
         dragStart = nil
+        // Cards per second, in `position` units (a drag to the left moves forward).
+        let cardVelocity = -Double(velocity) / Self.dragStep
         // About the distance a scroll view's deceleration would add.
-        let projected = Double(translation + velocity * 0.25) / Self.dragStep
-        settle(to: (start - min(max(projected, -4), 4)).rounded())
+        let momentum = min(max(cardVelocity * 0.2, -2), 2)
+        let target = (position + momentum).rounded()
+        if reduceMotion {
+            position = target
+            return
+        }
+        // Start the spring at the finger's speed, so the release doesn't stall
+        // or jerk. `initialVelocity` is a fraction of the distance per second.
+        let distance = target - position
+        let initialVelocity = abs(distance) > 0.001 ? cardVelocity / distance : 0
+        withAnimation(.interpolatingSpring(duration: 0.45, bounce: 0.1, initialVelocity: initialVelocity)) {
+            position = target
+        }
     }
 }
 

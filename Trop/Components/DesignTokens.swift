@@ -46,4 +46,8 @@ enum DesignTokens {
     static let thumbMedium: CGFloat = 48
     static let thumbLarge: CGFloat = 60
     static let heroArtwork: CGFloat = 200
+    /// Height of the row under each tab title: Explore's search bar and the
+    /// Home, Library and Search filter chips, so the pages line up. A minimum,
+    /// so large Dynamic Type sizes can still grow it.
+    static let controlHeight: CGFloat = 40
 }

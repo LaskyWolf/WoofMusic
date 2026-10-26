@@ -99,6 +99,7 @@ import UIKit
     @Published var activeRoute: String?
     @Published var playerExpandToken = 0
     @Published var selectedTabIndex = 0
+    @Published var tabReselectToken = 0
     var activePathDepth = 0
     func popActiveRoute() {}
 }
@@ -119,7 +120,6 @@ struct HomeScreenView: View {
 }
 typealias LibraryView = HomeScreenView
 typealias ExploreView = HomeScreenView
-typealias SearchView = HomeScreenView
 struct MiniPlayerBarView: View {
     var onExpand: () -> Void
     var isTransitioning: Bool
@@ -244,7 +244,7 @@ try:
         sdk = run("xcrun", "--sdk", "iphonesimulator", "--show-sdk-path")
         sources = [work / "Fixture.swift", work / "ContentView.swift"] + [
             root / "Trop/Audio" / name for name in ["MiniPlayerScrollState.swift", "PlayerTrackSwipeGesture.swift", "PlayerComponents.swift", "AnimatedSkipLabel.swift"]
-        ]
+        ] + [root / "Trop/Components/AppTabBar.swift"]
         run("xcrun", "--sdk", "iphonesimulator", "swiftc", "-parse-as-library", "-sdk", sdk,
             "-target", f"{platform.machine()}-apple-ios26.2-simulator", *sources, "-o", app / "SurfaceCheck")
         run("xcrun", "simctl", "boot", device)

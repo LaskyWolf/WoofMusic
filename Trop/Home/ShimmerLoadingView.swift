@@ -150,7 +150,7 @@ struct ShimmerChips: View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
                 ForEach(0..<count, id: \.self) { _ in
-                    ShimmerBlock(width: width, height: 36, radius: 18)
+                    ShimmerBlock(width: width, height: DesignTokens.controlHeight, radius: DesignTokens.controlHeight / 2)
                 }
             }
             .padding(.horizontal, DesignTokens.screenHPadding)
@@ -215,7 +215,7 @@ struct ShimmerLoadingView: View {
             ShimmerBlock(width: 140, height: 22, radius: 6)
                 .padding(.horizontal, Strip.cardPadding)
 
-            ZStack(alignment: .leading) {
+            ZStack(alignment: .bottomLeading) {
                 ForEach(0..<count, id: \.self) { index in
                     ShimmerFill(radius: Strip.coverRadius)
                         .frame(width: Strip.coverSize, height: Strip.coverSize)
@@ -226,7 +226,8 @@ struct ShimmerLoadingView: View {
                         .zIndex(Double(count - index))
                 }
             }
-            .frame(height: Strip.coverSize)
+            // Same height as the real stack, which keeps room for playlist edges.
+            .frame(height: Strip.coverSize + Strip.playlistLift, alignment: .bottomLeading)
             .padding(.horizontal, Strip.cardPadding)
             .padding(.vertical, Strip.tiltRoom)
         }

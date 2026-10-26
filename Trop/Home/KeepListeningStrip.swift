@@ -24,6 +24,10 @@ struct KeepListeningStrip: View {
     static let stackedStep: CGFloat = 24
     private static let spreadStep: CGFloat = 66
     static let stackedTilt: Double = 5
+    /// How far each layered edge peeks out above a playlist cover.
+    static let playlistEdgeStep: CGFloat = 3
+    /// Room above every cover for a playlist's two layered edges.
+    static let playlistLift: CGFloat = playlistEdgeStep * 2
     private static let stackedLimit = 8
     static let cardColor = Color(.secondarySystemBackground)
 
@@ -57,8 +61,19 @@ struct KeepListeningStrip: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Self.cardColor, in: shape)
         .clipShape(shape)
-        .contentShape(shape)
-        .onTapGesture { if !isExpanded { toggle() } }
+        // Collapsed, the whole card is one button (taps, long presses and
+        // VoiceOver). It stays in the tree and only stops taking touches
+        // when expanded, so no removal animation leaves it over the covers.
+        .overlay {
+            Button(action: toggle) {
+                Color.clear.contentShape(shape)
+            }
+            .buttonStyle(.plain)
+            .allowsHitTesting(!isExpanded)
+            .accessibilityHidden(isExpanded)
+            .accessibilityLabel("\(title), \(items.count) items")
+            .accessibilityHint("Expands the list")
+        }
     }
 
     private var header: some View {
@@ -99,7 +114,7 @@ struct KeepListeningStrip: View {
     private var stack: some View {
         let step = isExpanded ? Self.spreadStep : Self.stackedStep
         let shownCount = isExpanded ? items.count : min(items.count, Self.stackedLimit)
-        return ZStack(alignment: .leading) {
+        return ZStack(alignment: .bottomLeading) {
             ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
                 let isShown = index < shownCount
                 cover(for: item)
@@ -115,21 +130,9 @@ struct KeepListeningStrip: View {
         }
         .frame(
             width: CGFloat(max(shownCount - 1, 0)) * step + Self.coverSize,
-            height: Self.coverSize,
-            alignment: .leading
+            height: Self.coverSize + Self.playlistLift,
+            alignment: .bottomLeading
         )
-        // Collapsed, the whole stack is one button (taps, long presses and
-        // VoiceOver); expanded, each cover is its own.
-        .overlay {
-            if !isExpanded {
-                Button(action: toggle) {
-                    Color.clear.contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("\(title), \(items.count) items")
-                .accessibilityHint("Expands the list")
-            }
-        }
     }
 
     @ViewBuilder
@@ -157,18 +160,38 @@ struct KeepListeningStrip: View {
     private func artwork(for item: YTItem) -> some View {
         let image = AsyncImageView(url: item.thumbnailUrl)
             .frame(width: Self.coverSize, height: Self.coverSize)
-        // Artists are round, everything else a rounded square; the border in
-        // the card colour separates overlapping covers.
-        if case .artist = item {
+        let shape = RoundedRectangle(cornerRadius: Self.coverRadius, style: .continuous)
+        // Artists are round, playlists a rounded square with two layered
+        // edges peeking out on top, everything else a plain rounded square.
+        // The border in the card colour separates overlapping covers.
+        switch item {
+        case .artist:
             image
                 .clipShape(Circle())
                 .overlay(Circle().strokeBorder(Self.cardColor, lineWidth: 2))
-        } else {
-            let shape = RoundedRectangle(cornerRadius: Self.coverRadius, style: .continuous)
+        case .playlist:
+            ZStack(alignment: .bottom) {
+                Self.playlistEdge(inset: 12, color: Color(.systemGray4))
+                    .offset(y: -2 * Self.playlistEdgeStep)
+                Self.playlistEdge(inset: 6, color: Color(.systemGray2))
+                    .offset(y: -Self.playlistEdgeStep)
+                image
+                    .clipShape(shape)
+                    .overlay(shape.strokeBorder(Self.cardColor, lineWidth: 2))
+            }
+            .frame(height: Self.coverSize + Self.playlistLift, alignment: .bottom)
+        default:
             image
                 .clipShape(shape)
                 .overlay(shape.strokeBorder(Self.cardColor, lineWidth: 2))
         }
+    }
+
+    /// A card behind a playlist cover, `inset` narrower on each side.
+    private static func playlistEdge(inset: CGFloat, color: Color) -> some View {
+        RoundedRectangle(cornerRadius: coverRadius - 2, style: .continuous)
+            .fill(color)
+            .frame(width: coverSize - inset * 2, height: coverSize)
     }
 
     private func toggle() {
