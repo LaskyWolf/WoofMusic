@@ -83,7 +83,7 @@ struct RadioOptionsSheet: View {
     }
 }
 
-/// "Similar to X" list built from the radio mix minus the seed.
+/// "Similar" list built from the radio mix minus the seed.
 struct SimilarSongsView: View {
     let song: SongItem
     var onNavigate: ((DetailRoute) -> Void)?
@@ -113,6 +113,7 @@ struct SimilarSongsView: View {
                     ForEach(Array(songs.enumerated()), id: \.offset) { _, similar in
                         SongRowView(
                             song: similar,
+                            artSize: DesignTokens.artSmall,
                             onTap: {
                                 if let onPlaySong {
                                     onPlaySong(similar, songs)
@@ -122,13 +123,14 @@ struct SimilarSongsView: View {
                             },
                             onNavigate: onNavigate
                         )
+                        .listRowSeparator(.hidden)
                         .listRowInsets(.init(top: 4, leading: 16, bottom: 4, trailing: 8))
                     }
                 }
                 .listStyle(.plain)
             }
         }
-        .navigationTitle("Similar to \(song.title)")
+        .navigationTitle("Similar")
         .navigationBarTitleDisplayMode(.inline)
         .task { await load() }
     }

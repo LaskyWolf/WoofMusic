@@ -42,6 +42,8 @@ extension TropLibraryStore {
     }
 
     func applyPlaylistSync(items: [ParsedPlaylist]) async throws -> Set<String> {
+        // Dropping "Episodes for Later" here also clears a copy saved by an older sync.
+        let items = items.filter { !PlaylistEntity.hiddenIds.contains($0.browseId) }
         let remoteIds = Set(items.map(\.browseId))
         try await db.write { db in
             for item in items {
@@ -103,6 +105,8 @@ extension TropLibraryStore {
     }
 
     func applyPodcastSync(items: [ParsedPodcast]) async throws -> Set<String> {
+        // Dropping "Episodes for Later" here also clears a copy saved by an older sync.
+        let items = items.filter { !PlaylistEntity.hiddenIds.contains($0.browseId) }
         let remoteIds = Set(items.map(\.browseId))
         try await db.write { db in
             for item in items {

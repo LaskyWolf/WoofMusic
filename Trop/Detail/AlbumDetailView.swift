@@ -387,6 +387,7 @@ struct AlbumDetailView: View {
             ForEach(Array(album.songs.enumerated()), id: \.offset) { index, song in
                 SongRowView(
                     song: song,
+                    artSize: DesignTokens.artSmall, artRadius: DesignTokens.cardRadius,
                     onTap: { selection.isActive ? selection.toggle(song) : playSong(song, in: album) },
                     onNavigate: { AppRouter.shared.open($0) },
                     isSelecting: selection.isActive,

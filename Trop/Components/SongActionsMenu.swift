@@ -370,6 +370,7 @@ private struct ArtistPickerSheet: View {
                 } label: {
                     ArtistPickerRow(artist: artist)
                 }
+                .listRowSeparator(.hidden)
                 .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
             }
             .listStyle(.plain)
@@ -385,13 +386,29 @@ private struct ArtistPickerSheet: View {
     }
 }
 
+/// Avatars and kinds per artist, kept for the session so reopening the
+/// picker shows them at once.
+@MainActor
+private enum ArtistPickerCache {
+    // ponytail: unbounded, one entry per artist opened from the picker; add eviction if it grows.
+    static var thumbnails: [String: String] = [:]
+    static var kinds: [String: String] = [:]
+}
+
 /// Profile picture, name and kind of act. The picture comes from the library
 /// when the artist is saved, otherwise from the artist page.
 private struct ArtistPickerRow: View {
     let artist: YTArtist
     @State private var thumbnailUrl: String?
+    @State private var kind: String?
 
     private static let avatarSize = DesignTokens.artSmall
+
+    init(artist: YTArtist) {
+        self.artist = artist
+        _thumbnailUrl = State(initialValue: artist.id.flatMap { ArtistPickerCache.thumbnails[$0] })
+        _kind = State(initialValue: ArtistPickerCache.kinds[Self.kindKey(artist)])
+    }
 
     var body: some View {
         HStack(spacing: DesignTokens.menuRowSpacing) {
@@ -413,7 +430,7 @@ private struct ArtistPickerRow: View {
                     .font(.body.weight(.medium))
                     .foregroundStyle(.primary)
                     .lineLimit(1)
-                ArtistKindLabel(name: artist.name)
+                Text(kind ?? "Artist")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
@@ -429,12 +446,24 @@ private struct ArtistPickerRow: View {
         .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
         .task(id: artist.id) {
-            thumbnailUrl = await Self.thumbnailUrl(browseId: artist.id)
+            if thumbnailUrl == nil, let browseId = artist.id,
+               let url = await Self.thumbnailUrl(browseId: browseId) {
+                ArtistPickerCache.thumbnails[browseId] = url
+                thumbnailUrl = url
+            }
+            if kind == nil, let found = await ArtistKindService.shared.kind(for: artist.name) {
+                ArtistPickerCache.kinds[Self.kindKey(artist)] = found
+                kind = found
+            }
         }
     }
 
-    private static func thumbnailUrl(browseId: String?) async -> String? {
-        guard let browseId else { return nil }
+    /// Browse id when known; the name otherwise, which is what the kind lookup uses.
+    private static func kindKey(_ artist: YTArtist) -> String {
+        artist.id ?? artist.name
+    }
+
+    private static func thumbnailUrl(browseId: String) async -> String? {
         let pixels = Int(avatarSize * 3)
         if let saved = try? await DatabaseService.shared.fetchOne(ArtistEntity.self, key: browseId)?.thumbnailUrl {
             return ArtworkURLs.sized(saved, width: pixels, height: pixels)

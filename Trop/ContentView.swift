@@ -19,18 +19,20 @@ struct ContentView: View {
     var body: some View {
         TabView(selection: $selectedTab) {
             // Right-to-left puts the first tab on the right, so the left-handed layout
-            // declares them in reverse: on screen they stay Home, Library.
+            // declares them in reverse: on screen they stay Home, Library, Explore.
             if settings.leftHandedTabBar {
+                exploreTab
                 libraryTab
                 homeTab
             } else {
                 homeTab
                 libraryTab
+                exploreTab
             }
 
-            // Explore lives in the system search tab, with its native search field.
-            Tab("Explore", systemImage: "magnifyingglass", value: 3, role: .search) {
-                ExploreView().environment(\.layoutDirection, .leftToRight)
+            // The system search tab puts SearchView's native field in the tab bar.
+            Tab("Search", systemImage: "magnifyingglass", value: 3, role: .search) {
+                SearchView().environment(\.layoutDirection, .leftToRight)
             }
         }
         // Right-to-left moves Search to the left; every page inside is set back to left-to-right.
@@ -96,6 +98,12 @@ struct ContentView: View {
     private var libraryTab: some TabContent<Int> {
         Tab("Library", systemImage: "music.note.square.stack", value: 1) {
             LibraryView().environment(\.layoutDirection, .leftToRight)
+        }
+    }
+
+    private var exploreTab: some TabContent<Int> {
+        Tab("Explore", systemImage: "flame", value: 2) {
+            ExploreView().environment(\.layoutDirection, .leftToRight)
         }
     }
 

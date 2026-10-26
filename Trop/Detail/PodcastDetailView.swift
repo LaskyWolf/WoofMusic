@@ -737,7 +737,7 @@ private struct EpisodeRowView: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .top, spacing: 12) {
                 AsyncImageView(url: episode.thumbnailUrl)
-                    .frame(width: 72, height: 72)
+                    .frame(width: DesignTokens.artSmall, height: DesignTokens.artSmall)
                     .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                     .onTapGesture(perform: onTap)
 

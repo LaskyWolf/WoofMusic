@@ -7,9 +7,9 @@
 
 import SwiftUI
 
-/// Recent searches and results, shown under Explore's search field while it
-/// is active. Explore owns the field and the view model; detail destinations
-/// come from Explore's NavigationStack.
+/// Recent searches and results, shown under the Search tab's field.
+/// SearchView owns the field and the view model; detail destinations
+/// come from SearchView's NavigationStack.
 struct SearchResultsView: View {
     @Environment(SettingsStore.self) private var settings
     let viewModel: SearchViewModel

@@ -77,6 +77,7 @@ struct AppearanceSettingsView: View {
                 Picker("Default Tab", selection: $settings.defaultTab) {
                     Text("Home").tag(0)
                     Text("Library").tag(1)
+                    Text("Explore").tag(2)
                     Text("Search").tag(3)
                 }
                 Toggle(isOn: $settings.leftHandedTabBar) {
@@ -85,7 +86,7 @@ struct AppearanceSettingsView: View {
             } header: {
                 Text("General")
             } footer: {
-                Text("Puts Search on the left, closer to your left thumb. Home and Library keep their order.")
+                Text("Puts Search on the left, closer to your left thumb. Home, Library and Explore keep their order.")
             }
         }
         .id(settings.accentName)

@@ -33,20 +33,22 @@ extension View {
 
 /// Square artwork card with a two-line title and optional subtitle, shared by
 /// the artist page carousels, Search's album carousel and Library's grid.
-/// Large covers by default, like Home's carousel cards.
+/// Large covers by default, like Home's carousel cards; a nil `size` fills
+/// the width it is given (Library's grid columns).
 struct MediaGridCell: View {
     var thumbnailUrl: String?
     var title: String
     var subtitle: String?
-    var size: CGFloat = DesignTokens.artLarge
+    var size: CGFloat? = DesignTokens.artLarge
     /// Shows the ">" badge: the card opens a page.
     var opensPage = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: DesignTokens.cardInnerSpacing) {
-            AsyncImageView(url: thumbnailUrl)
-                .aspectRatio(1, contentMode: .fill)
-                .frame(width: size, height: size)
+            Color.clear
+                .aspectRatio(1, contentMode: .fit)
+                .frame(width: size)
+                .overlay { AsyncImageView(url: thumbnailUrl) }
                 .clipShape(RoundedRectangle(cornerRadius: DesignTokens.cardRadius))
                 .opensPageBadge(opensPage)
 
@@ -55,32 +57,32 @@ struct MediaGridCell: View {
                 .fontWeight(.medium)
                 .foregroundColor(.primary)
                 .lineLimit(2)
-                .frame(width: size, alignment: .leading)
+                .frame(maxWidth: size ?? .infinity, alignment: .leading)
 
             if let subtitle, !subtitle.isEmpty {
                 Text(subtitle)
                     .font(.caption2)
                     .foregroundColor(.secondary)
                     .lineLimit(1)
-                    .frame(width: size, alignment: .leading)
+                    .frame(maxWidth: size ?? .infinity, alignment: .leading)
             }
         }
         .frame(width: size)
     }
 }
 
-/// Round artist card: large circular picture, the name centred under it and
-/// the kind of act. Shared by Library's grid, Search's artist carousel and
-/// the artist page's "Fans Also Like".
 struct ArtistCircleCell: View {
     var thumbnailUrl: String?
     var name: String
-    var size: CGFloat = DesignTokens.artLarge
+    /// nil fills the width it is given, like `MediaGridCell`.
+    var size: CGFloat? = DesignTokens.artLarge
 
     var body: some View {
         VStack(spacing: DesignTokens.cardInnerSpacing) {
-            AsyncImageView(url: thumbnailUrl)
-                .frame(width: size, height: size)
+            Color.clear
+                .aspectRatio(1, contentMode: .fit)
+                .frame(width: size)
+                .overlay { AsyncImageView(url: thumbnailUrl) }
                 .clipShape(Circle())
             Text(name)
                 .font(.caption)

@@ -270,7 +270,6 @@ struct ArtistDetailView: View {
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
-    @Environment(\.isInRouterSheet) private var isInRouterSheet
 
     /// 0...1 fade of the top bar. Clamped in the scroll-geometry transform, so
     /// the view only updates while the offset is inside the fade range.
@@ -335,10 +334,10 @@ struct ArtistDetailView: View {
 
             topBarCopyLinkButton
         }
-        // A sheet has no status bar above it: inset the bar so the round
-        // buttons clear the sheet's top corners.
-        .padding(.horizontal, isInRouterSheet ? 20 : 8)
-        .padding(.top, isInRouterSheet ? 18 : 6)
+        // Same inset pushed and in a sheet: in a sheet it keeps the round
+        // buttons clear of the sheet's top corners.
+        .padding(.horizontal, 20)
+        .padding(.top, 18)
         .padding(.bottom, 6)
         .background(
             Color(.systemBackground)
@@ -572,6 +571,7 @@ struct ArtistDetailView: View {
             ForEach(Array(songs.enumerated()), id: \.offset) { _, song in
                 SongRowView(
                     song: song,
+                    artSize: DesignTokens.artSmall, artRadius: DesignTokens.cardRadius,
                     onTap: { playSong(song) },
                     onNavigate: { AppRouter.shared.open($0) }
                 )

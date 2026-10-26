@@ -9,54 +9,26 @@ import SwiftUI
 
 struct ExploreView: View {
     @Environment(SettingsStore.self) private var settings
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var viewModel = ExploreViewModel()
-    @State private var searchModel = SearchViewModel()
     @ObservedObject private var router = AppRouter.shared
 
     @State private var pendingRoute: DetailRoute?
-    /// The native search field's presentation: true while search is active,
-    /// even with the keyboard down. The system sets it back on Cancel.
-    @State private var isSearching = false
-    @FocusState private var fieldFocused: Bool
 
     private let accountState = AccountState.shared
 
     var body: some View {
-        // Explore is the Search tab's root page, so it pushes onto `searchPath`.
-        NavigationStack(path: $router.searchPath) {
+        NavigationStack(path: $router.explorePath) {
             VStack(spacing: 0) {
                 TabHeaderView(
                     title: "Explore",
                     accountIsLoggedIn: accountState.isLoggedIn,
                     accountImageUrl: accountState.accountImageUrl,
-                    onHistory: { router.searchPath.append(DetailRoute.history) },
-                    onAccount: { router.searchPath.append(DetailRoute.settings) }
+                    onHistory: { router.explorePath.append(DetailRoute.history) },
+                    onAccount: { router.explorePath.append(DetailRoute.settings) }
                 )
 
-                // Search crossfades over Explore in place; Explore stays loaded
-                // underneath so Cancel returns to it instantly.
-                ZStack(alignment: .top) {
-                    content
-                        .opacity(isSearching ? 0 : 1)
-                        .blur(radius: isSearching && !reduceMotion ? 6 : 0)
-                        .allowsHitTesting(!isSearching)
-                        .accessibilityHidden(isSearching)
-
-                    if isSearching {
-                        VStack(spacing: 0) {
-                            HStack {
-                                Spacer()
-                                sortMenu
-                            }
-                            .padding(.horizontal, DesignTokens.screenHPadding)
-                            SearchResultsView(viewModel: searchModel, fieldFocused: $fieldFocused)
-                        }
-                        .transition(.opacity)
-                    }
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-                .animation(searchAnimation, value: isSearching)
+                content
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             }
             .frame(maxHeight: .infinity, alignment: .top)
             .toolbar(.hidden, for: .navigationBar)
@@ -66,64 +38,11 @@ struct ExploreView: View {
             }
             .onChange(of: pendingRoute) { _, route in
                 if let route {
-                    router.searchPath.append(route)
+                    router.explorePath.append(route)
                     pendingRoute = nil
                 }
             }
-            .onChange(of: router.focusSearchField) { _, requested in
-                if requested { consumeFocusRequest() }
-            }
-            .onAppear {
-                viewModel.load()
-                consumeFocusRequest()
-            }
-        }
-        // The system search tab puts this field in the tab bar.
-        .searchable(text: $searchModel.fieldText, isPresented: $isSearching, prompt: SearchViewModel.placeholder)
-        .searchFocused($fieldFocused)
-        .autocorrectionDisabled()
-        .onSubmit(of: .search) { searchModel.submit() }
-        .onChange(of: isSearching) { _, searching in
-            if !searching { searchModel.cancel() }
-        }
-    }
-
-    /// Exponential ease-out; Reduce Motion gets a short plain crossfade (no blur).
-    private var searchAnimation: Animation {
-        reduceMotion ? .easeInOut(duration: 0.2) : .timingCurve(0.16, 1, 0.3, 1, duration: 0.4)
-    }
-
-    private var sortMenu: some View {
-        Menu {
-            ForEach(SearchSort.allCases, id: \.self) { option in
-                Button {
-                    searchModel.sort = option
-                } label: {
-                    if searchModel.sort == option {
-                        Label(option.title, systemImage: "checkmark")
-                    } else {
-                        Text(option.title)
-                    }
-                }
-            }
-        } label: {
-            Image(systemName: "arrow.up.arrow.down")
-                .font(.body)
-                .foregroundStyle(.primary)
-                .frame(width: DesignTokens.controlHeight, height: DesignTokens.controlHeight)
-                .background(Circle().fill(Color(.systemGray5).opacity(0.6)))
-        }
-        .accessibilityLabel("Sort results")
-    }
-
-    /// Home Screen "Search" quick action: open the search field.
-    private func consumeFocusRequest() {
-        guard router.focusSearchField else { return }
-        router.focusSearchField = false
-        Task {
-            // The tab switch must land before the field can take focus.
-            try? await Task.sleep(for: .milliseconds(150))
-            isSearching = true
+            .onAppear { viewModel.load() }
         }
     }
 
@@ -274,7 +193,7 @@ struct ExploreSectionsList: View {
         YTItemRouter.route(
             item,
             playSong: { PlaybackQueue.playSingleWithRadio($0, log: Log.explore) },
-            appendRoute: { router.searchPath.append($0) }
+            appendRoute: { router.explorePath.append($0) }
         )
     }
 }
@@ -414,7 +333,7 @@ private struct MoodCarousel: View {
                 Menu {
                     let icons = MoodFamily.uniqueIcons(for: members)
                     ForEach(members) { mood in
-                        Button { router.searchPath.append(mood) } label: {
+                        Button { router.explorePath.append(mood) } label: {
                             Label(mood.title, systemImage: icons[mood.id] ?? "music.note")
                         }
                     }
@@ -446,7 +365,7 @@ private struct MoodCarousel: View {
             // A family's genres, so VoiceOver reaches them without the dialog.
             if case .group(_, let members) = centreEntry.kind {
                 ForEach(members) { mood in
-                    Button(mood.title) { router.searchPath.append(mood) }
+                    Button(mood.title) { router.explorePath.append(mood) }
                 }
             }
         }
@@ -515,7 +434,7 @@ private struct MoodCarousel: View {
     private func open(_ entry: MoodFamily.Entry) {
         switch entry.kind {
         case .group: break
-        case .mood(let mood, _): router.searchPath.append(mood)
+        case .mood(let mood, _): router.explorePath.append(mood)
         }
     }
 
@@ -795,7 +714,7 @@ private struct MoodDetailView: View {
         .navigationBarTitleDisplayMode(.large)
         .onChange(of: pendingRoute) { _, route in
             if let route {
-                AppRouter.shared.searchPath.append(route)
+                AppRouter.shared.explorePath.append(route)
                 pendingRoute = nil
             }
         }

@@ -45,7 +45,10 @@ actor SearchService {
         async let artists = db.fetchAll(ArtistEntity.self, sql: "SELECT * FROM artist WHERE name LIKE ? LIMIT 20", arguments: [pattern])
         async let albums = db.fetchAll(AlbumEntity.self, sql: "SELECT * FROM album WHERE title LIKE ? LIMIT 20", arguments: [pattern])
         async let playlists = db.fetchAll(PlaylistEntity.self, sql: "SELECT * FROM playlist WHERE name LIKE ? LIMIT 20", arguments: [pattern])
-        let results = try await LocalSearchResults(songs: songs, artists: artists, albums: albums, playlists: playlists)
+        let results = try await LocalSearchResults(
+            songs: songs, artists: artists, albums: albums,
+            playlists: playlists.filter { !PlaylistEntity.hiddenIds.contains($0.id) }
+        )
         return results
     }
 }

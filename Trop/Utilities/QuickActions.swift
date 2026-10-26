@@ -21,7 +21,7 @@ enum QuickAction: String {
         let router = AppRouter.shared
         switch action {
         case .search:
-            // Search lives in Explore's field, at the root of the Search tab.
+            // SearchView opens its field at the root of the Search tab.
             router.selectedTabIndex = 3
             router.searchPath = NavigationPath()
             router.focusSearchField = true

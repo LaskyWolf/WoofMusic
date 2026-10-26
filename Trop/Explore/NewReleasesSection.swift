@@ -106,7 +106,7 @@ struct NewReleaseCard: View {
     /// Turns on only once a start has taken longer than `PlayPauseGlyph.spinnerDelay`.
     @State private var showsSpinner = false
 
-    static let size = CGSize(width: 150, height: 247)
+    static let size = CGSize(width: 150, height: 255)
     static let radius: CGFloat = 18
     static let inset: CGFloat = 12
     static let coverSize = DesignTokens.artMedium
@@ -202,11 +202,22 @@ struct NewReleaseCard: View {
         .accessibilityAction { onOpen() }
     }
 
+    /// Icon-only round buttons on the trailing side: Save, then Play.
     private func buttons(isPlaying: Bool) -> some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 8) {
+            Spacer(minLength: 0)
+
+            Button {
+                Task { await toggleSave() }
+            } label: {
+                roundIcon(model.isSaved ? "bookmark.fill" : "bookmark",
+                          fill: .white.opacity(0.18), foreground: .white, isBusy: false)
+            }
+            .accessibilityLabel(model.isSaved ? "Remove from Library" : "Save to Library")
+
             Button(action: playTapped) {
-                pill(isPlaying ? "Pause" : "Play", systemImage: isPlaying ? "pause.fill" : "play.fill",
-                     fill: .white, foreground: .black, isBusy: showsSpinner)
+                roundIcon(isPlaying ? "pause.fill" : "play.fill",
+                          fill: .white, foreground: .black, isBusy: showsSpinner)
             }
             .disabled(isStarting)
             .task(id: isStarting) {
@@ -215,37 +226,28 @@ struct NewReleaseCard: View {
                 if !Task.isCancelled { showsSpinner = true }
             }
             .accessibilityLabel(isPlaying ? "Pause" : "Play")
-
-            Button {
-                Task { await toggleSave() }
-            } label: {
-                pill(model.isSaved ? "Saved" : "Save", systemImage: model.isSaved ? "bookmark.fill" : "bookmark",
-                     fill: .white.opacity(0.18), foreground: .white, isBusy: false)
-            }
-            .accessibilityLabel(model.isSaved ? "Remove from Library" : "Save to Library")
         }
         .buttonStyle(ZoomPressStyle(scale: 0.92))
     }
 
-    private func pill(_ title: String, systemImage: String, fill: Color, foreground: Color, isBusy: Bool) -> some View {
-        HStack(spacing: 4) {
+    static let buttonSize: CGFloat = 38
+
+    private func roundIcon(_ systemImage: String, fill: Color, foreground: Color, isBusy: Bool) -> some View {
+        ZStack {
             if isBusy {
                 ProgressView()
-                    .controlSize(.mini)
+                    .controlSize(.small)
                     .tint(foreground)
             } else {
                 Image(systemName: systemImage)
-                    .font(.caption2.weight(.bold))
+                    .font(.system(size: 16, weight: .bold))
+                    .contentTransition(.symbolEffect(.replace))
             }
-            Text(title)
-                .font(.caption.weight(.semibold))
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
         }
         .foregroundStyle(foreground)
-        .frame(maxWidth: .infinity, minHeight: 30)
-        .background(Capsule().fill(fill))
-        .contentShape(Capsule())
+        .frame(width: Self.buttonSize, height: Self.buttonSize)
+        .background(Circle().fill(fill))
+        .contentShape(Circle())
     }
 
     /// Neutral grey until the artwork colours are ready, then the album's

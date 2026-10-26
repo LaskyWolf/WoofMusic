@@ -30,9 +30,8 @@ struct LibraryView: View {
 
     private let accountState = AccountState.shared
 
-    /// Equal columns, two on a phone and three on iPad, each with a large cover
-    /// centred in it. Cells align to the top, so one- and two-line titles keep
-    /// the covers in line.
+    /// Equal columns, two on a phone and three on iPad; covers fill the column.
+    /// Cells align to the top, so one- and two-line titles keep the covers in line.
     private var gridColumns: [GridItem] {
         let count = horizontalSizeClass == .regular ? 3 : 2
         return Array(repeating: GridItem(.flexible(), spacing: 16, alignment: .top), count: count)
@@ -209,8 +208,8 @@ struct LibraryView: View {
         .padding(.bottom, DesignTokens.sectionGap)
     }
 
-    /// A dark card with the list's first artworks fanned at the top, over a big
-    /// tinted symbol cropped by the corner like Explore's mood cards.
+    /// A card in the list's colour, styled like Explore's mood cards: the first
+    /// artworks fanned at the top, over a big white symbol cropped by the corner.
     private func shortcutTile(info: AutoPlaylistInfo) -> some View {
         let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
         return VStack(alignment: .leading, spacing: 0) {
@@ -226,8 +225,7 @@ struct LibraryView: View {
 
             VStack(alignment: .leading, spacing: 1) {
                 Text(info.title)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.primary)
+                    .font(.subheadline.weight(.bold))
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
                 Group {
@@ -237,10 +235,12 @@ struct LibraryView: View {
                         Text(subtitle)
                     }
                 }
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                .font(.caption2.weight(.semibold))
+                .opacity(0.85)
                 .lineLimit(1)
             }
+            .foregroundStyle(.white)
+            .shadow(color: .black.opacity(0.3), radius: 2, y: 1)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(10)
@@ -248,17 +248,24 @@ struct LibraryView: View {
         .frame(height: 116)
         .background {
             ZStack {
-                Color(.secondarySystemBackground)
+                // MoodCard's gradient and light from above.
+                LinearGradient(
+                    colors: [info.tint, info.tint.mix(with: .black, by: 0.3)],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+                LinearGradient(colors: [.white.opacity(0.16), .clear], startPoint: .top, endPoint: .center)
                 // Larger than the corner and tilted left, so the card edge crops it.
                 Image(systemName: info.icon)
                     .font(.system(size: 66, weight: .semibold))
-                    .foregroundStyle(info.tint.opacity(0.4))
+                    .foregroundStyle(.white.opacity(0.3))
                     .rotationEffect(.degrees(-18))
                     // MoodCard's placement (x 24, y 12 at 84 pt), scaled to 66 pt.
                     .offset(x: 19, y: 9)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
             }
             .clipShape(shape)
+            .shadow(color: info.tint.opacity(0.4), radius: 6, y: 4)
             .accessibilityHidden(true)
         }
         .contentShape(shape)
@@ -279,7 +286,7 @@ struct LibraryView: View {
                             isCircular: true
                         )
                     } else {
-                        ArtistCircleCell(thumbnailUrl: artist.thumbnailUrl, name: artist.name)
+                        ArtistCircleCell(thumbnailUrl: artist.thumbnailUrl, name: artist.name, size: nil)
                     }
                 }
                 .buttonStyle(ZoomPressStyle(scale: pressScale))
@@ -381,7 +388,7 @@ struct LibraryView: View {
         if isList {
             listRow(url: url, title: title, subtitle: subtitle, detail: detail, isCircular: false)
         } else {
-            MediaGridCell(thumbnailUrl: url, title: title, subtitle: subtitle, opensPage: opensPage)
+            MediaGridCell(thumbnailUrl: url, title: title, subtitle: subtitle, size: nil, opensPage: opensPage)
         }
     }
 
@@ -426,7 +433,7 @@ struct LibraryView: View {
                             }
                         } else {
                             LazyVGrid(columns: gridColumns, spacing: 16) {
-                                ForEach(0..<6, id: \.self) { _ in ShimmerCard() }
+                                ForEach(0..<6, id: \.self) { _ in gridCellSkeleton }
                             }
                             .padding(.horizontal, DesignTokens.screenHPadding)
                         }
@@ -437,6 +444,16 @@ struct LibraryView: View {
         }
         .scrollIndicators(.hidden)
         .allowsHitTesting(false)
+    }
+
+    /// A grid cell's placeholder: a cover filling the column and two text lines.
+    private var gridCellSkeleton: some View {
+        VStack(alignment: .leading, spacing: DesignTokens.cardInnerSpacing) {
+            ShimmerFill(radius: DesignTokens.cardRadius)
+                .aspectRatio(1, contentMode: .fit)
+            ShimmerBlock(width: 110, height: 14, radius: 4)
+            ShimmerBlock(width: 70, height: 12, radius: 4)
+        }
     }
 
     /// `shortcutTile` without content: the dark 116pt card, two fanned covers
@@ -469,10 +486,6 @@ struct LibraryView: View {
 
     // MARK: - Data Loading
 
-    /// YouTube Music's built-in "Episodes for Later" list ("SE", or "VLSE" as a
-    /// browse id). Trop has no use for it, so the library hides it.
-    private static let hiddenPlaylistIds: Set<String> = ["SE", "VLSE"]
-
     private func loadContent() async {
         do {
             async let artistsFetch = DatabaseService.shared.fetchAll(
@@ -502,9 +515,9 @@ struct LibraryView: View {
                 ]
             }
             artists = try await artistsFetch
-            playlists = try await playlistsFetch.filter { !Self.hiddenPlaylistIds.contains($0.id) }
+            playlists = try await playlistsFetch.filter { !PlaylistEntity.hiddenIds.contains($0.id) }
             albums = try await albumsFetch
-            podcasts = try await podcastsFetch.filter { !Self.hiddenPlaylistIds.contains($0.id) }
+            podcasts = try await podcastsFetch.filter { !PlaylistEntity.hiddenIds.contains($0.id) }
             likedSongCount = try await countFetch
             shortcutCovers = try await coversFetch
 

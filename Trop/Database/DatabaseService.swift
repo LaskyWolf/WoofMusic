@@ -297,6 +297,7 @@ extension DatabaseService {
                 .order(Column("bookmarked_at").desc)
                 .limit(limit)
                 .fetchAll(db)
+                .filter { !PlaylistEntity.hiddenIds.contains($0.id) }
         }
     }
 
