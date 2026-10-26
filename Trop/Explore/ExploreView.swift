@@ -76,7 +76,6 @@ struct ExploreView: View {
     private var sectionsList: some View {
         ScrollView {
             ExploreSectionsList(sections: viewModel.sections, pendingRoute: $pendingRoute)
-                .padding(.bottom, 16)
         }
         .scrollIndicators(.automatic)
         .miniPlayerTracksScroll()
@@ -94,7 +93,8 @@ struct ExploreSectionsList: View {
     var pendingRoute: Binding<DetailRoute?>
 
     var body: some View {
-        LazyVStack(alignment: .leading, spacing: 2) {
+        // Sections space themselves (HorizontalSection adds the section gap).
+        LazyVStack(alignment: .leading, spacing: 0) {
             ForEach(sections) { section in
                 switch section.kind {
                 case .rows:
@@ -126,7 +126,7 @@ struct ExploreSectionsList: View {
                     GridItem(.flexible(), spacing: 0),
                     GridItem(.flexible(), spacing: 0)
                 ],
-                spacing: 12
+                spacing: DesignTokens.cardSpacing
             ) {
                 ForEach(section.items, id: \.id) { item in
                     YouTubeListItemView(item: item, onTap: {
@@ -142,7 +142,7 @@ struct ExploreSectionsList: View {
 
     private func cardsCarousel(_ section: ExploreSection) -> some View {
         HorizontalSection(title: section.title) {
-            LazyHStack(alignment: .top, spacing: 12) {
+            LazyHStack(alignment: .top, spacing: DesignTokens.cardSpacing) {
                 ForEach(section.items, id: \.id) { item in
                     YouTubeGridItemView(item: item, onTap: {
                         openItem(item)
@@ -451,7 +451,6 @@ private struct MoodDetailView: View {
                 } else {
                     ScrollView {
                         ExploreSectionsList(sections: sections, pendingRoute: $pendingRoute)
-                            .padding(.bottom, 16)
                     }
                     .scrollIndicators(.automatic)
                     .miniPlayerTracksScroll()
@@ -501,10 +500,10 @@ private struct MoodDetailView: View {
 private struct ExploreSkeletonView: View {
     var body: some View {
         ScrollView {
-            LazyVStack(alignment: .leading, spacing: 2) {
+            LazyVStack(alignment: .leading, spacing: 0) {
                 // Card carousel: square cover, title and subtitle, like the real cards.
                 skeletonSection(titleWidth: 220) {
-                    HStack(alignment: .top, spacing: 12) {
+                    HStack(alignment: .top, spacing: DesignTokens.cardSpacing) {
                         ForEach(0..<5, id: \.self) { _ in
                             ShimmerCard()
                         }
@@ -525,7 +524,7 @@ private struct ExploreSkeletonView: View {
                 skeletonSection(titleWidth: 120) {
                     LazyHGrid(
                         rows: Array(repeating: GridItem(.flexible(), spacing: 0), count: 4),
-                        spacing: 12
+                        spacing: DesignTokens.cardSpacing
                     ) {
                         ForEach(0..<8, id: \.self) { _ in
                             ShimmerRow()
@@ -534,7 +533,6 @@ private struct ExploreSkeletonView: View {
                     }
                 }
             }
-            .padding(.bottom, 16)
         }
         .scrollIndicators(.hidden)
         .allowsHitTesting(false)
@@ -545,14 +543,14 @@ private struct ExploreSkeletonView: View {
         titleWidth: CGFloat,
         @ViewBuilder content: () -> Content
     ) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
+        VStack(alignment: .leading, spacing: DesignTokens.titleContentGap) {
             ShimmerSectionTitle(width: titleWidth)
             ScrollView(.horizontal, showsIndicators: false) {
                 content()
                     .padding(.horizontal, DesignTokens.screenHPadding)
-                    .padding(.vertical, 4)
             }
         }
+        .padding(.bottom, DesignTokens.sectionGap)
     }
 }
 

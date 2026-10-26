@@ -42,7 +42,7 @@ struct FilterChipBar<Item, ID: Hashable>: View {
                     .buttonStyle(ZoomPressStyle())
                 }
             }
-            .padding(.horizontal, 16)
+            .padding(.horizontal, DesignTokens.screenHPadding)
             .padding(.vertical, 8)
         }
     }

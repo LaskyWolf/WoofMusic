@@ -159,14 +159,15 @@ struct HomeScreenView: View {
     private var loadingMorePlaceholder: some View {
         VStack(alignment: .leading, spacing: 0) {
             ShimmerSectionTitle(width: 180)
-            HStack(alignment: .top, spacing: 12) {
+            HStack(alignment: .top, spacing: DesignTokens.cardSpacing) {
                 ForEach(0..<3, id: \.self) { _ in ShimmerCard() }
             }
             .padding(.horizontal, DesignTokens.screenHPadding)
-            .padding(.vertical, 4)
+            .padding(.top, DesignTokens.titleContentGap)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .clipped()
+        .padding(.bottom, DesignTokens.sectionGap)
     }
 
     @ViewBuilder
@@ -207,7 +208,7 @@ struct HomeScreenView: View {
             let size = settings.quickPicksSize
             let cards = Array((pinnedSongs.map { ($0, true) } + quickSongs.map { ($0, false) }).prefix(size.count))
             let pages = stride(from: 0, to: cards.count, by: size.perPage).map { Array(cards[$0..<min($0 + size.perPage, cards.count)]) }
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: DesignTokens.titleContentGap) {
                 NavigationTitleView(title: section.displayTitle)
                 ScrollView(.horizontal, showsIndicators: false) {
                     // Spacing equals the side margin, so the next page stays off screen.
@@ -237,6 +238,7 @@ struct HomeScreenView: View {
                     .accessibilityHidden(true)
                 }
             }
+            .padding(.bottom, DesignTokens.sectionGap)
         }
     }
 
@@ -256,8 +258,8 @@ struct HomeScreenView: View {
 
     private func songsSection(_ section: HomeSection) -> some View {
         let queue = section.items.compactMap { if case .song(let s) = $0 { return s } else { return nil } }
-        return HorizontalSection(title: section.displayTitle, vSpacing: 8, contentVerticalPadding: 0) {
-            LazyHGrid(rows: Array(repeating: GridItem(.fixed(60)), count: 4), spacing: 12) {
+        return HorizontalSection(title: section.displayTitle) {
+            LazyHGrid(rows: Array(repeating: GridItem(.fixed(60)), count: 4), spacing: DesignTokens.cardSpacing) {
                 ForEach(section.items.indices, id: \.self) { i in
                     let item = section.items[i]
                     if case .song(let s) = item {
@@ -274,8 +276,9 @@ struct HomeScreenView: View {
 
     private func mixedSection(_ section: HomeSection) -> some View {
         let queue = section.items.compactMap { if case .song(let s) = $0 { return s } else { return nil } }
-        return HorizontalSection(title: section.displayTitle, vSpacing: 8, contentVerticalPadding: 0) {
-            LazyHStack(spacing: 12) {
+        return HorizontalSection(title: section.displayTitle) {
+            // Top-aligned, so captions line up when titles wrap to two lines.
+            LazyHStack(alignment: .top, spacing: DesignTokens.cardSpacing) {
                 ForEach(section.items.indices, id: \.self) { i in
                     let item = section.items[i]
                     if case .song(let s) = item, !queue.isEmpty {
@@ -285,7 +288,7 @@ struct HomeScreenView: View {
                     }
                 }
             }
-        }.padding(.top, 8)
+        }
     }
 
     // MARK: - Quick Picks (pinned)

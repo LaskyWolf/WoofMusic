@@ -54,6 +54,9 @@ struct PlaylistDetailInfo {
     var collaboratorsPanelParams: String?
     /// The signed-in account owns this playlist (YouTube sends an editable header).
     var isEditable = false
+    /// The header facepile opens the "PAplaylist_collaborate" panel: a shared
+    /// playlist whose collaborators can add and remove songs without owning it.
+    var isCollaborative = false
 }
 
 /// Parsed detail data for a podcast page.

@@ -79,7 +79,7 @@ struct SearchView: View {
 
             sortMenu
         }
-        .padding(.horizontal, 16)
+        .padding(.horizontal, DesignTokens.screenHPadding)
         .padding(.vertical, 8)
     }
 
@@ -214,8 +214,9 @@ struct SearchView: View {
 
                 if let hero = viewModel.heroArtist {
                     artistHeroCard(hero, songs: viewModel.heroSongs)
-                        .padding(.horizontal, 16)
+                        .padding(.horizontal, DesignTokens.screenHPadding)
                         .padding(.top, 8)
+                        .padding(.bottom, DesignTokens.sectionGap)
                 }
 
                 ForEach(viewModel.filteredResults) { section in
@@ -233,9 +234,11 @@ struct SearchView: View {
                             }, onNavigate: { pendingRoute = $0 })
                         }
                     }
+
+                    // Section gap as its own row, so the item rows above stay lazy.
+                    Color.clear.frame(height: DesignTokens.sectionGap)
                 }
             }
-            .padding(.bottom, 16)
         }
         .scrollIndicators(.automatic)
         .miniPlayerTracksScroll()
@@ -265,9 +268,10 @@ struct SearchView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .padding(.horizontal, 16)
-        .padding(.top, 16)
-        .padding(.bottom, 4)
+        // Same box as `NavigationTitleView`, so the rhythm matches Home and Explore.
+        .padding(.horizontal, DesignTokens.screenHPadding)
+        .padding(.vertical, 8)
+        .padding(.bottom, DesignTokens.titleContentGap)
     }
 
     /// Artist-first hero: big circular artwork + name, then top songs.
@@ -326,7 +330,7 @@ struct SearchView: View {
                                     .foregroundStyle(.primary)
                                     .lineLimit(1)
                                     .frame(width: 110)
-                                Text("Artist")
+                                ArtistKindLabel(name: artist.name)
                                     .font(.caption2)
                                     .foregroundStyle(.secondary)
                             }
@@ -336,14 +340,13 @@ struct SearchView: View {
                     }
                 }
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 4)
+            .padding(.horizontal, DesignTokens.screenHPadding)
         }
     }
 
     private func albumCarousel(items: [YTItem]) -> some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            LazyHStack(alignment: .top, spacing: 12) {
+            LazyHStack(alignment: .top, spacing: DesignTokens.cardSpacing) {
                 ForEach(items, id: \.id) { item in
                     if case .album(let album) = item {
                         Button {
@@ -361,8 +364,7 @@ struct SearchView: View {
                     }
                 }
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 4)
+            .padding(.horizontal, DesignTokens.screenHPadding)
         }
     }
 

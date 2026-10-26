@@ -132,7 +132,8 @@ struct PlaybackControlsRow: View {
     @State private var nextAnimation = 0
 
     var body: some View {
-        HStack(spacing: 0) {
+        // A centered group with fixed gaps, not spread over the whole width.
+        HStack(spacing: 24) {
             Button {
                 previousAnimation &+= 1
                 onPrevious()
@@ -143,11 +144,9 @@ struct PlaybackControlsRow: View {
             .buttonStyle(PlayerSkipButtonStyle())
             .disabled(!hasPrevious)
             .opacity(hasPrevious ? 1 : 0.3)
-            .frame(maxWidth: .infinity)
             .accessibilityLabel("Previous")
 
             PlayerPlayPauseButton(isPlaying: isPlaying, action: onPlayPause)
-            .frame(maxWidth: .infinity)
 
             Button {
                 nextAnimation &+= 1
@@ -159,10 +158,8 @@ struct PlaybackControlsRow: View {
             .buttonStyle(PlayerSkipButtonStyle())
             .disabled(!hasNext)
             .opacity(hasNext ? 1 : 0.3)
-            .frame(maxWidth: .infinity)
             .accessibilityLabel("Next")
         }
-        .padding(.horizontal, 24)
     }
 }
 

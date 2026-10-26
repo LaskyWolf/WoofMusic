@@ -26,7 +26,7 @@ struct SongActionsMenu<MenuLabel: View>: View {
     @ViewBuilder var label: () -> MenuLabel
 
     private enum Sheet: Identifiable {
-        case playlist, radio, details, similar
+        case playlist, radio, details, similar, artists, sleepTimer
         var id: Self { self }
     }
 
@@ -34,7 +34,6 @@ struct SongActionsMenu<MenuLabel: View>: View {
     // the menu items below, so a row whose menu never opens observes nothing.
     @State private var pin = PinState()
     @State private var sheet: Sheet?
-    @State private var showArtistPicker = false
     @State private var confirmRemoveDownload = false
     @State private var isResolvingArtist = false
 
@@ -98,11 +97,6 @@ struct SongActionsMenu<MenuLabel: View>: View {
                 Button("Song Details…", systemImage: "info.circle") { sheet = .details }
             }
         }
-        .confirmationDialog("Go to Artist", isPresented: $showArtistPicker, titleVisibility: .visible) {
-            ForEach(song.artists.filter { !$0.name.isEmpty }, id: \.self) { artist in
-                Button(artist.name) { openArtist(artist) }
-            }
-        }
         .confirmationDialog("Remove this download?", isPresented: $confirmRemoveDownload,
                             titleVisibility: .visible) {
             Button("Remove Download", role: .destructive) {
@@ -143,6 +137,13 @@ struct SongActionsMenu<MenuLabel: View>: View {
                     }
                 }
                 .appSheetChrome()
+            case .artists:
+                ArtistPickerSheet(artists: song.artists.filter { !$0.name.isEmpty }) { artist in
+                    self.sheet = nil
+                    openArtist(artist)
+                }
+            case .sleepTimer:
+                SleepTimerSheet()
             }
         }
     }
@@ -160,24 +161,10 @@ struct SongActionsMenu<MenuLabel: View>: View {
 
     private var sleepTimerMenu: some View {
         let timer = SleepTimer.shared
-        return Menu {
-            Button("End of Song", systemImage: "music.note") { timer.stopAtSongEnd() }
-            ForEach(SleepTimer.presetMinutes, id: \.self) { minutes in
-                Button(minutes == 60 ? "1 Hour" : "\(minutes) Minutes", systemImage: "timer") {
-                    timer.start(minutes: minutes)
-                }
-            }
-            if timer.isActive {
-                Section {
-                    Button("Turn Off", systemImage: "moon.zzz") { timer.cancel() }
-                }
-            }
-        } label: {
-            Label(
-                timer.summary.map { "Sleep Timer · \($0)" } ?? "Sleep Timer",
-                systemImage: timer.isActive ? "moon.zzz.fill" : "moon.zzz"
-            )
-        }
+        return Button(
+            timer.summary.map { "Sleep Timer · \($0)" } ?? "Sleep Timer…",
+            systemImage: timer.isActive ? "moon.zzz.fill" : "moon.zzz"
+        ) { sheet = .sleepTimer }
     }
 
     private func addToQueue() {
@@ -187,12 +174,21 @@ struct SongActionsMenu<MenuLabel: View>: View {
     }
 
     private func navigate(_ route: DetailRoute) {
+        let hadSheet = sheet != nil
         sheet = nil
         onCollapseRequest?()
         // Appends directly to the selected tab's NavigationPath — plain state
         // mutation, so it lands even while the player is tearing down.
         if let onNavigate {
-            onNavigate(route)
+            // A sheet presented by the caller can't appear while this one is still dismissing.
+            if hadSheet {
+                Task { @MainActor in
+                    try? await Task.sleep(for: .milliseconds(400))
+                    onNavigate(route)
+                }
+            } else {
+                onNavigate(route)
+            }
         } else {
             AppRouter.shared.open(route)
         }
@@ -202,7 +198,7 @@ struct SongActionsMenu<MenuLabel: View>: View {
         guard !isResolvingArtist else { return }
         let namedArtists = song.artists.filter { !$0.name.isEmpty }
         if namedArtists.count > 1 {
-            showArtistPicker = true
+            sheet = .artists
             return
         }
         guard let artist = namedArtists.first else { return }
@@ -357,6 +353,102 @@ private struct RemoveMenuItems: View {
 }
 
 
+// MARK: - Go to Artist Picker
+
+/// Lists a song's artists when it has several; tapping one opens that artist.
+private struct ArtistPickerSheet: View {
+    let artists: [YTArtist]
+    let onPick: (YTArtist) -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            List(artists, id: \.self) { artist in
+                Button {
+                    onPick(artist)
+                } label: {
+                    HStack {
+                        Label(artist.name, systemImage: "music.mic")
+                            .foregroundStyle(.primary)
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.footnote.weight(.semibold))
+                            .foregroundStyle(.tertiary)
+                    }
+                }
+            }
+            .listStyle(.plain)
+            .navigationTitle("Go to Artist")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                }
+            }
+        }
+        .appSheetChrome([.medium])
+    }
+}
+
+// MARK: - Sleep Timer Picker
+
+/// The sleep timer options; picking one starts it and closes the sheet.
+private struct SleepTimerSheet: View {
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        let timer = SleepTimer.shared
+        NavigationStack {
+            List {
+                option("End of Song", systemImage: "music.note", isSelected: timer.stopsAtSongEnd) {
+                    timer.stopAtSongEnd()
+                }
+                ForEach(SleepTimer.presetMinutes, id: \.self) { minutes in
+                    option(minutes == 60 ? "1 Hour" : "\(minutes) Minutes", systemImage: "timer",
+                           isSelected: timer.minutes == minutes) {
+                        timer.start(minutes: minutes)
+                    }
+                }
+                if timer.isActive {
+                    Button("Turn Off Timer", systemImage: "moon.zzz", role: .destructive) {
+                        timer.cancel()
+                        dismiss()
+                    }
+                }
+            }
+            .listStyle(.plain)
+            .navigationTitle("Sleep Timer")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                }
+            }
+        }
+        .appSheetChrome()
+    }
+
+    private func option(_ title: String, systemImage: String, isSelected: Bool,
+                        action: @escaping () -> Void) -> some View {
+        Button {
+            action()
+            dismiss()
+        } label: {
+            HStack {
+                Label(title, systemImage: systemImage)
+                    .foregroundStyle(.primary)
+                Spacer()
+                if isSelected {
+                    Image(systemName: "checkmark")
+                        .fontWeight(.semibold)
+                        .foregroundStyle(.tint)
+                }
+            }
+        }
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+}
+
 // MARK: - Add to Playlist Picker
 
 /// Lets the user pick which playlist to add `song` to, or create a new one.
@@ -454,7 +546,7 @@ struct AddSongToPlaylistSheet: View {
         Task {
             do {
                 for song in songs {
-                    try await SyncBridge.mutations.addToPlaylist(playlistId: playlist.id, songId: song.videoId)
+                    try await PlaylistSongEdits.add(songId: song.videoId, to: playlist.id)
                 }
                 addedTo.insert(playlist.id)
             } catch {
@@ -471,7 +563,7 @@ struct AddSongToPlaylistSheet: View {
         do {
             let playlistId = try await SyncBridge.mutations.createPlaylist(title: title)
             for song in songs {
-                try await SyncBridge.mutations.addToPlaylist(playlistId: playlistId, songId: song.videoId)
+                try await PlaylistSongEdits.add(songId: song.videoId, to: playlistId)
             }
             await loadPlaylists()
             addedTo.insert(playlistId)

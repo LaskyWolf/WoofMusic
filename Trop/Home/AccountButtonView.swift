@@ -7,6 +7,7 @@
 
 import SwiftUI
 
+/// Avatar framed in a glass circle, the size of the header's other buttons.
 struct AccountButtonView: View {
     var isLoggedIn: Bool
     var accountImageUrl: String?
@@ -14,26 +15,29 @@ struct AccountButtonView: View {
 
     var body: some View {
         Button(action: onTap) {
-            if isLoggedIn {
-                AsyncImageView(url: accountImageUrl)
-                    .frame(width: 28, height: 28)
-                    .clipShape(Circle())
-            } else {
-                fallback
-            }
+            avatar
+                .frame(width: 28, height: 28)
+                .clipShape(Circle())
+                .frame(width: 36, height: 36)
+                .glassEffect(.regular.interactive(), in: .circle)
+                .contentShape(Circle())
         }
         .buttonStyle(.plain)
     }
 
-    private var fallback: some View {
-        Circle()
-            .fill(Color(.systemGray4))
-            .frame(width: 28, height: 28)
-            .overlay(
-                Text("T")
-                    .font(.caption)
-                    .fontWeight(.semibold)
-                    .foregroundColor(.white)
-            )
+    @ViewBuilder
+    private var avatar: some View {
+        if isLoggedIn {
+            AsyncImageView(url: accountImageUrl)
+        } else {
+            Circle()
+                .fill(Color(.systemGray4))
+                .overlay(
+                    Text("T")
+                        .font(.caption)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.white)
+                )
+        }
     }
 }

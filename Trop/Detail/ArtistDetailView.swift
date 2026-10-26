@@ -424,10 +424,6 @@ struct ArtistDetailView: View {
                 singlesSection(singles: artist.singles)
             }
 
-            if !artist.videos.isEmpty {
-                videosSection(videos: artist.videos)
-            }
-
             if !artist.playlists.isEmpty {
                 playlistsSection(playlists: artist.playlists)
             }
@@ -441,7 +437,7 @@ struct ArtistDetailView: View {
             }
 
             if artist.songs.isEmpty && artist.albums.isEmpty && artist.singles.isEmpty
-                && artist.videos.isEmpty && artist.playlists.isEmpty && artist.relatedArtists.isEmpty {
+                && artist.playlists.isEmpty && artist.relatedArtists.isEmpty {
                 VStack(spacing: 8) {
                     Spacer().frame(height: 40)
                     Text("No content found")
@@ -622,34 +618,6 @@ struct ArtistDetailView: View {
     }
 
     @ViewBuilder
-    private func videosSection(videos: [SongItem]) -> some View {
-        carouselSection(title: "Videos") {
-            ForEach(videos.indices, id: \.self) { i in
-                let video = videos[i]
-                Button(action: { playVideo(video) }, label: {
-                    VStack(alignment: .leading, spacing: 6) {
-                        AsyncImageView(url: video.thumbnailUrl)
-                            .frame(width: 200, height: 112)
-                            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                        Text(video.title)
-                            .font(.caption)
-                            .fontWeight(.medium)
-                            .foregroundColor(.primary)
-                            .lineLimit(2)
-                            .frame(width: 200, alignment: .leading)
-                        if !video.duration.formattedDuration.isEmpty {
-                            Text(video.duration.formattedDuration)
-                                .font(.caption2)
-                                .foregroundColor(.secondary)
-                        }
-                    }
-                })
-                .buttonStyle(ZoomPressStyle())
-            }
-        }
-    }
-
-    @ViewBuilder
     private func playlistsSection(playlists: [PlaylistItem]) -> some View {
         carouselSection(title: "Playlists") {
             ForEach(playlists.indices, id: \.self) { i in
@@ -681,7 +649,7 @@ struct ArtistDetailView: View {
                         Text(related.name)
                             .lineLimit(1)
                             .font(.callout)
-                        Text("Artist")
+                        ArtistKindLabel(name: related.name)
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                     }
@@ -726,11 +694,6 @@ struct ArtistDetailView: View {
     private func playSong(_ song: SongItem) {
         guard let artist = viewModel.artist else { return }
         PlaybackQueue.play(song, in: artist.songs, log: Log.artistDetail, context: "Playback")
-    }
-
-    private func playVideo(_ video: SongItem) {
-        guard let artist = viewModel.artist else { return }
-        PlaybackQueue.play(video, in: artist.videos, log: Log.artistDetail, context: "Video playback")
     }
 
     /// The tile subtitle's first run is the generic "Playlist" type label —

@@ -19,6 +19,8 @@ final class SleepTimer {
     private(set) var endsAt: Date?
     /// Pause when the current song ends instead of after a countdown.
     private(set) var stopsAtSongEnd = false
+    /// The preset the running countdown was started with, for the picker's checkmark.
+    private(set) var minutes: Int?
     /// True for `celebrationSeconds` after the timer ends, while the player plays its animation.
     private(set) var isCelebrating = false
     /// When the animation started; it draws itself from the time passed since then.
@@ -81,6 +83,7 @@ final class SleepTimer {
         isCelebrating = false
         let deadline = Date().addingTimeInterval(Double(minutes) * 60)
         endsAt = deadline
+        self.minutes = minutes
         countdown = Task { [weak self] in
             try? await Task.sleep(for: .seconds(minutes * 60), clock: .continuous)
             guard !Task.isCancelled else { return }
@@ -98,6 +101,7 @@ final class SleepTimer {
         countdown?.cancel()
         countdown = nil
         endsAt = nil
+        minutes = nil
         stopsAtSongEnd = false
     }
 

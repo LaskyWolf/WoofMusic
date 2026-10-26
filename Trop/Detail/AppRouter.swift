@@ -26,6 +26,11 @@ final class AppRouter: ObservableObject {
 
     @Published private(set) var playerExpandToken = 0
 
+    /// Route shown as a sheet over the Big Player, which stays open.
+    /// Tab NavigationStacks sit under the player's full-screen cover, so a
+    /// push from there would be invisible without collapsing the player.
+    @Published var sheetRoute: DetailRoute?
+
     var activePathDepth: Int {
         switch selectedTabIndex {
         case 1: libraryPath.count
@@ -57,5 +62,33 @@ final class AppRouter: ObservableObject {
         default: homePath.append(route)
         }
         activeRoute = route
+    }
+
+    /// Opens `route` in a sheet over the Big Player instead of pushing it.
+    /// Doesn't touch `activeRoute`, so the player isn't collapsed.
+    func presentSheet(_ route: DetailRoute) {
+        sheetRoute = route
+    }
+}
+
+/// Presents `AppRouter.sheetRoute`. Attach once, inside the Big Player.
+private struct RouterSheetModifier: ViewModifier {
+    @ObservedObject private var router = AppRouter.shared
+
+    func body(content: Content) -> some View {
+        // Registers destinations so links inside the sheet push within it.
+        content.sheet(item: $router.sheetRoute) { route in
+            NavigationStack {
+                DetailRouteDestinationView(route: route)
+                    .detailRouteDestinations()
+            }
+        }
+    }
+}
+
+extension View {
+    /// Shows routes opened with `AppRouter.presentSheet(_:)` as a sheet.
+    func routerSheet() -> some View {
+        modifier(RouterSheetModifier())
     }
 }

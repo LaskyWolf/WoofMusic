@@ -28,7 +28,6 @@ struct FullPlayerView: View {
     }
     @State private var showLyrics = false
     @State private var showQueue = false
-    @State private var pendingRoute: DetailRoute?
     @State private var isOpeningArtist = false
     @State private var artistUnavailable = false
     @State private var artworkEntryOffset: CGFloat = 0
@@ -110,8 +109,9 @@ struct FullPlayerView: View {
                             .padding(.bottom, 12)
                     }
 
+                    // No top padding: the bar's touch area already leaves a gap
+                    // above the track, and the lyric line belongs with it.
                     PlayerProgressSection()
-                        .padding(.top, 4)
                         .padding(.bottom, 16)
 
                     Color.clear.frame(height: 8)
@@ -193,8 +193,9 @@ struct FullPlayerView: View {
             }
             .interactiveDismissDisabled(showQueue || showLyrics)
             .background(
+                // Artist and album links from the player open over it, as a sheet.
                 Color.clear
-                    .detailRouteSheet(item: $pendingRoute)
+                    .routerSheet()
             )
         }
     }
@@ -364,8 +365,7 @@ struct FullPlayerView: View {
                 artistUnavailable = true
                 return
             }
-            onCollapse()
-            AppRouter.shared.open(.artist(browseId: browseId))
+            AppRouter.shared.presentSheet(.artist(browseId: browseId))
         }
     }
 
@@ -425,7 +425,7 @@ private struct PlayerLyricPreview: View {
                     .multilineTextAlignment(settings.lyricsAlignment.multilineTextAlignment)
                     .frame(maxWidth: .infinity, alignment: settings.lyricsAlignment.textAlignment)
                     .padding(.horizontal, 32)
-                    .padding(.bottom, 8)
+                    .padding(.bottom, 2)
                     .accessibilityLabel("Current lyric: \(activeLyricText)")
             } else {
                 Color.clear
@@ -491,7 +491,7 @@ private struct PlayerSongMenu: View, Equatable {
     }
 
     var body: some View {
-        SongActionsMenu(song: song, showsQueueActions: false, showsSleepTimer: true, onCollapseRequest: onCollapse) {
+        SongActionsMenu(song: song, showsQueueActions: false, showsSleepTimer: true, onNavigate: { AppRouter.shared.presentSheet($0) }) {
             PlayerOptionsGlyph()
         }
     }

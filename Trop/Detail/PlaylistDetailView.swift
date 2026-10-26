@@ -378,13 +378,14 @@ extension PlaylistDetailViewModel {
             .flatMap { $0["avatarViewModel"] as? [String: Any] }
             .flatMap { ($0["image"] as? [String: Any])?["sources"] as? [[String: Any]] }
             .flatMap { $0.first?["url"] as? String }
-        let panelParams = (((headerRenderer?["facepile"] as? [String: Any])?["avatarStackViewModel"] as? [String: Any])?["rendererContext"] as? [String: Any])
+        let panelEndpoint = (((headerRenderer?["facepile"] as? [String: Any])?["avatarStackViewModel"] as? [String: Any])?["rendererContext"] as? [String: Any])
             .flatMap { $0["commandContext"] as? [String: Any] }
             .flatMap { $0["onTap"] as? [String: Any] }
             .flatMap { $0["innertubeCommand"] as? [String: Any] }
             .flatMap { $0["showEngagementPanelEndpoint"] as? [String: Any] }
-            .flatMap { $0["globalConfiguration"] as? [String: Any] }
-            .flatMap { $0["params"] as? String }
+        let panelParams = (panelEndpoint?["globalConfiguration"] as? [String: Any])?["params"] as? String
+        // Same check as ytmusicapi's parse_playlist_header_meta.
+        let isCollaborative = (panelEndpoint?["identifier"] as? [String: Any])?["tag"] as? String == "PAplaylist_collaborate"
         let avatarUrls = ((headerRenderer?["facepile"] as? [String: Any])?["avatarStackViewModel"] as? [String: Any])
             .flatMap { $0["avatars"] as? [[String: Any]] }?
             .compactMap { avatar in
@@ -416,10 +417,11 @@ extension PlaylistDetailViewModel {
             thumbnailUrl: thumbnailUrl,
             playlistId: playlistId,
             songs: songs,
-            collaboratorAvatarUrls: avatarUrls.count > 1 ? avatarUrls : [],
+            collaboratorAvatarUrls: isCollaborative || avatarUrls.count > 1 ? avatarUrls : [],
             collaboratorsPanelParams: panelParams,
             isEditable: firstTabSection?["musicEditablePlaylistDetailHeaderRenderer"] != nil
-                || (json["header"] as? [String: Any])?["musicEditablePlaylistDetailHeaderRenderer"] != nil
+                || (json["header"] as? [String: Any])?["musicEditablePlaylistDetailHeaderRenderer"] != nil,
+            isCollaborative: isCollaborative
         )
     }
 }
@@ -432,6 +434,7 @@ struct PlaylistDetailView: View {
     @State private var playlistEntity: PlaylistEntity?
     @State private var showAddSongs = false
     @State private var deleteError: String?
+    @State private var editError: String?
     @State private var selection = SongSelection()
 
     @Environment(\.dismiss) private var dismiss
@@ -448,6 +451,11 @@ struct PlaylistDetailView: View {
 
     var isEditable: Bool {
         playlistEntity?.isEditable == true && viewModel.autoRoute == nil
+    }
+
+    /// Owners and collaborators can add and remove songs; only owners delete the playlist.
+    var canEditSongs: Bool {
+        isEditable || (viewModel.playlist?.isCollaborative == true && viewModel.autoRoute == nil)
     }
 
     var body: some View {
@@ -487,6 +495,14 @@ struct PlaylistDetailView: View {
         } message: {
             Text(deleteError ?? "")
         }
+        .alert("Couldn't remove song", isPresented: Binding(
+            get: { editError != nil },
+            set: { if !$0 { editError = nil } }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(editError ?? "")
+        }
     }
 
     // MARK: - Multi-select
@@ -499,14 +515,14 @@ struct PlaylistDetailView: View {
             SongSelectionToolbar(
                 selection: selection,
                 songs: songs,
-                onRemove: isEditable ? { picked in Task { await removeSongs(picked) } } : nil
+                onRemove: canEditSongs ? { picked in Task { await removeSongs(picked) } } : nil
             )
         } else {
             ToolbarItemGroup(placement: .primaryAction) {
                 if !songs.isEmpty {
                     Button("Select", systemImage: "checkmark.circle") { selection.begin() }
                 }
-                if isEditable {
+                if canEditSongs {
                     Button("Add Songs", systemImage: "plus") { showAddSongs = true }
                 }
             }
@@ -708,7 +724,7 @@ struct PlaylistDetailView: View {
                     isSelecting: selection.isActive,
                     isSelected: selection.selected.contains(song.videoId),
                     onSelect: { selection.begin(with: song) },
-                    onRemove: isEditable ? { Task { await removeSongs([song]) } } : nil
+                    onRemove: canEditSongs ? { Task { await removeSongs([song]) } } : nil
                 )
                 .trackRowFrame(selection, index: index)
 
@@ -729,7 +745,12 @@ struct PlaylistDetailView: View {
                 arguments: [playlistId, song.videoId]
             )) ?? []
             guard let setVideoId = maps.first?.setVideoId else { continue }
-            try? await SyncBridge.mutations.removeFromPlaylist(playlistId: playlistId, songId: song.videoId, setVideoId: setVideoId)
+            do {
+                try await PlaylistSongEdits.remove(songId: song.videoId, setVideoId: setVideoId, from: playlistId)
+            } catch {
+                Log.playlistDetail.error("Failed to remove \(song.videoId) from \(playlistId): \(error)")
+                editError = error.localizedDescription
+            }
         }
         await viewModel.load()
     }
@@ -770,6 +791,7 @@ struct AddSongToPlaylistView: View {
     @State private var searchText = ""
     @State private var isLoading = true
     @State private var addingIds = Set<String>()
+    @State private var addError: String?
 
     private var filteredSongs: [SongEntity] {
         if searchText.isEmpty { return songs }
@@ -842,6 +864,14 @@ struct AddSongToPlaylistView: View {
             .task {
                 await loadSongs()
             }
+            .alert("Couldn't add song", isPresented: Binding(
+                get: { addError != nil },
+                set: { if !$0 { addError = nil } }
+            )) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(addError ?? "")
+            }
         }
     }
 
@@ -861,11 +891,12 @@ struct AddSongToPlaylistView: View {
     private func addSong(_ song: SongEntity) async {
         addingIds.insert(song.id)
         do {
-            try await SyncBridge.mutations.addToPlaylist(playlistId: playlistId, songId: song.id)
+            try await PlaylistSongEdits.add(songId: song.id, to: playlistId)
             await onDone()
             dismiss()
         } catch {
             Log.addSong.error("Failed to add song: \(error)")
+            addError = error.localizedDescription
         }
         addingIds.remove(song.id)
     }

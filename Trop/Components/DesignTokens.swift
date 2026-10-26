@@ -17,6 +17,17 @@ enum DesignTokens {
     static let cardInnerSpacing: CGFloat = 4
     static let menuRowSpacing: CGFloat = 14
 
+    // Page rhythm on the tab pages. Section titles (`NavigationTitleView`) carry
+    // 8 pt of padding above and below the text, so the visible gaps are
+    // 24 pt between sections and 12 pt from a title to its content.
+
+    /// Space after a section's content, before the next section title.
+    static let sectionGap: CGFloat = 16
+    /// Space between a section title and its content.
+    static let titleContentGap: CGFloat = 4
+    /// Space between cards in a carousel.
+    static let cardSpacing: CGFloat = 12
+
     // MARK: - Padding
 
     static let screenHPadding: CGFloat = 16

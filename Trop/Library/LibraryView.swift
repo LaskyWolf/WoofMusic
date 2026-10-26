@@ -32,6 +32,10 @@ struct LibraryView: View {
         let count = horizontalSizeClass == .regular ? 3 : 2
         return Array(repeating: GridItem(.flexible(), spacing: 16), count: count)
     }
+    private var isList: Bool { settings.libraryLayout == .list }
+    /// Full-width rows shrink less on press than grid cards.
+    private var pressScale: CGFloat { isList ? 0.98 : 0.94 }
+
     private var autoPlaylists: [AutoPlaylistInfo] {
         [
             AutoPlaylistInfo(id: "liked", title: "Liked Songs", icon: "heart.fill", subtitle: "\(likedSongCount) songs", route: .likedSongs),
@@ -127,8 +131,8 @@ struct LibraryView: View {
     private var feedContent: some View {
         ScrollView {
             LazyVStack(spacing: 0) {
-                shortcutRow
                 filterBar
+                shortcutRow
 
                 switch selectedFilter {
                 case .playlists:
@@ -160,10 +164,11 @@ struct LibraryView: View {
                     itemCell(
                         url: playlist.thumbnailUrl,
                         title: playlist.name,
-                        subtitle: playlistSongCounts[playlist.id].map { "\($0) songs" }
+                        subtitle: playlistSongCounts[playlist.id].map { "\($0) songs" },
+                        isLast: playlist.id == playlists.last?.id
                     )
                 }
-                .buttonStyle(ZoomPressStyle())
+                .buttonStyle(ZoomPressStyle(scale: pressScale))
                 .playlistCardMenu(id: playlist.id) {
                     Section {
                         Button(role: .destructive) {
@@ -180,7 +185,7 @@ struct LibraryView: View {
 
     // MARK: - Shortcuts
 
-    /// Liked Songs, My Top 100 and Downloads, always above the filters.
+    /// Liked Songs, My Top 100 and Downloads, right under the filters.
     private var shortcutRow: some View {
         HStack(spacing: 10) {
             ForEach(autoPlaylists) { info in
@@ -191,8 +196,7 @@ struct LibraryView: View {
             }
         }
         .padding(.horizontal, DesignTokens.screenHPadding)
-        .padding(.top, 4)
-        .padding(.bottom, 12)
+        .padding(.bottom, DesignTokens.sectionGap)
     }
 
     private func shortcutTile(info: AutoPlaylistInfo) -> some View {
@@ -229,12 +233,22 @@ struct LibraryView: View {
         librarySection(title: "Artists", count: artists.count) {
             ForEach(artists, id: \.id) { artist in
                 NavigationLink(value: DetailRoute.artist(browseId: artist.id)) {
-                    artistCell(
-                        url: artist.thumbnailUrl,
-                        name: artist.name
-                    )
+                    if isList {
+                        listRow(
+                            url: artist.thumbnailUrl,
+                            title: artist.name,
+                            subtitle: artist.isPodcastChannel ? "Podcast Channel" : "Artist",
+                            isCircular: true,
+                            isLast: artist.id == artists.last?.id
+                        )
+                    } else {
+                        artistCell(
+                            url: artist.thumbnailUrl,
+                            name: artist.name
+                        )
+                    }
                 }
-                .buttonStyle(ZoomPressStyle())
+                .buttonStyle(ZoomPressStyle(scale: pressScale))
                 .artistCardMenu(browseId: artist.id)
             }
         }
@@ -249,10 +263,13 @@ struct LibraryView: View {
                     itemCell(
                         url: album.thumbnailUrl,
                         title: album.title,
-                        subtitle: album.songCount > 0 ? "\(album.songCount) songs" : nil
+                        subtitle: isList
+                            ? albumDetails(album)
+                            : (album.songCount > 0 ? "\(album.songCount) songs" : nil),
+                        isLast: album.id == albums.last?.id
                     )
                 }
-                .buttonStyle(ZoomPressStyle())
+                .buttonStyle(ZoomPressStyle(scale: pressScale))
                 .albumCardMenu(browseId: album.id)
             }
         }
@@ -267,11 +284,13 @@ struct LibraryView: View {
                     itemCell(
                         url: podcast.thumbnailUrl,
                         title: podcast.name,
-                        subtitle: nil,
-                        opensPage: false
+                        // The library stores no author, so the row names the kind.
+                        subtitle: isList ? "Podcast" : nil,
+                        opensPage: false,
+                        isLast: podcast.id == podcasts.last?.id
                     )
                 }
-                .buttonStyle(ZoomPressStyle())
+                .buttonStyle(ZoomPressStyle(scale: pressScale))
             }
         }
     }
@@ -283,15 +302,21 @@ struct LibraryView: View {
         count: Int,
         @ViewBuilder content: () -> Content
     ) -> some View {
-        VStack(alignment: .leading, spacing: DesignTokens.sectionSpacing) {
+        VStack(alignment: .leading, spacing: DesignTokens.titleContentGap) {
             sectionTitle(title, count: count)
 
-            LazyVGrid(columns: gridColumns, spacing: 16) {
-                content()
+            if isList {
+                LazyVStack(spacing: 0) {
+                    content()
+                }
+            } else {
+                LazyVGrid(columns: gridColumns, spacing: 16) {
+                    content()
+                }
+                .padding(.horizontal, DesignTokens.screenHPadding)
             }
-            .padding(.horizontal, DesignTokens.screenHPadding)
         }
-        .padding(.bottom, 24)
+        .padding(.bottom, DesignTokens.sectionGap)
     }
 
     private func sectionTitle(_ title: String, count: Int? = nil) -> some View {
@@ -307,9 +332,9 @@ struct LibraryView: View {
                     .foregroundStyle(.secondary)
             }
         }
+        // Same box as `NavigationTitleView` on Home and Explore.
         .padding(.horizontal, DesignTokens.screenHPadding)
-        .padding(.top, 8)
-        .padding(.bottom, 4)
+        .padding(.vertical, 8)
     }
 
     private func autoPlaylistGradient() -> LinearGradient {
@@ -321,7 +346,16 @@ struct LibraryView: View {
         )
     }
 
-    private func itemCell(url: String?, title: String, subtitle: String?, opensPage: Bool = true) -> some View {
+    @ViewBuilder
+    private func itemCell(url: String?, title: String, subtitle: String?, opensPage: Bool = true, isLast: Bool = false) -> some View {
+        if isList {
+            listRow(url: url, title: title, subtitle: subtitle, isCircular: false, isLast: isLast)
+        } else {
+            gridCell(url: url, title: title, subtitle: subtitle, opensPage: opensPage)
+        }
+    }
+
+    private func gridCell(url: String?, title: String, subtitle: String?, opensPage: Bool) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             AsyncImageView(url: url)
                 .frame(maxWidth: .infinity)
@@ -335,6 +369,51 @@ struct LibraryView: View {
         }
     }
 
+    /// List layout: artwork on the left, title over a details line, a separator
+    /// under every row but the last (inset to the text, like Downloads).
+    private func listRow(url: String?, title: String, subtitle: String?, isCircular: Bool, isLast: Bool) -> some View {
+        HStack(spacing: DesignTokens.rowSpacing) {
+            AsyncImageView(url: url)
+                .frame(width: DesignTokens.thumbMedium, height: DesignTokens.thumbMedium)
+                .clipShape(isCircular
+                    ? AnyShape(Circle())
+                    : AnyShape(RoundedRectangle(cornerRadius: DesignTokens.cardRadius, style: .continuous)))
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.subheadline)
+                    .fontWeight(.medium)
+                    .foregroundColor(.primary)
+                    .lineLimit(1)
+                if let subtitle, !subtitle.isEmpty {
+                    Text(subtitle)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .lineLimit(1)
+                }
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, DesignTokens.screenHPadding)
+        .padding(.vertical, DesignTokens.rowVPadding)
+        .contentShape(Rectangle())
+        .overlay(alignment: .bottom) {
+            if !isLast {
+                Divider()
+                    .padding(.leading, DesignTokens.screenHPadding + DesignTokens.thumbMedium + DesignTokens.rowSpacing)
+            }
+        }
+    }
+
+    /// "12 songs • 45:30" from what the library stores (it keeps no artist or year).
+    private func albumDetails(_ album: AlbumEntity) -> String {
+        var parts: [String] = []
+        if album.songCount > 0 { parts.append("\(album.songCount) songs") }
+        if album.duration > 0 { parts.append(album.duration.formattedDuration) }
+        return parts.isEmpty ? "Album" : parts.joined(separator: " • ")
+    }
+
     private func artistCell(url: String?, name: String) -> some View {
         VStack(spacing: 8) {
             AsyncImageView(url: url)
@@ -342,7 +421,7 @@ struct LibraryView: View {
                 .clipShape(Circle())
             VStack(spacing: 2) {
                 Text(name).lineLimit(1).font(.callout)
-                Text("Artist").font(.caption).foregroundColor(.secondary)
+                ArtistKindLabel(name: name).font(.caption).foregroundColor(.secondary)
             }
         }
         .frame(maxWidth: .infinity)
@@ -357,8 +436,7 @@ struct LibraryView: View {
 
                 ForEach(0..<2, id: \.self) { _ in
                     ShimmerSectionTitle(width: 130)
-                        .padding(.top, 8)
-                        .padding(.bottom, 4)
+                        .padding(.bottom, DesignTokens.titleContentGap)
 
                     LazyVGrid(columns: gridColumns, spacing: 16) {
                         ForEach(0..<6, id: \.self) { _ in
@@ -371,9 +449,9 @@ struct LibraryView: View {
                         }
                     }
                     .padding(.horizontal, DesignTokens.screenHPadding)
+                    .padding(.bottom, DesignTokens.sectionGap)
                 }
             }
-            .padding(.bottom, 24)
         }
         .scrollIndicators(.hidden)
     }
