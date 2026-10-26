@@ -5,8 +5,8 @@
 
 import SwiftUI
 
-/// A playlist, album, artist or podcast as a list row: medium artwork on the
-/// left, then a title, a subtitle and an optional detail line. Used by the
+/// A playlist, album, artist or podcast as a list row: artwork (medium by
+/// default) on the left, then a title, a subtitle and an optional detail line. Used by the
 /// Library list layout, Search result rows and the Add to Playlist sheet.
 struct MediaListRow: View {
     let url: String?
@@ -15,11 +15,12 @@ struct MediaListRow: View {
     /// Third line under the subtitle, such as "12 songs • 45:30".
     var detail: String?
     var isCircular = false
+    var artSize = DesignTokens.artMedium
 
     var body: some View {
         HStack(spacing: DesignTokens.menuRowSpacing) {
             AsyncImageView(url: url)
-                .frame(width: DesignTokens.artMedium, height: DesignTokens.artMedium)
+                .frame(width: artSize, height: artSize)
                 .clipShape(isCircular
                     ? AnyShape(Circle())
                     : AnyShape(RoundedRectangle(cornerRadius: DesignTokens.cardRadius, style: .continuous)))

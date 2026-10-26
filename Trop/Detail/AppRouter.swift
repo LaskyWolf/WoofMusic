@@ -19,9 +19,6 @@ final class AppRouter: ObservableObject {
     @Published var libraryPath = NavigationPath()
     @Published var searchPath = NavigationPath()
     @Published var selectedTabIndex = 0
-    /// Bumped when the already selected tab is tapped again; pages observe it to
-    /// reset themselves (e.g. Explore cancels search). Read `selectedTabIndex` for the tab.
-    @Published var tabReselectToken = 0
     /// Set by the "Search" quick action; Explore focuses its field and clears it.
     @Published var focusSearchField = false
 

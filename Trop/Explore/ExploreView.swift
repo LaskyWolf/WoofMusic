@@ -5,7 +5,6 @@
 // Created by 686udjie on 11/09/2026.
 //
 
-import Combine
 import SwiftUI
 
 struct ExploreView: View {
@@ -16,8 +15,8 @@ struct ExploreView: View {
     @ObservedObject private var router = AppRouter.shared
 
     @State private var pendingRoute: DetailRoute?
-    /// True from the first tap on the field until Cancel: the search UI
-    /// replaces Explore's content, even with the keyboard down.
+    /// The native search field's presentation: true while search is active,
+    /// even with the keyboard down. The system sets it back on Cancel.
     @State private var isSearching = false
     @FocusState private var fieldFocused: Bool
 
@@ -35,8 +34,6 @@ struct ExploreView: View {
                     onAccount: { router.searchPath.append(DetailRoute.settings) }
                 )
 
-                searchBar
-
                 // Search crossfades over Explore in place; Explore stays loaded
                 // underneath so Cancel returns to it instantly.
                 ZStack(alignment: .top) {
@@ -47,11 +44,19 @@ struct ExploreView: View {
                         .accessibilityHidden(isSearching)
 
                     if isSearching {
-                        SearchResultsView(viewModel: searchModel, fieldFocused: $fieldFocused)
-                            .transition(.opacity)
+                        VStack(spacing: 0) {
+                            HStack {
+                                Spacer()
+                                sortMenu
+                            }
+                            .padding(.horizontal, DesignTokens.screenHPadding)
+                            SearchResultsView(viewModel: searchModel, fieldFocused: $fieldFocused)
+                        }
+                        .transition(.opacity)
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                .animation(searchAnimation, value: isSearching)
             }
             .frame(maxHeight: .infinity, alignment: .top)
             .toolbar(.hidden, for: .navigationBar)
@@ -65,14 +70,6 @@ struct ExploreView: View {
                     pendingRoute = nil
                 }
             }
-            .onChange(of: fieldFocused) { _, focused in
-                guard focused, !isSearching else { return }
-                withAnimation(searchAnimation) { isSearching = true }
-            }
-            .onReceive(router.$tabReselectToken.dropFirst()) { _ in
-                // Tapping the Explore tab again closes search.
-                if router.selectedTabIndex == 3, isSearching { cancelSearch() }
-            }
             .onChange(of: router.focusSearchField) { _, requested in
                 if requested { consumeFocusRequest() }
             }
@@ -81,57 +78,19 @@ struct ExploreView: View {
                 consumeFocusRequest()
             }
         }
+        // The system search tab puts this field in the tab bar.
+        .searchable(text: $searchModel.fieldText, isPresented: $isSearching, prompt: SearchViewModel.placeholder)
+        .searchFocused($fieldFocused)
+        .autocorrectionDisabled()
+        .onSubmit(of: .search) { searchModel.submit() }
+        .onChange(of: isSearching) { _, searching in
+            if !searching { searchModel.cancel() }
+        }
     }
 
-    /// Exponential ease-out; Reduce Motion gets a short plain crossfade
-    /// (no blur, and the Cancel button fades instead of sliding).
+    /// Exponential ease-out; Reduce Motion gets a short plain crossfade (no blur).
     private var searchAnimation: Animation {
         reduceMotion ? .easeInOut(duration: 0.2) : .timingCurve(0.16, 1, 0.3, 1, duration: 0.4)
-    }
-
-    /// Real field that never moves. Focusing it swaps Explore for the search
-    /// UI below; Cancel slides in on the trailing side. Sits where Home and
-    /// Library show their filter chips.
-    private var searchBar: some View {
-        HStack(spacing: 10) {
-            HStack(spacing: 8) {
-                Image(systemName: "magnifyingglass")
-                    .foregroundStyle(.secondary)
-                TextField(SearchViewModel.placeholder, text: $searchModel.fieldText)
-                    .focused($fieldFocused)
-                    .submitLabel(.search)
-                    .autocorrectionDisabled()
-                    .onSubmit {
-                        fieldFocused = false
-                        searchModel.submit()
-                    }
-                if !searchModel.fieldText.isEmpty {
-                    Button {
-                        searchModel.fieldText = ""
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundStyle(.secondary)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Clear search")
-                }
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
-            .frame(minHeight: DesignTokens.controlHeight)
-            .background(Capsule().fill(Color(.systemGray5).opacity(0.6)))
-
-            if isSearching {
-                Group {
-                    sortMenu
-                    Button("Cancel", action: cancelSearch)
-                        .foregroundStyle(settings.accentColor)
-                }
-                .transition(reduceMotion ? .opacity : .move(edge: .trailing).combined(with: .opacity))
-            }
-        }
-        .padding(.horizontal, DesignTokens.screenHPadding)
-        .padding(.vertical, 8)
     }
 
     private var sortMenu: some View {
@@ -157,20 +116,14 @@ struct ExploreView: View {
         .accessibilityLabel("Sort results")
     }
 
-    private func cancelSearch() {
-        fieldFocused = false
-        searchModel.cancel()
-        withAnimation(searchAnimation) { isSearching = false }
-    }
-
-    /// Home Screen "Search" quick action: focus the field in place.
+    /// Home Screen "Search" quick action: open the search field.
     private func consumeFocusRequest() {
         guard router.focusSearchField else { return }
         router.focusSearchField = false
         Task {
             // The tab switch must land before the field can take focus.
             try? await Task.sleep(for: .milliseconds(150))
-            fieldFocused = true
+            isSearching = true
         }
     }
 

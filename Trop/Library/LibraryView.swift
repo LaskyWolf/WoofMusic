@@ -30,11 +30,12 @@ struct LibraryView: View {
 
     private let accountState = AccountState.shared
 
-    /// Fixed columns of large covers: two on a phone, three on iPad. Cells
-    /// align to the top, so one- and two-line titles keep the covers in line.
+    /// Equal columns, two on a phone and three on iPad, each with a large cover
+    /// centred in it. Cells align to the top, so one- and two-line titles keep
+    /// the covers in line.
     private var gridColumns: [GridItem] {
         let count = horizontalSizeClass == .regular ? 3 : 2
-        return Array(repeating: GridItem(.fixed(DesignTokens.artLarge), spacing: 16, alignment: .top), count: count)
+        return Array(repeating: GridItem(.flexible(), spacing: 16, alignment: .top), count: count)
     }
     private var isList: Bool { settings.libraryLayout == .list }
     /// Full-width rows shrink less on press than grid cards.
@@ -345,9 +346,6 @@ struct LibraryView: View {
                 LazyVGrid(columns: gridColumns, spacing: 16) {
                     content()
                 }
-                // Fixed columns leave spare width; it goes to the right, so
-                // the first column lines up with the section title.
-                .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, DesignTokens.screenHPadding)
             }
         }
@@ -388,7 +386,7 @@ struct LibraryView: View {
     }
 
     private func listRow(url: String?, title: String, subtitle: String?, detail: String? = nil, isCircular: Bool) -> some View {
-        MediaListRow(url: url, title: title, subtitle: subtitle, detail: detail, isCircular: isCircular)
+        MediaListRow(url: url, title: title, subtitle: subtitle, detail: detail, isCircular: isCircular, artSize: DesignTokens.artSmall)
             .padding(.horizontal, DesignTokens.screenHPadding)
     }
 
@@ -422,7 +420,7 @@ struct LibraryView: View {
                         if isList {
                             VStack(spacing: 0) {
                                 ForEach(0..<6, id: \.self) { _ in
-                                    ShimmerMediaRow()
+                                    ShimmerMediaRow(artSize: DesignTokens.artSmall)
                                         .padding(.horizontal, DesignTokens.screenHPadding)
                                 }
                             }
@@ -430,7 +428,6 @@ struct LibraryView: View {
                             LazyVGrid(columns: gridColumns, spacing: 16) {
                                 ForEach(0..<6, id: \.self) { _ in ShimmerCard() }
                             }
-                            .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.horizontal, DesignTokens.screenHPadding)
                         }
                     }

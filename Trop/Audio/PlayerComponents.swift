@@ -71,19 +71,27 @@ struct ProgressBar: View {
     }
 }
 
-/// Play/pause icon that turns into a spinner while the song is loading.
+/// Play/pause icon that turns into a spinner when a song takes longer than
+/// `spinnerDelay` to load. Shorter loads keep the icon unchanged.
 struct PlayPauseGlyph: View {
     let isPlaying: Bool
     let size: CGFloat
     var color: Color?
+
+    static let spinnerDelay: Duration = .milliseconds(500)
+
+    @State private var showsSpinner = false
+    /// `isPlaying` from when the load started, so a quick skip doesn't flicker the icon.
+    @State private var playingBeforeLoad: Bool?
 
     private var style: AnyShapeStyle {
         color.map { AnyShapeStyle($0) } ?? AnyShapeStyle(.tint)
     }
 
     var body: some View {
+        let isLoading = NowPlaying.shared.isLoadingTrack
         ZStack {
-            if NowPlaying.shared.isLoadingTrack {
+            if showsSpinner {
                 ProgressView()
                     .progressViewStyle(.circular)
                     .controlSize(.regular)
@@ -92,14 +100,24 @@ struct PlayPauseGlyph: View {
                     .transition(.opacity)
             } else {
                 // A moon replaces the button while the sleep timer animation plays.
-                Image(systemName: SleepTimer.shared.isCelebrating ? "moon.fill" : (isPlaying ? "pause.fill" : "play.fill"))
+                Image(systemName: SleepTimer.shared.isCelebrating ? "moon.fill" : ((playingBeforeLoad ?? isPlaying) ? "pause.fill" : "play.fill"))
                     .font(.system(size: size))
                     .foregroundStyle(style)
                     .contentTransition(.symbolEffect(.replace))
                     .transition(.opacity)
             }
         }
-        .animation(.easeOut(duration: 0.15), value: NowPlaying.shared.isLoadingTrack)
+        .animation(.easeOut(duration: 0.15), value: showsSpinner)
+        .task(id: isLoading) {
+            guard isLoading else {
+                showsSpinner = false
+                playingBeforeLoad = nil
+                return
+            }
+            playingBeforeLoad = isPlaying
+            try? await Task.sleep(for: Self.spinnerDelay)
+            if !Task.isCancelled { showsSpinner = true }
+        }
     }
 }
 

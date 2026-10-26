@@ -117,10 +117,11 @@ struct ShimmerListItem: View {
     }
 }
 
-/// Library row placeholder, sized like `MediaListRow`: medium artwork
-/// (round for artists), a title, a subtitle and a detail line.
+/// Library row placeholder, sized like `MediaListRow`: artwork (medium by
+/// default, round for artists), a title, a subtitle and a detail line.
 struct ShimmerMediaRow: View {
     var isCircular = false
+    var artSize = DesignTokens.artMedium
     var titleWidth: CGFloat = 160
     var subtitleWidth: CGFloat = 100
     var detailWidth: CGFloat = 70
@@ -128,9 +129,9 @@ struct ShimmerMediaRow: View {
     var body: some View {
         HStack(spacing: DesignTokens.menuRowSpacing) {
             ShimmerBlock(
-                width: DesignTokens.artMedium,
-                height: DesignTokens.artMedium,
-                radius: isCircular ? DesignTokens.artMedium / 2 : DesignTokens.cardRadius
+                width: artSize,
+                height: artSize,
+                radius: isCircular ? artSize / 2 : DesignTokens.cardRadius
             )
             VStack(alignment: .leading, spacing: 8) {
                 ShimmerBlock(width: titleWidth, height: 16, radius: 4)

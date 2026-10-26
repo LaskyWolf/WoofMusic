@@ -7,9 +7,10 @@
 
 import SwiftUI
 
-/// Shared state driving the minimized tab bar: `AppTabBar` shrinks its pills and
-/// moves the mini player into the tab row while `isInline` is true. Scroll
-/// containers set it through `miniPlayerTracksScroll()`.
+/// Shared state driving the mini player's inline (minimized) layout.
+/// The system's `tabViewBottomAccessoryPlacement` environment can lag behind
+/// the actual tab bar state on scroll-back, so the scroll containers set this
+/// directly to keep the mini player's content in sync with its position.
 @Observable
 final class MiniPlayerScrollState {
     var isInline = false

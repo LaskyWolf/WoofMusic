@@ -103,14 +103,16 @@ struct NewReleaseCard: View {
     /// Loads the album only when Play or Save needs its songs.
     @State private var model: AlbumDetailViewModel
     @State private var isStarting = false
+    /// Turns on only once a start has taken longer than `PlayPauseGlyph.spinnerDelay`.
+    @State private var showsSpinner = false
 
-    static let size = CGSize(width: 150, height: 236)
+    static let size = CGSize(width: 150, height: 247)
     static let radius: CGFloat = 18
     static let inset: CGFloat = 12
-    static let coverSize: CGFloat = 104
-    static let discSize: CGFloat = 100
+    static let coverSize = DesignTokens.artMedium
+    static let discSize = coverSize - 4
     /// How far the disc slides out from behind the cover while playing.
-    static let discSlide: CGFloat = 30
+    static let discSlide: CGFloat = 20
 
     init(album: AlbumItem, kind: String?, onOpen: @escaping () -> Void) {
         self.album = album
@@ -204,9 +206,14 @@ struct NewReleaseCard: View {
         HStack(spacing: 6) {
             Button(action: playTapped) {
                 pill(isPlaying ? "Pause" : "Play", systemImage: isPlaying ? "pause.fill" : "play.fill",
-                     fill: .white, foreground: .black, isBusy: isStarting)
+                     fill: .white, foreground: .black, isBusy: showsSpinner)
             }
             .disabled(isStarting)
+            .task(id: isStarting) {
+                guard isStarting else { showsSpinner = false; return }
+                try? await Task.sleep(for: PlayPauseGlyph.spinnerDelay)
+                if !Task.isCancelled { showsSpinner = true }
+            }
             .accessibilityLabel(isPlaying ? "Pause" : "Play")
 
             Button {
