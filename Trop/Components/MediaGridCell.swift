@@ -31,14 +31,16 @@ extension View {
     }
 }
 
-/// Square artwork card with two-line title + optional subtitle, shared by the
-/// artist albums carousel and search album carousel. `size` fixes the width
-/// for carousels; nil sizes flexibly for grids.
+/// Square artwork card with a two-line title and optional subtitle, shared by
+/// the artist page carousels, Search's album carousel and Library's grid.
+/// Large covers by default, like Home's carousel cards.
 struct MediaGridCell: View {
     var thumbnailUrl: String?
     var title: String
     var subtitle: String?
-    var size: CGFloat?
+    var size: CGFloat = DesignTokens.artLarge
+    /// Shows the ">" badge: the card opens a page.
+    var opensPage = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: DesignTokens.cardInnerSpacing) {
@@ -46,7 +48,7 @@ struct MediaGridCell: View {
                 .aspectRatio(1, contentMode: .fill)
                 .frame(width: size, height: size)
                 .clipShape(RoundedRectangle(cornerRadius: DesignTokens.cardRadius))
-                .opensPageBadge()
+                .opensPageBadge(opensPage)
 
             Text(title)
                 .font(.caption)
@@ -62,6 +64,34 @@ struct MediaGridCell: View {
                     .lineLimit(1)
                     .frame(width: size, alignment: .leading)
             }
+        }
+        .frame(width: size)
+    }
+}
+
+/// Round artist card: large circular picture, the name centred under it and
+/// the kind of act. Shared by Library's grid, Search's artist carousel and
+/// the artist page's "Fans Also Like".
+struct ArtistCircleCell: View {
+    var thumbnailUrl: String?
+    var name: String
+    var size: CGFloat = DesignTokens.artLarge
+
+    var body: some View {
+        VStack(spacing: DesignTokens.cardInnerSpacing) {
+            AsyncImageView(url: thumbnailUrl)
+                .frame(width: size, height: size)
+                .clipShape(Circle())
+            Text(name)
+                .font(.caption)
+                .fontWeight(.medium)
+                .foregroundColor(.primary)
+                .lineLimit(2)
+                .multilineTextAlignment(.center)
+            ArtistKindLabel(name: name)
+                .font(.caption2)
+                .foregroundColor(.secondary)
+                .lineLimit(1)
         }
         .frame(width: size)
     }

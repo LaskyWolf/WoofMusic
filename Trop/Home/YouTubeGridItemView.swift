@@ -12,7 +12,7 @@ struct YouTubeGridItemView: View {
     var onTap: () -> Void
 
     @State private var durations = DurationResolver()
-    static let artworkSize: CGFloat = 160
+    static let artworkSize: CGFloat = DesignTokens.artLarge
     /// Fixed so captions of one or two lines keep a carousel's cards aligned.
     static let cardHeight: CGFloat = 220
 

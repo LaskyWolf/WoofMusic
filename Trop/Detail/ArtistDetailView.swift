@@ -588,8 +588,7 @@ struct ArtistDetailView: View {
                     MediaGridCell(
                         thumbnailUrl: album.thumbnailUrl,
                         title: album.title,
-                        subtitle: album.artists.map(\.name).joined(separator: ", "),
-                        size: 156
+                        subtitle: album.artists.map(\.name).joined(separator: ", ")
                     )
                 }
                 .buttonStyle(ZoomPressStyle())
@@ -607,8 +606,7 @@ struct ArtistDetailView: View {
                     MediaGridCell(
                         thumbnailUrl: single.thumbnailUrl,
                         title: single.title,
-                        subtitle: single.artists.map(\.name).joined(separator: ", "),
-                        size: 156
+                        subtitle: single.artists.map(\.name).joined(separator: ", ")
                     )
                 }
                 .buttonStyle(ZoomPressStyle())
@@ -626,8 +624,7 @@ struct ArtistDetailView: View {
                     MediaGridCell(
                         thumbnailUrl: playlist.thumbnailUrl,
                         title: playlist.title,
-                        subtitle: playlistSubtitle(playlist.author),
-                        size: 156
+                        subtitle: playlistSubtitle(playlist.author)
                     )
                 }
                 .buttonStyle(ZoomPressStyle())
@@ -642,18 +639,7 @@ struct ArtistDetailView: View {
             ForEach(artists.indices, id: \.self) { i in
                 let related = artists[i]
                 NavigationLink(value: DetailRoute.artist(browseId: related.browseId)) {
-                    VStack(spacing: 8) {
-                        AsyncImageView(url: related.thumbnailUrl)
-                            .frame(width: 120, height: 120)
-                            .clipShape(Circle())
-                        Text(related.name)
-                            .lineLimit(1)
-                            .font(.callout)
-                        ArtistKindLabel(name: related.name)
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                    }
-                    .frame(width: 120)
+                    ArtistCircleCell(thumbnailUrl: related.thumbnailUrl, name: related.name)
                 }
                 .buttonStyle(ZoomPressStyle())
                 .artistCardMenu(browseId: related.browseId)
@@ -676,7 +662,7 @@ struct ArtistDetailView: View {
                 .padding(.top, 24)
 
             ScrollView(.horizontal, showsIndicators: false) {
-                LazyHStack(spacing: spacing) {
+                LazyHStack(alignment: .top, spacing: spacing) {
                     content()
                 }
                 .padding(.horizontal, 16)

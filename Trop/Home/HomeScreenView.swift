@@ -214,10 +214,7 @@ struct HomeScreenView: View {
                     // Spacing equals the side margin, so the next page stays off screen.
                     LazyHStack(alignment: .top, spacing: DesignTokens.screenHPadding) {
                         ForEach(pages.indices, id: \.self) { page in
-                            // Inset inside the full-width page: smaller cards, still
-                            // centered, and paging still snaps a whole page.
                             quickPicksPage(pages[page], queue: combinedQueue, columns: size.columns)
-                                .padding(.horizontal, Self.quickPicksPageInset)
                                 .containerRelativeFrame(.horizontal)
                         }
                     }
@@ -245,8 +242,6 @@ struct HomeScreenView: View {
         }
     }
 
-    /// Extra side inset of a Quick Picks page, on top of the screen margin.
-    static let quickPicksPageInset: CGFloat = 20
 
     private func quickPicksPage(_ cards: [(SongItem, Bool)], queue: [SongItem], columns: Int) -> some View {
         LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: columns), spacing: 8) {

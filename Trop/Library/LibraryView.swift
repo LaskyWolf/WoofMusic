@@ -30,9 +30,11 @@ struct LibraryView: View {
 
     private let accountState = AccountState.shared
 
+    /// Fixed columns of large covers: two on a phone, three on iPad. Cells
+    /// align to the top, so one- and two-line titles keep the covers in line.
     private var gridColumns: [GridItem] {
         let count = horizontalSizeClass == .regular ? 3 : 2
-        return Array(repeating: GridItem(.flexible(), spacing: 16), count: count)
+        return Array(repeating: GridItem(.fixed(DesignTokens.artLarge), spacing: 16, alignment: .top), count: count)
     }
     private var isList: Bool { settings.libraryLayout == .list }
     /// Full-width rows shrink less on press than grid cards.
@@ -276,10 +278,7 @@ struct LibraryView: View {
                             isCircular: true
                         )
                     } else {
-                        artistCell(
-                            url: artist.thumbnailUrl,
-                            name: artist.name
-                        )
+                        ArtistCircleCell(thumbnailUrl: artist.thumbnailUrl, name: artist.name)
                     }
                 }
                 .buttonStyle(ZoomPressStyle(scale: pressScale))
@@ -298,8 +297,9 @@ struct LibraryView: View {
                         url: album.thumbnailUrl,
                         title: album.title,
                         subtitle: isList
-                            ? albumDetails(album)
-                            : (album.songCount > 0 ? "\(album.songCount) songs" : nil)
+                            ? "Album"
+                            : (album.songCount > 0 ? "\(album.songCount) songs" : nil),
+                        detail: albumDetails(album)
                     )
                 }
                 .buttonStyle(ZoomPressStyle(scale: pressScale))
@@ -345,6 +345,9 @@ struct LibraryView: View {
                 LazyVGrid(columns: gridColumns, spacing: 16) {
                     content()
                 }
+                // Fixed columns leave spare width; it goes to the right, so
+                // the first column lines up with the section title.
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, DesignTokens.screenHPadding)
             }
         }
@@ -370,52 +373,31 @@ struct LibraryView: View {
     }
 
     @ViewBuilder
-    private func itemCell(url: String?, title: String, subtitle: String?, opensPage: Bool = true) -> some View {
+    private func itemCell(
+        url: String?,
+        title: String,
+        subtitle: String?,
+        detail: String? = nil,
+        opensPage: Bool = true
+    ) -> some View {
         if isList {
-            listRow(url: url, title: title, subtitle: subtitle, isCircular: false)
+            listRow(url: url, title: title, subtitle: subtitle, detail: detail, isCircular: false)
         } else {
-            gridCell(url: url, title: title, subtitle: subtitle, opensPage: opensPage)
+            MediaGridCell(thumbnailUrl: url, title: title, subtitle: subtitle, opensPage: opensPage)
         }
     }
 
-    private func gridCell(url: String?, title: String, subtitle: String?, opensPage: Bool) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            AsyncImageView(url: url)
-                .frame(maxWidth: .infinity)
-                .aspectRatio(1, contentMode: .fit)
-                .clipShape(RoundedRectangle(cornerRadius: 12))
-                .opensPageBadge(opensPage)
-            Text(title).lineLimit(1).font(.callout)
-            if let subtitle {
-                Text(subtitle).font(.caption).foregroundColor(.secondary)
-            }
-        }
-    }
-
-    private func listRow(url: String?, title: String, subtitle: String?, isCircular: Bool) -> some View {
-        MediaListRow(url: url, title: title, subtitle: subtitle, isCircular: isCircular)
+    private func listRow(url: String?, title: String, subtitle: String?, detail: String? = nil, isCircular: Bool) -> some View {
+        MediaListRow(url: url, title: title, subtitle: subtitle, detail: detail, isCircular: isCircular)
             .padding(.horizontal, DesignTokens.screenHPadding)
     }
 
     /// "12 songs • 45:30" from what the library stores (it keeps no artist or year).
-    private func albumDetails(_ album: AlbumEntity) -> String {
+    private func albumDetails(_ album: AlbumEntity) -> String? {
         var parts: [String] = []
         if album.songCount > 0 { parts.append("\(album.songCount) songs") }
         if album.duration > 0 { parts.append(album.duration.formattedDuration) }
-        return parts.isEmpty ? "Album" : parts.joined(separator: " • ")
-    }
-
-    private func artistCell(url: String?, name: String) -> some View {
-        VStack(spacing: 8) {
-            AsyncImageView(url: url)
-                .frame(width: 120, height: 120)
-                .clipShape(Circle())
-            VStack(spacing: 2) {
-                Text(name).lineLimit(1).font(.callout)
-                ArtistKindLabel(name: name).font(.caption).foregroundColor(.secondary)
-            }
-        }
-        .frame(maxWidth: .infinity)
+        return parts.isEmpty ? nil : parts.joined(separator: " • ")
     }
 
     // MARK: - Loading Skeleton
@@ -446,15 +428,9 @@ struct LibraryView: View {
                             }
                         } else {
                             LazyVGrid(columns: gridColumns, spacing: 16) {
-                                ForEach(0..<6, id: \.self) { _ in
-                                    VStack(alignment: .leading, spacing: 6) {
-                                        ShimmerFill(radius: 12)
-                                            .aspectRatio(1, contentMode: .fit)
-                                        ShimmerBlock(width: 110, height: 15, radius: 4)
-                                        ShimmerBlock(width: 70, height: 12, radius: 4)
-                                    }
-                                }
+                                ForEach(0..<6, id: \.self) { _ in ShimmerCard() }
                             }
+                            .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.horizontal, DesignTokens.screenHPadding)
                         }
                     }

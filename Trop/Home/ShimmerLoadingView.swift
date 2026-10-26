@@ -117,27 +117,29 @@ struct ShimmerListItem: View {
     }
 }
 
-/// Library row placeholder, sized like `MediaListRow`: 60pt artwork
-/// (round for artists) and two text lines.
+/// Library row placeholder, sized like `MediaListRow`: medium artwork
+/// (round for artists), a title, a subtitle and a detail line.
 struct ShimmerMediaRow: View {
     var isCircular = false
     var titleWidth: CGFloat = 160
-    var subtitleWidth: CGFloat = 90
+    var subtitleWidth: CGFloat = 100
+    var detailWidth: CGFloat = 70
 
     var body: some View {
         HStack(spacing: DesignTokens.menuRowSpacing) {
             ShimmerBlock(
-                width: DesignTokens.thumbLarge,
-                height: DesignTokens.thumbLarge,
-                radius: isCircular ? DesignTokens.thumbLarge / 2 : DesignTokens.cardRadius
+                width: DesignTokens.artMedium,
+                height: DesignTokens.artMedium,
+                radius: isCircular ? DesignTokens.artMedium / 2 : DesignTokens.cardRadius
             )
-            VStack(alignment: .leading, spacing: 6) {
-                ShimmerBlock(width: titleWidth, height: 15, radius: 4)
-                ShimmerBlock(width: subtitleWidth, height: 12, radius: 4)
+            VStack(alignment: .leading, spacing: 8) {
+                ShimmerBlock(width: titleWidth, height: 16, radius: 4)
+                ShimmerBlock(width: subtitleWidth, height: 13, radius: 4)
+                ShimmerBlock(width: detailWidth, height: 11, radius: 4)
             }
             Spacer(minLength: 0)
         }
-        .padding(.vertical, 8)
+        .padding(.vertical, DesignTokens.rowVPadding)
     }
 }
 
@@ -240,8 +242,7 @@ struct ShimmerLoadingView: View {
         .padding(.bottom, DesignTokens.sectionGap)
     }
 
-    /// Square cards in the layout chosen in Settings: 3x3 or 3x2, inset like
-    /// the real page (screen margin plus `quickPicksPageInset`).
+    /// Square cards in the layout chosen in Settings: 3x3 or 3x2.
     private var quickPicksSection: some View {
         let size = SettingsStore.shared.quickPicksSize
         return section {
@@ -250,7 +251,7 @@ struct ShimmerLoadingView: View {
                     ShimmerFill(radius: 8).aspectRatio(1, contentMode: .fit)
                 }
             }
-            .padding(.horizontal, DesignTokens.screenHPadding + HomeScreenView.quickPicksPageInset)
+            .padding(.horizontal, DesignTokens.screenHPadding)
 
             HStack(spacing: 6) {
                 ForEach(0..<3, id: \.self) { _ in

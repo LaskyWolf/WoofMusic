@@ -150,9 +150,7 @@ struct SearchResultsView: View {
                         albumCarousel(items: section.items)
                     default:
                         ForEach(section.items, id: \.id) { item in
-                            YouTubeListItemView(item: item, onTap: {
-                                handleItemTap(item)
-                            }, onNavigate: { pendingRoute = $0 })
+                            resultRow(item)
                         }
                     }
 
@@ -203,7 +201,7 @@ struct SearchResultsView: View {
             } label: {
                 HStack(spacing: 12) {
                     AsyncImageView(url: artist.thumbnailUrl)
-                        .frame(width: 56, height: 56)
+                        .frame(width: DesignTokens.artSmall, height: DesignTokens.artSmall)
                         .clipShape(Circle())
                     Text(artist.name)
                         .font(.title3)
@@ -234,6 +232,37 @@ struct SearchResultsView: View {
         )
     }
 
+    /// Songs and episodes keep the 56 pt song row; albums, artists, playlists
+    /// and podcasts get the medium cover row used by Library's list layout.
+    @ViewBuilder
+    private func resultRow(_ item: YTItem) -> some View {
+        switch item {
+        case .song, .episode:
+            YouTubeListItemView(item: item, onTap: {
+                handleItemTap(item)
+            }, onNavigate: { pendingRoute = $0 })
+        case .album(let album):
+            mediaRow(item, subtitle: album.artists.map(\.name).joined(separator: ", "), detail: album.year.map { String($0) })
+        case .artist:
+            mediaRow(item, subtitle: "Artist", isCircular: true)
+        case .playlist(let playlist):
+            mediaRow(item, subtitle: playlist.author, detail: playlist.songCount.map { "\($0) songs" })
+        case .podcast(let podcast):
+            mediaRow(item, subtitle: podcast.author ?? "Podcast")
+        }
+    }
+
+    private func mediaRow(_ item: YTItem, subtitle: String?, detail: String? = nil, isCircular: Bool = false) -> some View {
+        Button {
+            handleItemTap(item)
+        } label: {
+            MediaListRow(url: item.thumbnailUrl, title: item.title, subtitle: subtitle, detail: detail, isCircular: isCircular)
+                .padding(.horizontal, DesignTokens.screenHPadding)
+        }
+        .buttonStyle(ZoomPressStyle(scale: 0.98))
+        .cardMenu(for: item)
+    }
+
     private func artistCarousel(items: [YTItem]) -> some View {
         ScrollView(.horizontal, showsIndicators: false) {
             LazyHStack(alignment: .top, spacing: 16) {
@@ -242,19 +271,7 @@ struct SearchResultsView: View {
                         Button {
                             router.searchPath.append(DetailRoute.artist(browseId: artist.browseId))
                         } label: {
-                            VStack(spacing: 8) {
-                                AsyncImageView(url: artist.thumbnailUrl)
-                                    .frame(width: 110, height: 110)
-                                    .clipShape(Circle())
-                                Text(artist.name)
-                                    .font(.subheadline)
-                                    .foregroundStyle(.primary)
-                                    .lineLimit(1)
-                                    .frame(width: 110)
-                                ArtistKindLabel(name: artist.name)
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
-                            }
+                            ArtistCircleCell(thumbnailUrl: artist.thumbnailUrl, name: artist.name)
                         }
                         .buttonStyle(ZoomPressStyle())
                         .artistCardMenu(browseId: artist.browseId)
@@ -276,8 +293,7 @@ struct SearchResultsView: View {
                             MediaGridCell(
                                 thumbnailUrl: album.thumbnailUrl,
                                 title: album.title,
-                                subtitle: album.artists.map(\.name).joined(separator: ", "),
-                                size: 140
+                                subtitle: album.artists.map(\.name).joined(separator: ", ")
                             )
                         }
                         .buttonStyle(ZoomPressStyle())

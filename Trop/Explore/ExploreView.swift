@@ -205,7 +205,11 @@ struct ExploreView: View {
 
     private var sectionsList: some View {
         ScrollView {
-            ExploreSectionsList(sections: viewModel.sections, pendingRoute: $pendingRoute)
+            ExploreSectionsList(
+                sections: viewModel.sections,
+                pendingRoute: $pendingRoute,
+                newReleases: viewModel.newReleases
+            )
         }
         .scrollIndicators(.automatic)
         .miniPlayerTracksScroll()
@@ -221,6 +225,8 @@ struct ExploreSectionsList: View {
     @ObservedObject private var router = AppRouter.shared
     var sections: [ExploreSection]
     var pendingRoute: Binding<DetailRoute?>
+    /// The Explore tab's new releases shelf, drawn as `NewReleasesSection`.
+    var newReleases: ExploreViewModel.NewReleases?
 
     var body: some View {
         // Sections space themselves (HorizontalSection adds the section gap).
@@ -230,7 +236,11 @@ struct ExploreSectionsList: View {
                 case .rows:
                     songGrid(section)
                 case .cards:
-                    cardsCarousel(section)
+                    if let newReleases, section.id == newReleases.sectionId {
+                        NewReleasesSection(section: section, kinds: newReleases.kinds, onOpen: openItem)
+                    } else {
+                        cardsCarousel(section)
+                    }
                 case .moods:
                     moodsGrid(section)
                 }
@@ -845,14 +855,14 @@ private struct MoodDetailView: View {
 
 // MARK: - Explore tab skeleton
 
-/// Loading placeholder mirroring the Explore tab: album cards, the Trending
+/// Loading placeholder mirroring the Explore tab: new releases, the Trending
 /// song columns, then the moods carousel. The section builders mirror
 /// `ExploreSectionsList`, so the mood page skeleton reuses them.
 private struct ExploreSkeletonView: View {
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
-                Self.cardsSection(titleWidth: 220)
+                NewReleasesSkeleton()
                 Self.songsSection(titleWidth: 120)
                 // Moods: the arc, centre card on top of its neighbours.
                 VStack(alignment: .leading, spacing: DesignTokens.titleContentGap) {

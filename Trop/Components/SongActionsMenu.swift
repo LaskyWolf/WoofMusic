@@ -391,7 +391,7 @@ private struct ArtistPickerRow: View {
     let artist: YTArtist
     @State private var thumbnailUrl: String?
 
-    private static let avatarSize: CGFloat = 52
+    private static let avatarSize = DesignTokens.artSmall
 
     var body: some View {
         HStack(spacing: DesignTokens.menuRowSpacing) {

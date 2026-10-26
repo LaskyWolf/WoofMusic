@@ -15,7 +15,7 @@ struct KeepListeningStrip: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isExpanded = false
 
-    static let coverSize: CGFloat = 60
+    static let coverSize: CGFloat = DesignTokens.artSmall
     static let coverRadius: CGFloat = 10
     static let cardPadding: CGFloat = 12
     static let cardRadius: CGFloat = 18

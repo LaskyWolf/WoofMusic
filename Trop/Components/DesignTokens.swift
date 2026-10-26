@@ -43,8 +43,20 @@ enum DesignTokens {
     // MARK: - Sizes
 
     static let thumbSmall: CGFloat = 40
-    static let thumbMedium: CGFloat = 48
-    static let thumbLarge: CGFloat = 60
+
+    // Cover art for artists, albums and playlists comes in three sizes.
+    // Song rows and page headers keep their own sizes.
+
+    /// Small covers: Keep Listening's stack and inline avatars beside a name
+    /// (Go to Artist rows, Search's top artist).
+    static let artSmall: CGFloat = 60
+    /// Medium covers: list rows (Library list layout, Add to Playlist,
+    /// Search result rows). The width of a Quick Picks card on a 393 pt
+    /// phone: three columns, 8 pt apart, inside the 16 pt page margins.
+    static let artMedium: CGFloat = 115
+    /// Large covers: carousel cards (Home, Explore, Search, artist pages)
+    /// and Library's grid layout.
+    static let artLarge: CGFloat = 160
     static let heroArtwork: CGFloat = 200
     /// Height of the row under each tab title: Explore's search bar and the
     /// Home, Library and Search filter chips, so the pages line up. A minimum,

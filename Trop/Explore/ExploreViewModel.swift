@@ -25,6 +25,15 @@ final class ExploreViewModel {
     private(set) var phase: Phase = .idle
     private(set) var sections: [ExploreSection] = []
     private(set) var error: Error?
+    /// The "New albums & singles" shelf, which Explore draws as its own
+    /// section. Nil when Explore didn't send it.
+    private(set) var newReleases: NewReleases?
+
+    struct NewReleases {
+        var sectionId: UUID
+        /// Release kind per album browseId ("Single", "Album", "EP").
+        var kinds: [String: String]
+    }
 
     private var hasLoaded = false
 
@@ -51,6 +60,7 @@ final class ExploreViewModel {
             )
             Log.explore.debug("Explore fetch ok topKeys=\((json.keys.sorted()))")
             sections = HomePageParser.parseExploreSections(from: json)
+            newReleases = Self.applyNewReleaseDetails(from: json, to: &sections)
             await applyRegionalTrending(region: region)
             moveMoodsUnderTrending()
             let moodCount = sections.reduce(0) { $0 + $1.moods.count }
@@ -96,6 +106,66 @@ final class ExploreViewModel {
         let moods = sections.remove(at: moodsIndex)
         guard let trending = sections.firstIndex(where: { $0.title.lowercased().contains("trending") }) else { return }
         sections.insert(moods, at: trending + 1)
+    }
+
+    // MARK: - New releases
+
+    /// Finds the new releases shelf (header browseId `FEmusic_new_releases_albums`)
+    /// and fills its albums' artists, year and kind from the card subtitle
+    /// ("Single • Artist", "Album • Artist • 2026"), which the shared
+    /// two-row parser leaves out.
+    private static func applyNewReleaseDetails(
+        from json: [String: Any],
+        to sections: inout [ExploreSection]
+    ) -> NewReleases? {
+        guard let raw = BrowseLens.browseSections(json)?
+            .compactMap({ $0["musicCarouselShelfRenderer"] as? [String: Any] })
+            .first(where: { headerBrowseId($0) == "FEmusic_new_releases_albums" }),
+              let header = (raw["header"] as? [String: Any])?["musicCarouselShelfBasicHeaderRenderer"] as? [String: Any],
+              let title = InnerTubeJSON.runsText(header["title"] as? [String: Any]),
+              let index = sections.firstIndex(where: { $0.kind == .cards && $0.title == title }) else {
+            return nil
+        }
+
+        var kinds: [String: String] = [:]
+        var details: [String: (artists: [YTArtist], year: Int?)] = [:]
+        for content in raw["contents"] as? [[String: Any]] ?? [] {
+            guard let twoRow = content["musicTwoRowItemRenderer"] as? [String: Any],
+                  let browseId = ((twoRow["navigationEndpoint"] as? [String: Any])?["browseEndpoint"]
+                      as? [String: Any])?["browseId"] as? String,
+                  var runs = (twoRow["subtitle"] as? [String: Any])?["runs"] as? [[String: Any]],
+                  !runs.isEmpty else { continue }
+            // A first run without a link is the kind, not an artist.
+            if runs[0]["navigationEndpoint"] == nil, let kind = runs[0]["text"] as? String {
+                kinds[browseId] = kind.trimmingCharacters(in: .whitespaces)
+                runs.removeFirst()
+            }
+            let year = (runs.last?["text"] as? String).flatMap { text -> Int? in
+                let trimmed = text.trimmingCharacters(in: .whitespaces)
+                return trimmed.count == 4 ? Int(trimmed) : nil
+            }
+            let artists = ArtistCredits.parse(runs: runs).map { YTArtist(name: $0.name, id: $0.browseId) }
+            details[browseId] = (artists, year)
+        }
+
+        sections[index].items = sections[index].items.map { item in
+            guard case .album(var album) = item, let detail = details[album.browseId] else { return item }
+            if album.artists.isEmpty { album.artists = detail.artists }
+            if album.year == nil { album.year = detail.year }
+            return .album(album)
+        }
+        return NewReleases(sectionId: sections[index].id, kinds: kinds)
+    }
+
+    /// The shelf header's browseId: the title link, else the "More" button.
+    private static func headerBrowseId(_ carousel: [String: Any]) -> String? {
+        guard let header = (carousel["header"] as? [String: Any])?["musicCarouselShelfBasicHeaderRenderer"]
+            as? [String: Any] else { return nil }
+        let titleRun = ((header["title"] as? [String: Any])?["runs"] as? [[String: Any]])?.first
+        let button = (header["moreContentButton"] as? [String: Any])?["buttonRenderer"] as? [String: Any]
+        let endpoint = titleRun?["navigationEndpoint"] as? [String: Any]
+            ?? button?["navigationEndpoint"] as? [String: Any]
+        return (endpoint?["browseEndpoint"] as? [String: Any])?["browseId"] as? String
     }
 
     // MARK: - Moods
