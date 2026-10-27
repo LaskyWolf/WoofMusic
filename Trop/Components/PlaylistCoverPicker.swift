@@ -311,7 +311,7 @@ struct PlaylistEditSheet: View {
         if wasSynced { return "Changes to this playlist also go to your YouTube Music account." }
         return madeOnThisPhone
             ? "Moves this playlist, its songs and cover into your YouTube Music account."
-            : "Reconnects to the playlist on YouTube Music. Its songs there replace changes made on this iPhone."
+            : "Reconnects to the playlist on YouTube Music and keeps the songs added or removed on either side. Song order follows YouTube Music."
     }
 
     // MARK: Save
@@ -339,8 +339,10 @@ struct PlaylistEditSheet: View {
                     let saved = try await SyncBridge.store.likedPlaylistSongIdsOrdered(playlistId: id)
                     guard Set(playlist.songs.map(\.videoId)).isSubset(of: Set(saved)) else { throw EditError.songsNotSaved }
                     try await SyncBridge.store.detachPlaylist(id: id)
+                    // The songs now, so turning sync back on can tell which side changed what.
+                    PlaylistReattach.saveBase(saved, playlistId: id)
                 } else if reattaches {
-                    try await SyncBridge.store.reattachPlaylist(id: id)
+                    try await PlaylistReattach.reattach(playlistId: id)
                 }
 
                 if trimmedName != playlist.title {

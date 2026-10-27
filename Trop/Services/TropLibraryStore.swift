@@ -205,7 +205,8 @@ extension TropLibraryStore {
     }
 
     /// Syncs a detached playlist again. Its songs reload from YouTube Music the
-    /// next time it opens, replacing changes made while it was detached.
+    /// next time it opens, so local changes must reach YouTube Music first
+    /// (`PlaylistReattach`).
     func reattachPlaylist(id: String) async throws {
         let browseId = id.hasPrefix("VL") ? id : "VL\(id)"
         try await db.write { db in
