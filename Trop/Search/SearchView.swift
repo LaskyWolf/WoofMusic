@@ -16,6 +16,8 @@ struct SearchView: View {
     @ObservedObject private var router = AppRouter.shared
 
     @FocusState private var fieldFocused: Bool
+    /// Shared by this tab's covers and the pages they open, for the zoom transition.
+    @Namespace private var coverZoom
 
     private let accountState = AccountState.shared
 
@@ -45,6 +47,7 @@ struct SearchView: View {
             }
             .onAppear { consumeFocusRequest() }
         }
+        .coverZoomNamespace(coverZoom)
     }
 
     private var searchAnimation: Animation {

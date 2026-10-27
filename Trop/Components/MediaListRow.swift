@@ -16,6 +16,8 @@ struct MediaListRow: View {
     var detail: String?
     var isCircular = false
     var artSize = DesignTokens.artMedium
+    /// The route this row pushes; its page zooms out of the artwork.
+    var zoomRoute: DetailRoute? = nil
 
     var body: some View {
         HStack(spacing: DesignTokens.menuRowSpacing) {
@@ -24,6 +26,7 @@ struct MediaListRow: View {
                 .clipShape(isCircular
                     ? AnyShape(Circle())
                     : AnyShape(RoundedRectangle(cornerRadius: DesignTokens.cardRadius, style: .continuous)))
+                .coverZoomSource(zoomRoute)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(title)

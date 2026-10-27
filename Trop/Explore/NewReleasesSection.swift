@@ -103,6 +103,9 @@ struct NewReleaseCard: View {
     /// Loads the album only when Play or Save needs its songs.
     @State private var model: AlbumDetailViewModel
     @State private var isStarting = false
+    /// The disc is out while this album plays; it goes back in for a moment on
+    /// every song change, like swapping records, and stays in once another album plays.
+    @State private var discOut = false
     /// Turns on only once a start has taken longer than `PlayPauseGlyph.spinnerDelay`.
     @State private var showsSpinner = false
 
@@ -160,6 +163,15 @@ struct NewReleaseCard: View {
             await model.refreshSavedState()
             await loadColors()
         }
+        .onAppear { discOut = isCurrent }
+        .onChange(of: isCurrent) { _, current in discOut = current }
+        .task(id: np.videoId) {
+            guard discOut else { return }
+            discOut = false
+            try? await Task.sleep(for: .milliseconds(450))
+            guard !Task.isCancelled else { return }
+            discOut = NewReleasePlayback.isCurrent(album.browseId)
+        }
     }
 
     // MARK: Parts
@@ -168,11 +180,13 @@ struct NewReleaseCard: View {
         VStack(alignment: .leading, spacing: 2) {
             ZStack {
                 VinylDisc(size: Self.discSize, label: colors?.first ?? Color(white: 0.45), spinning: spinning)
-                    .offset(x: isCurrent ? Self.discSlide : 0)
-                    .animation(.spring(response: 0.5, dampingFraction: 0.72), value: isCurrent)
+                    .offset(x: discOut ? Self.discSlide : 0)
+                    .animation(.spring(response: 0.5, dampingFraction: 0.72), value: discOut)
                 AsyncImageView(url: album.thumbnailUrl)
                     .frame(width: Self.coverSize, height: Self.coverSize)
                     .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    // Explore opens it through YTItemRouter, so the same route.
+                    .coverZoomSource(YTItemRouter.detailRoute(for: .album(album)))
                     .shadow(color: .black.opacity(0.35), radius: 6, x: 2, y: 4)
             }
             .frame(width: Self.coverSize, height: Self.coverSize)

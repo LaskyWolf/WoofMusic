@@ -25,6 +25,8 @@ struct LibraryView: View {
     @State private var didStartSync = false
 
     @ObservedObject private var router = AppRouter.shared
+    /// Shared by this tab's covers and the pages they open, for the zoom transition.
+    @Namespace private var coverZoom
 
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
@@ -117,6 +119,7 @@ struct LibraryView: View {
                 }
             }
         }
+        .coverZoomNamespace(coverZoom)
     }
 
     // MARK: - Filter Bar
@@ -168,11 +171,13 @@ struct LibraryView: View {
     private var playlistsSection: some View {
         librarySection(title: "Playlists", count: playlists.count) {
             ForEach(playlists, id: \.id) { playlist in
-                NavigationLink(value: DetailRoute.playlist(playlistId: playlist.id)) {
+                let route = DetailRoute.playlist(playlistId: playlist.id)
+                NavigationLink(value: route) {
                     itemCell(
                         url: playlist.thumbnailUrl,
                         title: playlist.name,
-                        subtitle: playlistSongCounts[playlist.id].map { "\($0) songs" }
+                        subtitle: playlistSongCounts[playlist.id].map { "\($0) songs" },
+                        zoomRoute: route
                     )
                 }
                 .buttonStyle(ZoomPressStyle(scale: pressScale))
@@ -300,14 +305,16 @@ struct LibraryView: View {
     private var albumsSection: some View {
         librarySection(title: "Albums", count: albums.count) {
             ForEach(albums, id: \.id) { album in
-                NavigationLink(value: DetailRoute.album(browseId: album.id)) {
+                let route = DetailRoute.album(browseId: album.id)
+                NavigationLink(value: route) {
                     itemCell(
                         url: album.thumbnailUrl,
                         title: album.title,
                         subtitle: isList
                             ? "Album"
                             : (album.songCount > 0 ? "\(album.songCount) songs" : nil),
-                        detail: albumDetails(album)
+                        detail: albumDetails(album),
+                        zoomRoute: route
                     )
                 }
                 .buttonStyle(ZoomPressStyle(scale: pressScale))
@@ -383,17 +390,23 @@ struct LibraryView: View {
         title: String,
         subtitle: String?,
         detail: String? = nil,
-        opensPage: Bool = true
+        opensPage: Bool = true,
+        zoomRoute: DetailRoute? = nil
     ) -> some View {
         if isList {
-            listRow(url: url, title: title, subtitle: subtitle, detail: detail, isCircular: false)
+            listRow(url: url, title: title, subtitle: subtitle, detail: detail, isCircular: false, zoomRoute: zoomRoute)
         } else {
-            MediaGridCell(thumbnailUrl: url, title: title, subtitle: subtitle, size: nil, opensPage: opensPage)
+            MediaGridCell(thumbnailUrl: url, title: title, subtitle: subtitle, size: nil, opensPage: opensPage, zoomRoute: zoomRoute)
         }
     }
 
-    private func listRow(url: String?, title: String, subtitle: String?, detail: String? = nil, isCircular: Bool) -> some View {
-        MediaListRow(url: url, title: title, subtitle: subtitle, detail: detail, isCircular: isCircular, artSize: DesignTokens.artSmall)
+    private func listRow(
+        url: String?, title: String, subtitle: String?, detail: String? = nil, isCircular: Bool, zoomRoute: DetailRoute? = nil
+    ) -> some View {
+        MediaListRow(
+            url: url, title: title, subtitle: subtitle, detail: detail, isCircular: isCircular,
+            artSize: DesignTokens.artSmall, zoomRoute: zoomRoute
+        )
             .padding(.horizontal, DesignTokens.screenHPadding)
     }
 

@@ -13,6 +13,8 @@ struct ExploreView: View {
     @ObservedObject private var router = AppRouter.shared
 
     @State private var pendingRoute: DetailRoute?
+    /// Shared by this tab's covers and the pages they open, for the zoom transition.
+    @Namespace private var coverZoom
 
     private let accountState = AccountState.shared
 
@@ -44,6 +46,7 @@ struct ExploreView: View {
             }
             .onAppear { viewModel.load() }
         }
+        .coverZoomNamespace(coverZoom)
     }
 
     // MARK: - Content
@@ -178,10 +181,9 @@ struct ExploreSectionsList: View {
     private func moodsGrid(_ section: ExploreSection) -> some View {
         let entries = MoodFamily.entries(for: section.moods)
         if !entries.isEmpty {
-            // Not HorizontalSection: its horizontal ScrollView would fight the carousel drag.
             VStack(alignment: .leading, spacing: DesignTokens.titleContentGap) {
                 NavigationTitleView(title: "Moods")
-                MoodCarousel(entries: entries)
+                MoodRow(entries: entries)
             }
             .padding(.bottom, DesignTokens.sectionGap)
         }
@@ -277,246 +279,63 @@ private enum MoodFamily {
 /// flight never loses its view. A UIKit pan drives the drag: it starts only on
 /// a horizontal swipe (vertical ones scroll the page) and cancels the tap under
 /// the finger once it starts.
-private struct MoodCarousel: View {
+/// One row of mood cards that loops: scrolling past the last mood brings the
+/// first one back. A family opens the native pop-up menu with its genres.
+private struct MoodRow: View {
     let entries: [MoodFamily.Entry]
 
     @ObservedObject private var router = AppRouter.shared
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var scrolledIndex: Int?
 
-    /// Fractional index of the card at the centre. Unbounded: `offset(of:)` wraps it.
-    @State private var position: Double = 0
-    @State private var dragStart: Double?
+    /// The entries are repeated this many times and the row starts in the
+    /// middle, so it never reaches an end in practice.
+    // ponytail: repeated copies fake the loop; a recentering scroll view if anyone scrolls 20+ laps.
+    private static let copies = 40
 
-    /// Finger travel that moves the row by one card: the arc's slope at the centre.
-    private static let dragStep: Double = 75
-    /// About two neighbours per side; the third one peeks in while dragging.
-    private static let visibleRange: Double = 2.6
-    static let centreSize = CGSize(width: 160, height: 116)
-    /// Room under the centre card for the side cards to drop into.
-    static let arcDrop: CGFloat = 70
-    static let height: CGFloat = 200
-
-    /// Size, position and tilt of a card `distance` steps from the centre.
-    /// Shared with the skeleton so the placeholder has the same shape.
-    static func layout(_ distance: Double) -> (size: CGSize, x: CGFloat, y: CGFloat, angle: Angle) {
-        let step = abs(distance)
-        let size = CGSize(
-            width: max(96, centreSize.width - 30 * CGFloat(step)),
-            height: max(72, centreSize.height - 20 * CGFloat(step))
-        )
-        let x = CGFloat(sin(distance * 0.5) * 150)
-        let y = CGFloat((1 - cos(distance * 0.5)) * 90)
-        return (size, x, y, .degrees(distance * 9))
+    init(entries: [MoodFamily.Entry]) {
+        self.entries = entries
+        _scrolledIndex = State(initialValue: entries.count * Self.copies / 2)
     }
 
     var body: some View {
-        ZStack(alignment: .bottom) {
-            ForEach(Array(entries.enumerated()), id: \.element.id) { index, entry in
-                let distance = offset(of: index)
-                if abs(distance) <= Self.visibleRange {
-                    let layout = Self.layout(distance)
-                    moodCard(entry, size: layout.size, textOpacity: max(0, 1 - abs(distance)))
-                        .brightness(-0.18 * abs(distance))
-                        .rotationEffect(layout.angle, anchor: .bottom)
-                        .offset(x: layout.x, y: layout.y)
-                        .onTapGesture { tap(index) }
-                        .zIndex(-abs(distance))
+        ScrollView(.horizontal, showsIndicators: false) {
+            LazyHStack(spacing: DesignTokens.cardSpacing) {
+                ForEach(0..<entries.count * Self.copies, id: \.self) { index in
+                    card(entries[index % entries.count])
                 }
             }
+            .scrollTargetLayout()
         }
-        .frame(maxWidth: .infinity)
-        .frame(height: Self.height - Self.arcDrop, alignment: .bottom)
-        // A family on the centre card opens the native pop-up menu anchored to
-        // it. The pan still wins on a drag, so swiping over it keeps working.
-        .overlay(alignment: .bottom) {
-            if case .group(_, let members) = centreEntry.kind {
-                Menu {
-                    let icons = MoodFamily.uniqueIcons(for: members)
-                    ForEach(members) { mood in
-                        Button { router.explorePath.append(mood) } label: {
-                            Label(mood.title, systemImage: icons[mood.id] ?? "music.note")
-                        }
-                    }
-                } label: {
-                    Color.clear
-                        .frame(width: Self.centreSize.width, height: Self.centreSize.height)
-                        .contentShape(Rectangle())
-                }
-                .accessibilityHidden(true)
-            }
-        }
-        .padding(.bottom, Self.arcDrop)
-        .contentShape(Rectangle())
-        .gesture(HorizontalPan(onChange: dragChanged, onEnd: dragEnded))
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(title(of: centreEntry))
-        .accessibilityValue("\(centreIndex + 1) of \(entries.count)")
-        .accessibilityHint("Swipe up or down to change mood.")
-        .accessibilityAddTraits(.isButton)
-        .accessibilityAdjustableAction { direction in
-            switch direction {
-            case .increment: settle(to: position.rounded() + 1)
-            case .decrement: settle(to: position.rounded() - 1)
-            @unknown default: break
-            }
-        }
-        .accessibilityAction { open(centreEntry) }
-        .accessibilityActions {
-            // A family's genres, so VoiceOver reaches them without the dialog.
-            if case .group(_, let members) = centreEntry.kind {
-                ForEach(members) { mood in
-                    Button(mood.title) { router.explorePath.append(mood) }
-                }
-            }
-        }
+        .contentMargins(.horizontal, DesignTokens.screenHPadding, for: .scrollContent)
+        .scrollPosition(id: $scrolledIndex, anchor: .leading)
+        .scrollTargetBehavior(.viewAligned)
     }
 
-    // MARK: Cards
-
-    private func moodCard(_ entry: MoodFamily.Entry, size: CGSize, textOpacity: Double) -> MoodCard {
+    @ViewBuilder
+    private func card(_ entry: MoodFamily.Entry) -> some View {
         switch entry.kind {
         case .group(let family, let members):
-            MoodCard(
-                title: family,
-                color: MoodCard.swatch(family: family, title: family),
-                subtitle: "\(members.count) genres",
-                trailingSymbol: "chevron.up.chevron.down",
-                size: size,
-                textOpacity: textOpacity
-            )
+            Menu {
+                let icons = MoodFamily.uniqueIcons(for: members)
+                ForEach(members) { mood in
+                    Button { router.explorePath.append(mood) } label: {
+                        Label(mood.title, systemImage: icons[mood.id] ?? "music.note")
+                    }
+                }
+            } label: {
+                MoodCard(
+                    title: family,
+                    color: MoodCard.swatch(family: family, title: family),
+                    subtitle: "\(members.count) genres",
+                    trailingSymbol: "chevron.up.chevron.down"
+                )
+            }
+            .buttonStyle(ZoomPressStyle())
         case .mood(let mood, let family):
-            MoodCard(
-                title: mood.title,
-                color: MoodCard.swatch(family: family, title: mood.title),
-                size: size,
-                textOpacity: textOpacity
-            )
-        }
-    }
-
-    // MARK: Position
-
-    /// Signed distance of a card from the centre, wrapped into (-n/2, n/2] so
-    /// the row loops: past the last mood comes the first again.
-    private func offset(of index: Int) -> Double {
-        let count = Double(entries.count)
-        var distance = (Double(index) - position).truncatingRemainder(dividingBy: count)
-        if distance > count / 2 { distance -= count } else if distance <= -count / 2 { distance += count }
-        return distance
-    }
-
-    private var centreIndex: Int {
-        let count = entries.count
-        return (Int(position.rounded()) % count + count) % count
-    }
-
-    private var centreEntry: MoodFamily.Entry { entries[centreIndex] }
-
-    private func title(of entry: MoodFamily.Entry) -> String {
-        switch entry.kind {
-        case .group(let family, _): family
-        case .mood(let mood, _): mood.title
-        }
-    }
-
-    /// The only tap path: a side card comes to the centre, the centre card opens.
-    private func tap(_ index: Int) {
-        let distance = offset(of: index)
-        if abs(distance) < 0.5 {
-            open(entries[index])
-        } else {
-            settle(to: (position + distance).rounded())
-        }
-    }
-
-    /// A genre opens its page. A family on the centre card is handled by its
-    /// menu; tapping a side family only brings it to the centre.
-    private func open(_ entry: MoodFamily.Entry) {
-        switch entry.kind {
-        case .group: break
-        case .mood(let mood, _): router.explorePath.append(mood)
-        }
-    }
-
-    private func settle(to target: Double) {
-        if reduceMotion {
-            position = target
-        } else {
-            withAnimation(.spring(response: 0.4, dampingFraction: 0.86)) { position = target }
-        }
-    }
-
-    private func dragChanged(_ translation: CGFloat) {
-        if dragStart == nil { dragStart = position }
-        guard let start = dragStart else { return }
-        position = start - Double(translation) / Self.dragStep
-    }
-
-    /// Lands on the card under the finger, plus up to two more for a flick.
-    /// The cap applies to the flick only: capping the whole drag sent a long
-    /// swipe back to the fourth card.
-    private func dragEnded(_ translation: CGFloat, _ velocity: CGFloat) {
-        guard dragStart != nil else { return }
-        dragStart = nil
-        // Cards per second, in `position` units (a drag to the left moves forward).
-        let cardVelocity = -Double(velocity) / Self.dragStep
-        // About the distance a scroll view's deceleration would add.
-        let momentum = min(max(cardVelocity * 0.2, -2), 2)
-        let target = (position + momentum).rounded()
-        if reduceMotion {
-            position = target
-            return
-        }
-        // Start the spring at the finger's speed, so the release doesn't stall
-        // or jerk. `initialVelocity` is a fraction of the distance per second.
-        let distance = target - position
-        let initialVelocity = abs(distance) > 0.001 ? cardVelocity / distance : 0
-        withAnimation(.interpolatingSpring(duration: 0.45, bounce: 0.1, initialVelocity: initialVelocity)) {
-            position = target
-        }
-    }
-}
-
-/// A horizontal-only pan. It begins only when the finger moves more sideways
-/// than up or down, so the page's vertical scroll keeps working, and it cancels
-/// the touches under it (the card taps) once it begins.
-private struct HorizontalPan: UIGestureRecognizerRepresentable {
-    var onChange: (CGFloat) -> Void
-    /// Translation and velocity on the x axis, in points and points per second.
-    var onEnd: (CGFloat, CGFloat) -> Void
-
-    func makeUIGestureRecognizer(context: Context) -> UIPanGestureRecognizer {
-        let pan = UIPanGestureRecognizer()
-        pan.maximumNumberOfTouches = 1
-        pan.cancelsTouchesInView = true
-        pan.delegate = context.coordinator
-        return pan
-    }
-
-    func handleUIGestureRecognizerAction(_ recognizer: UIPanGestureRecognizer, context: Context) {
-        let translation = recognizer.translation(in: recognizer.view).x
-        switch recognizer.state {
-        case .began, .changed:
-            onChange(translation)
-        case .ended:
-            onEnd(translation, recognizer.velocity(in: recognizer.view).x)
-        case .cancelled, .failed:
-            onEnd(translation, 0)
-        default:
-            break
-        }
-    }
-
-    func makeCoordinator(converter: CoordinateSpaceConverter) -> Coordinator {
-        Coordinator()
-    }
-
-    @MainActor
-    final class Coordinator: NSObject, UIGestureRecognizerDelegate {
-        func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
-            guard let pan = gestureRecognizer as? UIPanGestureRecognizer else { return true }
-            let velocity = pan.velocity(in: pan.view)
-            return abs(velocity.x) > abs(velocity.y)
+            Button { router.explorePath.append(mood) } label: {
+                MoodCard(title: mood.title, color: MoodCard.swatch(family: family, title: mood.title))
+            }
+            .buttonStyle(ZoomPressStyle())
         }
     }
 }
@@ -529,9 +348,8 @@ private struct MoodCard: View {
     let color: Color
     var subtitle: String?
     var trailingSymbol: String?
-    var size = CGSize(width: 172, height: 100)
-    /// Title, subtitle and chevron; the carousel fades them on side cards.
-    var textOpacity: Double = 1
+    var size = Self.defaultSize
+    static let defaultSize = CGSize(width: 172, height: 100)
 
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
@@ -572,7 +390,6 @@ private struct MoodCard: View {
             .padding(.leading, 12)
             .padding(.trailing, 36)
             .padding(.bottom, 12)
-            .opacity(textOpacity)
 
             if let trailingSymbol {
                 Image(systemName: trailingSymbol)
@@ -580,7 +397,6 @@ private struct MoodCard: View {
                     .foregroundStyle(.white.opacity(0.9))
                     .padding(10)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-                    .opacity(textOpacity)
             }
         }
         .frame(width: size.width, height: size.height)
@@ -746,7 +562,7 @@ private struct MoodDetailView: View {
 // MARK: - Explore tab skeleton
 
 /// Loading placeholder mirroring the Explore tab: new releases, the Trending
-/// song columns, then the moods carousel. The section builders mirror
+/// song columns, then the moods row. The section builders mirror
 /// `ExploreSectionsList`, so the mood page skeleton reuses them.
 private struct ExploreSkeletonView: View {
     var body: some View {
@@ -754,20 +570,17 @@ private struct ExploreSkeletonView: View {
             LazyVStack(alignment: .leading, spacing: 0) {
                 NewReleasesSkeleton()
                 Self.songsSection(titleWidth: 120)
-                // Moods: the arc, centre card on top of its neighbours.
+                // Moods: one row of cards, the next one peeking in.
                 VStack(alignment: .leading, spacing: DesignTokens.titleContentGap) {
                     ShimmerSectionTitle(width: 80)
-                    ZStack(alignment: .bottom) {
-                        ForEach([-2.0, 2.0, -1.0, 1.0, 0.0], id: \.self) { distance in
-                            let layout = MoodCarousel.layout(distance)
-                            ShimmerBlock(width: layout.size.width, height: layout.size.height, radius: 14)
-                                .rotationEffect(layout.angle, anchor: .bottom)
-                                .offset(x: layout.x, y: layout.y)
+                    HStack(spacing: DesignTokens.cardSpacing) {
+                        ForEach(0..<3, id: \.self) { _ in
+                            ShimmerBlock(width: MoodCard.defaultSize.width, height: MoodCard.defaultSize.height, radius: 14)
                         }
                     }
-                    .frame(maxWidth: .infinity)
-                    .frame(height: MoodCarousel.height - MoodCarousel.arcDrop, alignment: .bottom)
-                    .padding(.bottom, MoodCarousel.arcDrop)
+                    .padding(.leading, DesignTokens.screenHPadding)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .clipped()
                 }
                 .padding(.bottom, DesignTokens.sectionGap)
             }

@@ -578,11 +578,13 @@ struct ArtistDetailView: View {
         carouselSection(title: "Albums") {
             ForEach(albums.indices, id: \.self) { i in
                 let album = albums[i]
-                NavigationLink(value: DetailRoute.album(browseId: album.browseId)) {
+                let route = DetailRoute.album(browseId: album.browseId)
+                NavigationLink(value: route) {
                     MediaGridCell(
                         thumbnailUrl: album.thumbnailUrl,
                         title: album.title,
-                        subtitle: album.artists.map(\.name).joined(separator: ", ")
+                        subtitle: album.artists.map(\.name).joined(separator: ", "),
+                        zoomRoute: route
                     )
                 }
                 .buttonStyle(ZoomPressStyle())
@@ -596,11 +598,13 @@ struct ArtistDetailView: View {
         carouselSection(title: "Singles & EPs") {
             ForEach(singles.indices, id: \.self) { i in
                 let single = singles[i]
-                NavigationLink(value: DetailRoute.album(browseId: single.browseId)) {
+                let route = DetailRoute.album(browseId: single.browseId)
+                NavigationLink(value: route) {
                     MediaGridCell(
                         thumbnailUrl: single.thumbnailUrl,
                         title: single.title,
-                        subtitle: single.artists.map(\.name).joined(separator: ", ")
+                        subtitle: single.artists.map(\.name).joined(separator: ", "),
+                        zoomRoute: route
                     )
                 }
                 .buttonStyle(ZoomPressStyle())
@@ -614,11 +618,13 @@ struct ArtistDetailView: View {
         carouselSection(title: "Playlists") {
             ForEach(playlists.indices, id: \.self) { i in
                 let playlist = playlists[i]
-                NavigationLink(value: DetailRoute.playlist(playlistId: playlist.id)) {
+                let route = DetailRoute.playlist(playlistId: playlist.id)
+                NavigationLink(value: route) {
                     MediaGridCell(
                         thumbnailUrl: playlist.thumbnailUrl,
                         title: playlist.title,
-                        subtitle: playlistSubtitle(playlist.author)
+                        subtitle: playlistSubtitle(playlist.author),
+                        zoomRoute: route
                     )
                 }
                 .buttonStyle(ZoomPressStyle())

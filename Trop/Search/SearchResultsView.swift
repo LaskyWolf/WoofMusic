@@ -256,7 +256,10 @@ struct SearchResultsView: View {
         Button {
             handleItemTap(item)
         } label: {
-            MediaListRow(url: item.thumbnailUrl, title: item.title, subtitle: subtitle, detail: detail, isCircular: isCircular)
+            MediaListRow(
+                url: item.thumbnailUrl, title: item.title, subtitle: subtitle, detail: detail, isCircular: isCircular,
+                zoomRoute: YTItemRouter.detailRoute(for: item)
+            )
                 .padding(.horizontal, DesignTokens.screenHPadding)
         }
         .buttonStyle(ZoomPressStyle(scale: 0.98))
@@ -287,13 +290,15 @@ struct SearchResultsView: View {
             LazyHStack(alignment: .top, spacing: DesignTokens.cardSpacing) {
                 ForEach(items, id: \.id) { item in
                     if case .album(let album) = item {
+                        let route = DetailRoute.album(browseId: album.browseId)
                         Button {
-                            router.searchPath.append(DetailRoute.album(browseId: album.browseId))
+                            router.searchPath.append(route)
                         } label: {
                             MediaGridCell(
                                 thumbnailUrl: album.thumbnailUrl,
                                 title: album.title,
-                                subtitle: album.artists.map(\.name).joined(separator: ", ")
+                                subtitle: album.artists.map(\.name).joined(separator: ", "),
+                                zoomRoute: route
                             )
                         }
                         .buttonStyle(ZoomPressStyle())

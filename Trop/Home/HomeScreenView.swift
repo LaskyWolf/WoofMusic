@@ -11,6 +11,8 @@ struct HomeScreenView: View {
     @Environment(SettingsStore.self) private var settings
     @ObservedObject private var router = AppRouter.shared
     @State private var viewModel = HomeViewModel()
+    /// Shared by this tab's covers and the pages they open, for the zoom transition.
+    @Namespace private var coverZoom
     private let account = AccountState.shared
 
     @State private var pendingRoute: DetailRoute?
@@ -79,6 +81,7 @@ struct HomeScreenView: View {
                 Task { await reloadSpeedDial() }
             }
         }
+        .coverZoomNamespace(coverZoom)
     }
 
     private var homescreenContent: some View {

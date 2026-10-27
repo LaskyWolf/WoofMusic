@@ -94,6 +94,7 @@ struct YouTubeGridItemView: View {
                     .frame(width: Self.artworkSize, height: Self.artworkSize)
                     // Artists are round, albums and playlists are rounded squares.
                     .clipShape(isArtist ? AnyShape(Circle()) : AnyShape(RoundedRectangle(cornerRadius: 8)))
+                    .coverZoomSource(YTItemRouter.detailRoute(for: item))
                     .opensPageBadge(opensPage)
 
                 Text(item.title)
@@ -179,6 +180,7 @@ struct YouTubeListItemView: View {
             AsyncImageView(url: item.thumbnailUrl)
                 .frame(width: Self.artSize, height: Self.artSize)
                 .clipShape(RoundedRectangle(cornerRadius: Self.artRadius, style: .continuous))
+                .coverZoomSource(YTItemRouter.detailRoute(for: item))
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(item.title)

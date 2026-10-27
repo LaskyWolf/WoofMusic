@@ -42,6 +42,8 @@ struct MediaGridCell: View {
     var size: CGFloat? = DesignTokens.artLarge
     /// Shows the ">" badge: the card opens a page.
     var opensPage = true
+    /// The route this card pushes; its page zooms out of the cover.
+    var zoomRoute: DetailRoute? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: DesignTokens.cardInnerSpacing) {
@@ -50,6 +52,7 @@ struct MediaGridCell: View {
                 .frame(width: size)
                 .overlay { AsyncImageView(url: thumbnailUrl) }
                 .clipShape(RoundedRectangle(cornerRadius: DesignTokens.cardRadius))
+                .coverZoomSource(zoomRoute)
                 .opensPageBadge(opensPage)
 
             Text(title)

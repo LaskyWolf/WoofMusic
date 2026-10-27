@@ -137,6 +137,7 @@ struct KeepListeningStrip: View {
             onSelect(item)
         } label: {
             artwork(for: item)
+                .coverZoomSource(YTItemRouter.detailRoute(for: item))
         }
         .buttonStyle(ZoomPressStyle())
         .accessibilityLabel("\(item.title), \(Self.kindName(item))")
