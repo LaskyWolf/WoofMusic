@@ -365,6 +365,12 @@ final class NowPlaying {
             return queueSongs[index].videoId
         }
         urls.append(contentsOf: neighborIds.compactMap { URL(string: Self.artworkURL(for: $0)) })
+        // The previous song's cover, which the mini player shows beside the current one.
+        if queueSongs.indices.contains(queueIndex - 1),
+           let previous = queueSongs[queueIndex - 1].thumbnailUrl,
+           let url = URL(string: ArtworkURLs.highRes(previous) ?? previous) {
+            urls.append(url)
+        }
         guard !urls.isEmpty else { return }
         Task { await ImagePreloader.shared.append(urls) }
     }

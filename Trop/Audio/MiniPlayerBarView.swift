@@ -127,7 +127,7 @@ struct MiniPlayerBarView: View {
 
     private func page(for song: SongItem, width: CGFloat) -> some View {
         HStack(spacing: 8) {
-            barArtwork(for: song.videoId)
+            barArtwork(for: song)
 
             VStack(alignment: .leading, spacing: 0) {
                 if isInline || reduceMotion {
@@ -164,15 +164,18 @@ struct MiniPlayerBarView: View {
     }
 
     @ViewBuilder
-    private func barArtwork(for videoId: String) -> some View {
-        let isCurrent = videoId == np.videoId
+    private func barArtwork(for song: SongItem) -> some View {
+        let isCurrent = song.videoId == np.videoId
         ZStack {
             if isCurrent, let uiImage = np.thumbnailUIImage {
                 Image(uiImage: uiImage)
                     .resizable()
                     .scaledToFill()
             } else {
-                MiniArtworkView(videoId: videoId)
+                // The neighbours load the same cover the player will show once the
+                // song is current, so the artwork doesn't change after the swipe.
+                MiniArtworkView(song: song)
+                    .id(song.videoId)
             }
         }
         .frame(width: artworkSize, height: artworkSize)
@@ -299,11 +302,23 @@ private struct MiniPlayerProgressLine: View {
 
 // MARK: - Per-song artwork (memory-cache fast path)
 
+/// The cover NowPlaying loads first for a song: its own artwork at player
+/// resolution, else the ytimg default.
+private func miniArtworkURL(for song: SongItem) -> URL? {
+    URL(string: ArtworkURLs.highRes(song.thumbnailUrl) ?? NowPlaying.artworkURL(for: song.videoId))
+}
+
 @MainActor
 private struct MiniArtworkView: View {
-    let videoId: String
+    let song: SongItem
 
     @State private var uiImage: UIImage?
+
+    init(song: SongItem) {
+        self.song = song
+        // Seeded here, not on appear, so a cached cover is there on the first frame.
+        _uiImage = State(initialValue: cachedArtwork(for: song))
+    }
 
     var body: some View {
         ZStack {
@@ -318,25 +333,22 @@ private struct MiniArtworkView: View {
                     .foregroundStyle(.white.opacity(0.4))
             }
         }
-        .onAppear { load() }
+        .task { await load() }
     }
 
-    private func load() {
-        if let cached = cachedArtwork(for: videoId) {
-            uiImage = cached
-            return
-        }
-        guard let url = URL(string: NowPlaying.artworkURL(for: videoId)) else { return }
-        loggedTask(Log.nowPlaying, "Mini artwork load failed") {
+    private func load() async {
+        guard uiImage == nil, let url = miniArtworkURL(for: song) else { return }
+        do {
             let image = try await ArtworkLoader.image(for: url)
-            let cropped = image.centerCroppedSquare()
-            await MainActor.run { uiImage = cropped }
+            uiImage = image.centerCroppedSquare()
+        } catch {
+            Log.nowPlaying.error("Mini artwork load failed: \(error)")
         }
     }
 }
 
 @MainActor
-private func cachedArtwork(for videoId: String) -> UIImage? {
-    guard let url = URL(string: NowPlaying.artworkURL(for: videoId)) else { return nil }
+private func cachedArtwork(for song: SongItem) -> UIImage? {
+    guard let url = miniArtworkURL(for: song) else { return nil }
     return ArtworkLoader.cachedImage(for: url)?.centerCroppedSquare()
 }
