@@ -46,7 +46,12 @@ final class NowPlaying {
         return primary
     }
 
-    var queueSongs: [SongItem] = []
+    var queueSongs: [SongItem] = [] {
+        didSet { queueNeedsSave = true }
+    }
+    /// The encoded queue is rewritten only after the songs change, not on
+    /// every index move.
+    @ObservationIgnored private var queueNeedsSave = true
     var queueIndex = 0
     private var playNextEnd: Int?
 
@@ -125,8 +130,9 @@ final class NowPlaying {
             UserDefaults.standard.removeObject(forKey: Self.repeatKey)
             return
         }
-        if let data = try? JSONEncoder().encode(queueSongs) {
+        if queueNeedsSave, let data = try? JSONEncoder().encode(queueSongs) {
             UserDefaults.standard.set(data, forKey: Self.queueKey)
+            queueNeedsSave = false
         }
         UserDefaults.standard.set(playNextEnd, forKey: Self.playNextEndKey)
         UserDefaults.standard.set(queueIndex, forKey: Self.queueIndexKey)
@@ -644,7 +650,7 @@ final class NowPlaying {
     @MainActor
     private func timerTick() {
         // Also writes currentTime and duration.
-        PlayerController.shared.updateNowPlayingProgress()
+        PlayerController.shared.updateNowPlayingProgress(onlyIfDrifted: true)
         Crossfade.shared.tick()
         SponsorBlock.shared.tick()
         ListenBrainz.shared.tick()

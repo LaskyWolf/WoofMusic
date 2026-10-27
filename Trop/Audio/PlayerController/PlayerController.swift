@@ -53,6 +53,9 @@ final class PlayerController {
     /// Bumped by every `play()`. A call that finds it changed after an await
     /// was overtaken by a newer one and must not load its song.
     private var playGeneration = 0
+    /// Position, time and queue length of the last progress sent to the lock
+    /// screen, which counts forward from there by itself while playing.
+    private var lastProgressPush: (position: TimeInterval, at: Date, queueCount: Int)?
 
     var currentTime: TimeInterval {
         withMpv { mpv in
@@ -718,6 +721,7 @@ extension PlayerController {
         }
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nowPlayingInfo
         MPNowPlayingInfoCenter.default().playbackState = np.isPlaying ? .playing : .paused
+        lastProgressPush = (elapsed, Date(), np.queueSongs.count)
         Log.player.info(
             "NOW_PLAYING_PUBLISH title='\(np.title)' artist='\(np.artist)' " +
             "duration=\(duration) rate=\(nowPlayingInfo[MPNowPlayingInfoPropertyPlaybackRate] ?? 0) " +
@@ -733,7 +737,10 @@ extension PlayerController {
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nowPlayingInfo
     }
 
-    func updateNowPlayingProgress() {
+    /// `onlyIfDrifted`: the 0.25 s progress timer passes true, so the lock
+    /// screen is only updated when its own clock is off by a second or more
+    /// (seek, stall, song change) or the queue length changed.
+    func updateNowPlayingProgress(onlyIfDrifted: Bool = false) {
         let props: (dur: Double, pos: Double)? = withMpv { mpv in
             var dur = Double(0)
             mpv_get_property(mpv, "duration", MPV_FORMAT_DOUBLE, &dur)
@@ -754,13 +761,20 @@ extension PlayerController {
 
         var info = nowPlayingInfo
         info[MPMediaItemPropertyPlaybackDuration] = props.dur
-        np.duration = props.dur
+        // Observation notifies on every write, even of an equal value.
+        if np.duration != props.dur { np.duration = props.dur }
         info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = props.pos
         np.currentTime = props.pos
         info[MPNowPlayingInfoPropertyPlaybackRate] = np.isPlaying ? 1 : 0
         info[MPNowPlayingInfoPropertyPlaybackQueueIndex] = np.queueIndex
         info[MPNowPlayingInfoPropertyPlaybackQueueCount] = np.queueSongs.count
         nowPlayingInfo = info
+        let now = Date()
+        if onlyIfDrifted, np.isPlaying, let last = lastProgressPush, last.queueCount == np.queueSongs.count,
+           abs(props.pos - last.position - now.timeIntervalSince(last.at)) < 1 {
+            return
+        }
+        lastProgressPush = (props.pos, now, np.queueSongs.count)
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
         MPNowPlayingInfoCenter.default().playbackState = np.isPlaying ? .playing : .paused
     }

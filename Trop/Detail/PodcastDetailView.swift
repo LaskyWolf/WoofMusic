@@ -5,6 +5,7 @@
 //  Created by 686udjie on 06/07/2026.
 //
 
+import Combine
 import SwiftUI
 
 // MARK: - View Model
@@ -729,7 +730,9 @@ private struct EpisodeRowView: View {
     var onTap: () -> Void
     var onNavigate: ((DetailRoute) -> Void)?
 
-    @ObservedObject private var downloadManager = DownloadManager.shared
+    /// Only this episode's downloaded flag: observing the whole manager would
+    /// redraw every visible row at each progress step of any download.
+    @State private var isDownloaded = false
     @State private var progress: Double = 0
     @State private var hasResume = false
 
@@ -761,7 +764,7 @@ private struct EpisodeRowView: View {
                     }
 
                     HStack(spacing: 4) {
-                        if downloadManager.isDownloaded(videoId: episode.videoId) {
+                        if isDownloaded {
                             Image(systemName: "arrow.down.circle.fill")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
@@ -797,6 +800,11 @@ private struct EpisodeRowView: View {
                 .padding(.trailing, 16)
                 .padding(.bottom, 6)
             }
+        }
+        .onReceive(DownloadManager.shared.$tracks.map { [videoId = episode.videoId] in
+            $0.contains { $0.id == videoId }
+        }.removeDuplicates()) {
+            isDownloaded = $0
         }
         .task(id: episode.videoId) {
             // Tracked progress drives the bar and auto-resume on tap.

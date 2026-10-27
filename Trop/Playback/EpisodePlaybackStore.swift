@@ -64,14 +64,15 @@ actor EpisodePlaybackStore {
         ensureLoaded()
         guard duration > 0, position >= 0 else { return }
         let existing = positions[videoId]
-        // Throttle: skip writes <5s apart unless finished/near-zero.
+        let updated = EpisodePosition(position: position, duration: duration, updatedAt: Date())
+        // Throttle: skip writes <5s apart unless the episode just became finished.
         if let existing,
            abs(existing.position - position) < 5,
            Date().timeIntervalSince(existing.updatedAt) < 5,
-           !EpisodePosition(position: position, duration: duration, updatedAt: Date()).isFinished {
+           existing.isFinished == updated.isFinished {
             return
         }
-        positions[videoId] = EpisodePosition(position: position, duration: duration, updatedAt: Date())
+        positions[videoId] = updated
         persist()
     }
 

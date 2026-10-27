@@ -97,7 +97,8 @@ struct ExploreView: View {
 /// Renders Explore sections (song grids, card carousels, the moods carousel).
 /// Shared by the Explore tab and mood category pages.
 struct ExploreSectionsList: View {
-    @ObservedObject private var router = AppRouter.shared
+    /// Only appended to, never read: observing it would redraw this view on every tab's navigation.
+    private let router = AppRouter.shared
     var sections: [ExploreSection]
     var pendingRoute: Binding<DetailRoute?>
     /// The Explore tab's new releases shelf, drawn as `NewReleasesSection`.
@@ -284,7 +285,8 @@ private enum MoodFamily {
 private struct MoodRow: View {
     let entries: [MoodFamily.Entry]
 
-    @ObservedObject private var router = AppRouter.shared
+    /// Only appended to, never read: observing it would redraw this view on every tab's navigation.
+    private let router = AppRouter.shared
     @State private var scrolledIndex: Int?
 
     /// The entries are repeated this many times and the row starts in the

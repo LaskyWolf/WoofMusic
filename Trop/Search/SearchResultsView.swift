@@ -14,7 +14,8 @@ struct SearchResultsView: View {
     @Environment(SettingsStore.self) private var settings
     let viewModel: SearchViewModel
     var fieldFocused: FocusState<Bool>.Binding
-    @ObservedObject private var router = AppRouter.shared
+    /// Only appended to, never read: observing it would redraw the results on every tab's navigation.
+    private let router = AppRouter.shared
 
     @State private var pendingRoute: DetailRoute?
 

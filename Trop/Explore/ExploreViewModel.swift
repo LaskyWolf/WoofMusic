@@ -40,7 +40,8 @@ final class ExploreViewModel {
     // MARK: - Loading
 
     func load() {
-        guard !hasLoaded else { return }
+        // A tab switch mid-fetch appears again: don't start a second browse request.
+        guard !hasLoaded, phase != .loading else { return }
         Task { await fetch() }
     }
 

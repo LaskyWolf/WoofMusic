@@ -281,12 +281,14 @@ struct ArtistDetailView: View {
     let browseId: String
     @State private var viewModel: ArtistDetailViewModel
 
-    @Environment(\.dismiss) private var dismiss
-
     /// 0...1 fade of the top bar. Clamped in the scroll-geometry transform, so
-    /// the view only updates while the offset is inside the fade range.
+    /// it only changes while the offset is inside the fade range. Only
+    /// `ArtistTopBar` reads it (through a binding), so the fade redraws the bar
+    /// and not the whole page.
     @State private var barProgress: CGFloat = 0
     @State private var linkCopied = false
+    /// "Rapper", "DJ"… from MusicBrainz; nil shows "Artist".
+    @State private var artistKind: String?
     /// Status bar height: the scroll view ignores it, so the header adds it back.
     @State private var safeTop: CGFloat = 0
     @State private var linkResetTask: Task<Void, Never>?
@@ -329,7 +331,12 @@ struct ArtistDetailView: View {
                 await viewModel.load()
             }
 
-            customTopBar
+            ArtistTopBar(
+                barProgress: $barProgress,
+                artistName: viewModel.artist?.name,
+                linkCopied: linkCopied,
+                onCopyLink: copyArtistLink
+            )
         }
         .onGeometryChange(for: CGFloat.self) { proxy in
             proxy.safeAreaInsets.top
@@ -337,84 +344,6 @@ struct ArtistDetailView: View {
             safeTop = top
         }
         .onDisappear { linkResetTask?.cancel() }
-    }
-
-    private var customTopBar: some View {
-        HStack(spacing: 8) {
-            topBarBackButton
-
-            if let artist = viewModel.artist {
-                Text(artist.name)
-                    .font(.headline)
-                    .lineLimit(1)
-                    .opacity(barProgress)
-            }
-
-            Spacer(minLength: 0)
-
-            topBarCopyLinkButton
-        }
-        // Same inset pushed and in a sheet: in a sheet it keeps the round
-        // buttons clear of the sheet's top corners.
-        .padding(.horizontal, 20)
-        .padding(.top, 18)
-        .padding(.bottom, 6)
-        .background(
-            Color(.systemBackground)
-                .opacity(barProgress)
-                .ignoresSafeArea(edges: .top)
-                .allowsHitTesting(false)
-        )
-        .overlay(alignment: .bottom) {
-            Divider()
-                .opacity(barProgress)
-        }
-    }
-
-    private var topBarBackButton: some View {
-        topBarCircleButton(
-            systemName: "chevron.left",
-            accessibilityLabel: "Back",
-            action: { dismiss() }
-        )
-    }
-
-    private var topBarCopyLinkButton: some View {
-        topBarCircleButton(
-            systemName: linkCopied ? "checkmark" : "link",
-            fadedColor: linkCopied ? Color.accentColor : .primary,
-            accessibilityLabel: linkCopied ? "Artist link copied" : "Copy artist link",
-            action: { copyArtistLink() }
-        )
-        .disabled(viewModel.artist == nil)
-    }
-
-    /// Round top-bar button matching the back chevron: white with shadow over
-    /// the banner artwork, crossfading to `fadedColor` as the bar fills in.
-    private func topBarCircleButton(
-        systemName: String,
-        fadedColor: Color = .primary,
-        accessibilityLabel: String,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button(action: action, label: {
-            ZStack {
-                Image(systemName: systemName)
-                    .font(.body.weight(.semibold))
-                    .foregroundStyle(.white)
-                    .shadow(color: .black.opacity(0.5), radius: 3, y: 1)
-                    .opacity(1 - barProgress)
-                Image(systemName: systemName)
-                    .font(.body.weight(.semibold))
-                    .foregroundStyle(fadedColor)
-                    .opacity(barProgress)
-            }
-            .frame(width: 40, height: 40)
-            .glassEffect(.regular.interactive(), in: .circle)
-            .contentShape(Circle())
-        })
-        .buttonStyle(.plain)
-        .accessibilityLabel(accessibilityLabel)
     }
 
     private func copyArtistLink() {
@@ -474,11 +403,16 @@ struct ArtistDetailView: View {
     /// Header card over the blurred avatar: round avatar, subscribers, name,
     /// then Subscribe, Shuffle and Play. Same card as the playlist and album headers.
     private func header(for artist: ArtistDetailInfo) -> some View {
-        DetailHeaderCard(meta: kindLine(for: artist), title: artist.name) {
+        DetailHeaderCard(meta: artistKind ?? "Artist", title: artist.name) {
             AsyncImageView(url: ArtworkURLs.sized(artist.thumbnailUrl, width: 1200, height: 1200))
                 .clipShape(Circle())
         } secondary: {
-            EmptyView()
+            if let count = artist.subscriberCountText, !count.isEmpty {
+                Text(subscriberLabel(for: count))
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
         } buttons: {
             Button(action: { toggleSubscribe(artist) }, label: {
                 HeaderRoundIcon(
@@ -506,12 +440,9 @@ struct ArtistDetailView: View {
         .background(alignment: .top) {
             BlurredArtworkBackdrop(url: ArtworkURLs.sized(artist.thumbnailUrl, width: 1200, height: 1200))
         }
-    }
-
-    /// "Artist · 15.5M subscribers", or just "Artist" without a count.
-    private func kindLine(for artist: ArtistDetailInfo) -> String {
-        guard let count = artist.subscriberCountText, !count.isEmpty else { return "Artist" }
-        return "Artist · \(subscriberLabel(for: count))"
+        .task(id: artist.name) {
+            artistKind = await ArtistKindService.shared.kind(for: artist.name)
+        }
     }
 
     /// The top bar: 18pt top inset, 40pt buttons, 6pt bottom inset.
@@ -720,5 +651,94 @@ struct ArtistDetailView: View {
                 }
             }
         }
+    }
+}
+
+/// The artist page's top bar: back and copy-link buttons, and the name fading
+/// in with a background as the page scrolls past the header.
+private struct ArtistTopBar: View {
+    @Binding var barProgress: CGFloat
+    let artistName: String?
+    let linkCopied: Bool
+    let onCopyLink: () -> Void
+
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        HStack(spacing: 8) {
+            topBarBackButton
+
+            if let artistName {
+                Text(artistName)
+                    .font(.headline)
+                    .lineLimit(1)
+                    .opacity(barProgress)
+            }
+
+            Spacer(minLength: 0)
+
+            topBarCopyLinkButton
+        }
+        // Same inset pushed and in a sheet: in a sheet it keeps the round
+        // buttons clear of the sheet's top corners.
+        .padding(.horizontal, 20)
+        .padding(.top, 18)
+        .padding(.bottom, 6)
+        .background(
+            Color(.systemBackground)
+                .opacity(barProgress)
+                .ignoresSafeArea(edges: .top)
+                .allowsHitTesting(false)
+        )
+        .overlay(alignment: .bottom) {
+            Divider()
+                .opacity(barProgress)
+        }
+    }
+
+    private var topBarBackButton: some View {
+        topBarCircleButton(
+            systemName: "chevron.left",
+            accessibilityLabel: "Back",
+            action: { dismiss() }
+        )
+    }
+
+    private var topBarCopyLinkButton: some View {
+        topBarCircleButton(
+            systemName: linkCopied ? "checkmark" : "link",
+            fadedColor: linkCopied ? Color.accentColor : .primary,
+            accessibilityLabel: linkCopied ? "Artist link copied" : "Copy artist link",
+            action: onCopyLink
+        )
+        .disabled(artistName == nil)
+    }
+
+    /// Round top-bar button matching the back chevron: white with shadow over
+    /// the banner artwork, crossfading to `fadedColor` as the bar fills in.
+    private func topBarCircleButton(
+        systemName: String,
+        fadedColor: Color = .primary,
+        accessibilityLabel: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action, label: {
+            ZStack {
+                Image(systemName: systemName)
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .shadow(color: .black.opacity(0.5), radius: 3, y: 1)
+                    .opacity(1 - barProgress)
+                Image(systemName: systemName)
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(fadedColor)
+                    .opacity(barProgress)
+            }
+            .frame(width: 40, height: 40)
+            .glassEffect(.regular.interactive(), in: .circle)
+            .contentShape(Circle())
+        })
+        .buttonStyle(.plain)
+        .accessibilityLabel(accessibilityLabel)
     }
 }

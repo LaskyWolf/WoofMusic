@@ -647,7 +647,8 @@ struct PlaylistDetailView: View {
     /// Playlist art, else a mosaic or the first song's art, else a gradient.
     @ViewBuilder
     private func cover(for playlist: PlaylistDetailInfo) -> some View {
-        let songArtwork = playlist.songs.compactMap(\.thumbnailUrl)
+        // The mosaic shows four tiles at most: stop there instead of walking every song.
+        let songArtwork = Array(playlist.songs.lazy.compactMap(\.thumbnailUrl).prefix(4))
         if let url = playlist.thumbnailUrl ?? (songArtwork.count >= 4 ? nil : songArtwork.first) {
             AsyncImageView(url: url)
                 .clipShape(RoundedRectangle(cornerRadius: DesignTokens.cardRadius, style: .continuous))
