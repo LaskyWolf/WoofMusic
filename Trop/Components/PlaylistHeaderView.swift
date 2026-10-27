@@ -121,8 +121,8 @@ struct PlaylistHeaderView: View {
 // MARK: - Header card
 
 /// Header shared by the artist, playlist, album and Downloads pages: a
-/// translucent card over the blurred artwork, cover on the left; kind line,
-/// title, secondary line and round buttons on the right.
+/// large cover on the left over the blurred artwork; kind line, title,
+/// secondary line and round buttons on the right.
 struct DetailHeaderCard<Cover: View, Secondary: View, Buttons: View>: View {
     let meta: String
     let title: String
@@ -130,12 +130,10 @@ struct DetailHeaderCard<Cover: View, Secondary: View, Buttons: View>: View {
     @ViewBuilder var secondary: () -> Secondary
     @ViewBuilder var buttons: () -> Buttons
 
-    static var radius: CGFloat { 18 }
-
     var body: some View {
         HStack(alignment: .top, spacing: 14) {
             cover()
-                .frame(width: DesignTokens.artMedium, height: DesignTokens.artMedium)
+                .frame(width: DesignTokens.artLarge, height: DesignTokens.artLarge)
                 .shadow(color: .black.opacity(0.18), radius: 8, y: 3)
 
             VStack(alignment: .leading, spacing: 3) {
@@ -157,14 +155,7 @@ struct DetailHeaderCard<Cover: View, Secondary: View, Buttons: View>: View {
                 }
                 .buttonStyle(ZoomPressStyle(scale: 0.92))
             }
-            .frame(maxWidth: .infinity, minHeight: DesignTokens.artMedium, alignment: .leading)
-        }
-        .padding(12)
-        // Material lets the blurred artwork show through and stays legible in light and dark.
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: Self.radius, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: Self.radius, style: .continuous)
-                .strokeBorder(.white.opacity(0.12), lineWidth: 1)
+            .frame(maxWidth: .infinity, minHeight: DesignTokens.artLarge, alignment: .leading)
         }
         .padding(.horizontal, DesignTokens.screenHPadding)
         .accessibilityElement(children: .contain)
