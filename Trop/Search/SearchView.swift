@@ -7,18 +7,20 @@
 
 import SwiftUI
 
-/// The Search tab's root page: the native search field, the sort menu, and
-/// recent searches or results underneath.
+/// The Search tab's root page: its own search field where Home and Library
+/// show their filter chips, then recent searches or results underneath.
 struct SearchView: View {
+    @Environment(SettingsStore.self) private var settings
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var searchModel = SearchViewModel()
     @ObservedObject private var router = AppRouter.shared
 
-    /// The native search field's presentation: true while search is active,
-    /// even with the keyboard down. The system sets it back on Cancel.
-    @State private var isSearching = false
     @FocusState private var fieldFocused: Bool
 
     private let accountState = AccountState.shared
+
+    /// Cancel and the sort menu show while typing or while a search is on screen.
+    private var isActive: Bool { fieldFocused || !searchModel.fieldText.isEmpty }
 
     var body: some View {
         NavigationStack(path: $router.searchPath) {
@@ -31,11 +33,7 @@ struct SearchView: View {
                     onAccount: { router.searchPath.append(DetailRoute.settings) }
                 )
 
-                HStack {
-                    Spacer()
-                    sortMenu
-                }
-                .padding(.horizontal, DesignTokens.screenHPadding)
+                searchBar
 
                 SearchResultsView(viewModel: searchModel, fieldFocused: $fieldFocused)
             }
@@ -47,14 +45,60 @@ struct SearchView: View {
             }
             .onAppear { consumeFocusRequest() }
         }
-        // The system search tab puts this field in the tab bar.
-        .searchable(text: $searchModel.fieldText, isPresented: $isSearching, prompt: SearchViewModel.placeholder)
-        .searchFocused($fieldFocused)
-        .autocorrectionDisabled()
-        .onSubmit(of: .search) { searchModel.submit() }
-        .onChange(of: isSearching) { _, searching in
-            if !searching { searchModel.cancel() }
+    }
+
+    private var searchAnimation: Animation {
+        reduceMotion ? .easeInOut(duration: 0.2) : .timingCurve(0.16, 1, 0.3, 1, duration: 0.4)
+    }
+
+    /// A field the height of the filter chips; Cancel and the sort menu slide
+    /// in on the trailing side while it is active.
+    private var searchBar: some View {
+        HStack(spacing: 10) {
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass")
+                    .foregroundStyle(.secondary)
+                TextField(SearchViewModel.placeholder, text: $searchModel.fieldText)
+                    .focused($fieldFocused)
+                    .submitLabel(.search)
+                    .autocorrectionDisabled()
+                    .onSubmit {
+                        fieldFocused = false
+                        searchModel.submit()
+                    }
+                if !searchModel.fieldText.isEmpty {
+                    Button {
+                        searchModel.fieldText = ""
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Clear search")
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .frame(minHeight: DesignTokens.controlHeight)
+            .background(Capsule().fill(Color(.systemGray5).opacity(0.6)))
+
+            if isActive {
+                Group {
+                    sortMenu
+                    Button("Cancel", action: cancelSearch)
+                        .foregroundStyle(settings.accentColor)
+                }
+                .transition(reduceMotion ? .opacity : .move(edge: .trailing).combined(with: .opacity))
+            }
         }
+        .padding(.horizontal, DesignTokens.screenHPadding)
+        .padding(.vertical, 8)
+        .animation(searchAnimation, value: isActive)
+    }
+
+    private func cancelSearch() {
+        fieldFocused = false
+        searchModel.cancel()
     }
 
     private var sortMenu: some View {
@@ -80,14 +124,14 @@ struct SearchView: View {
         .accessibilityLabel("Sort results")
     }
 
-    /// Home Screen "Search" quick action: open the search field.
+    /// Home Screen "Search" quick action: focus the field.
     private func consumeFocusRequest() {
         guard router.focusSearchField else { return }
         router.focusSearchField = false
         Task {
             // The tab switch must land before the field can take focus.
             try? await Task.sleep(for: .milliseconds(150))
-            isSearching = true
+            fieldFocused = true
         }
     }
 }

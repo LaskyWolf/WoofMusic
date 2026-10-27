@@ -274,6 +274,8 @@ struct ArtistDetailView: View {
     /// the view only updates while the offset is inside the fade range.
     @State private var barProgress: CGFloat = 0
     @State private var linkCopied = false
+    /// Status bar height: the scroll view ignores it, so the header adds it back.
+    @State private var safeTop: CGFloat = 0
     @State private var linkResetTask: Task<Void, Never>?
 
     private static let barFadeStart: CGFloat = 120
@@ -306,6 +308,8 @@ struct ArtistDetailView: View {
                     barProgress = newProgress
                 }
             )
+            // Scrolls under the status bar, so the backdrop fills the top of the screen.
+            .ignoresSafeArea(edges: .top)
             .toolbar(.hidden, for: .navigationBar)
             .task {
                 guard viewModel.isLoading else { return }
@@ -313,6 +317,11 @@ struct ArtistDetailView: View {
             }
 
             customTopBar
+        }
+        .onGeometryChange(for: CGFloat.self) { proxy in
+            proxy.safeAreaInsets.top
+        } action: { top in
+            safeTop = top
         }
         .onDisappear { linkResetTask?.cancel() }
     }
@@ -510,7 +519,7 @@ struct ArtistDetailView: View {
             .padding(.top, 4)
         }
         // Room for the top bar's round buttons above the avatar.
-        .padding(.top, Self.topBarHeight + 8)
+        .padding(.top, safeTop + Self.topBarHeight + 8)
         .padding(.bottom, 16)
         .frame(maxWidth: .infinity)
         .background(alignment: .top) {

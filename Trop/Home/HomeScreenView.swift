@@ -309,6 +309,8 @@ struct HomeScreenView: View {
                 handleItemTap(item)
             }
         }
+        // Same gap under the chips as Library's shortcut tiles.
+        .padding(.top, 8)
     }
 
     // MARK: - Quick Picks (pinned)

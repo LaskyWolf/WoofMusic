@@ -54,6 +54,10 @@ struct PlaylistHeaderView: View {
         .frame(maxWidth: .infinity)
         .padding(.vertical, 20)
         .padding(.horizontal, 16)
+        // Same backdrop as the playlist, album and artist headers.
+        .background(alignment: .top) {
+            BlurredArtworkBackdrop(url: thumbnailUrl ?? thumbnails.first)
+        }
     }
 
     private var textBlock: some View {
@@ -102,7 +106,7 @@ struct PlaylistHeaderView: View {
 
     private func artSingle(url: String) -> some View {
         AsyncImageView(url: url)
-            .frame(width: 200, height: 200)
+            .frame(width: DesignTokens.heroArtwork, height: DesignTokens.heroArtwork)
             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             .shadow(color: .black.opacity(0.22), radius: 16, y: 6)
     }
@@ -120,7 +124,7 @@ struct PlaylistHeaderView: View {
                     endPoint: .bottomTrailing
                 )
             )
-            .frame(width: 200, height: 200)
+            .frame(width: DesignTokens.heroArtwork, height: DesignTokens.heroArtwork)
             .overlay {
                 Image(systemName: "arrow.down.circle.fill")
                     .font(.system(size: 56, weight: .medium))

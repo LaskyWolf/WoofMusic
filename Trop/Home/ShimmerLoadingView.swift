@@ -240,6 +240,7 @@ struct ShimmerLoadingView: View {
         .background(Strip.cardColor, in: shape)
         .clipShape(shape)
         .padding(.horizontal, DesignTokens.screenHPadding)
+        .padding(.top, 8)
         .padding(.bottom, DesignTokens.sectionGap)
     }
 

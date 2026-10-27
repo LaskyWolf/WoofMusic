@@ -113,8 +113,8 @@ struct DownloadsView: View {
         ForEach(Array(songs.enumerated()), id: \.offset) { _, song in
             SongRowView(
                 song: song,
-                artSize: 48,
-                artRadius: 8,
+                artSize: DesignTokens.artSmall,
+                artRadius: DesignTokens.cardRadius,
                 onTap: { playSong(song) },
                 onNavigate: { AppRouter.shared.open($0) }
             )

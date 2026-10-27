@@ -13,7 +13,8 @@ struct KeepListeningStrip: View {
     let onSelect: (YTItem) -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var isExpanded = false
+    /// Stays as the user left it, across tab switches and Home reloads.
+    @SceneStorage("keepListeningExpanded") private var isExpanded = false
 
     static let coverSize: CGFloat = DesignTokens.artSmall
     static let coverRadius: CGFloat = 10
@@ -35,11 +36,6 @@ struct KeepListeningStrip: View {
         card
             .padding(.horizontal, DesignTokens.screenHPadding)
             .padding(.bottom, DesignTokens.sectionGap)
-            // Folds back once the card scrolls off screen or Home is left.
-            .onScrollVisibilityChange(threshold: 0.1) { visible in
-                if !visible { isExpanded = false }
-            }
-            .onDisappear { isExpanded = false }
     }
 
     private var card: some View {
