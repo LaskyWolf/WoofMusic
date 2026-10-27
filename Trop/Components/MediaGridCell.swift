@@ -13,10 +13,9 @@ private struct OpensPageBadge: ViewModifier {
         content.overlay(alignment: .bottomTrailing) {
             Image(systemName: "chevron.right")
                 .font(.system(size: 10, weight: .bold))
-                .foregroundStyle(.white)
-                .frame(width: 22, height: 22)
-                .background(.black.opacity(0.55), in: Circle())
-                .overlay(Circle().strokeBorder(.white.opacity(0.35), lineWidth: 0.5))
+                .foregroundStyle(.primary)
+                .frame(width: 24, height: 24)
+                .glassEffect(.regular, in: Circle())
                 .padding(6)
                 .accessibilityHidden(true)
         }

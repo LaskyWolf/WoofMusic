@@ -169,14 +169,15 @@ struct HeaderRoundIcon: View {
     var primary: Color?
     var tint: Color = .primary
 
-    static let size: CGFloat = 38
+    /// The filled play button is larger than the other buttons beside it.
+    private var size: CGFloat { primary == nil ? 38 : 50 }
 
     var body: some View {
         Image(systemName: systemImage)
-            .font(.system(size: 15, weight: .bold))
+            .font(.system(size: primary == nil ? 15 : 19, weight: .bold))
             .contentTransition(.symbolEffect(.replace))
             .foregroundStyle(primary == nil ? tint : .white)
-            .frame(width: Self.size, height: Self.size)
+            .frame(width: size, height: size)
             .background(Circle().fill(primary ?? Color.primary.opacity(0.1)))
             .contentShape(Circle())
     }
