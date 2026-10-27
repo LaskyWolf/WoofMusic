@@ -304,6 +304,7 @@ private struct MiniPlayerProgressLine: View {
 
 /// The cover NowPlaying loads first for a song: its own artwork at player
 /// resolution, else the ytimg default.
+@MainActor
 private func miniArtworkURL(for song: SongItem) -> URL? {
     URL(string: ArtworkURLs.highRes(song.thumbnailUrl) ?? NowPlaying.artworkURL(for: song.videoId))
 }
