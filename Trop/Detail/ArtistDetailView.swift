@@ -17,16 +17,28 @@ final class ArtistDetailViewModel {
     var artist: ArtistDetailInfo?
     var isLoading = true
     var error: Error?
+    /// A cached page is on screen but older than `ArtistDetailCache.lifetime`.
+    var isStale = false
 
     private let innerTube = InnerTubeClient.tropShared
 
     init(browseId: String) {
         self.browseId = browseId
+        // A recent visit shows at once, without the loading skeleton.
+        if let cached = ArtistDetailCache.entry(for: browseId) {
+            artist = cached.info
+            isLoading = false
+            isStale = !cached.isFresh
+        }
     }
 
+    /// No page yet, or a cached one due for a refresh.
+    var needsLoad: Bool { isLoading || isStale }
+
     /// Fetches artist browse page from InnerTube and parses the response.
+    /// With a cached page on screen it refreshes silently and keeps it on failure.
     func load() async {
-        isLoading = true
+        if artist == nil { isLoading = true }
         error = nil
 
         do {
@@ -34,11 +46,12 @@ final class ArtistDetailViewModel {
             let parsed = Self.parseArtistDetail(from: json, browseId: browseId)
             Self.preloadHeroArtwork(for: parsed.thumbnailUrl)
             artist = parsed
-            isLoading = false
+            ArtistDetailCache.store(parsed)
         } catch {
-            self.error = error
-            isLoading = false
+            if artist == nil { self.error = error }
         }
+        isLoading = false
+        isStale = false
     }
 }
 
@@ -312,7 +325,7 @@ struct ArtistDetailView: View {
             .ignoresSafeArea(edges: .top)
             .toolbar(.hidden, for: .navigationBar)
             .task {
-                guard viewModel.isLoading else { return }
+                guard viewModel.needsLoad else { return }
                 await viewModel.load()
             }
 
@@ -458,74 +471,47 @@ struct ArtistDetailView: View {
         }
     }
 
-    /// Centred header over the blurred avatar: large round avatar, name,
-    /// subscribers, then Subscribe, Shuffle and Play. Same layout as the
-    /// playlist and album headers.
+    /// Header card over the blurred avatar: round avatar, subscribers, name,
+    /// then Subscribe, Shuffle and Play. Same card as the playlist and album headers.
     private func header(for artist: ArtistDetailInfo) -> some View {
-        VStack(spacing: 12) {
+        DetailHeaderCard(meta: kindLine(for: artist), title: artist.name) {
             AsyncImageView(url: ArtworkURLs.sized(artist.thumbnailUrl, width: 1200, height: 1200))
-                .frame(width: DesignTokens.artLarge, height: DesignTokens.artLarge)
                 .clipShape(Circle())
-                .shadow(color: .black.opacity(0.2), radius: 12, y: 4)
+        } secondary: {
+            EmptyView()
+        } buttons: {
+            Button(action: { toggleSubscribe(artist) }, label: {
+                HeaderRoundIcon(
+                    systemImage: artist.isSubscribed ? "person.fill.checkmark" : "person.badge.plus",
+                    tint: artist.isSubscribed ? Color.accentColor : .primary
+                )
+            })
+            .accessibilityLabel(artist.isSubscribed ? "Unsubscribe" : "Subscribe")
 
-            VStack(spacing: 4) {
-                Text(artist.name)
-                    .font(.title2.weight(.bold))
-                    .multilineTextAlignment(.center)
-                    .lineLimit(2)
-                if let subText = artist.subscriberCountText, !subText.isEmpty {
-                    Text(subscriberLabel(for: subText))
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-            }
-            .padding(.horizontal, 24)
+            Button(action: { shufflePlay(artist) }, label: {
+                HeaderRoundIcon(systemImage: "shuffle")
+            })
+            .accessibilityLabel("Shuffle artist")
 
-            HStack(spacing: 20) {
-                Button(action: { toggleSubscribe(artist) }, label: {
-                    Image(systemName: artist.isSubscribed ? "person.fill.checkmark" : "person.badge.plus")
-                        .font(.title3)
-                        .foregroundStyle(artist.isSubscribed ? Color.accentColor : .primary)
-                        .contentTransition(.symbolEffect(.replace))
-                        .frame(width: 48, height: 48)
-                        .background(Circle().fill(Color(.secondarySystemGroupedBackground)))
-                })
-                .buttonStyle(.plain)
-                .accessibilityLabel(artist.isSubscribed ? "Unsubscribe" : "Subscribe")
-
-                Button(action: { shufflePlay(artist) }, label: {
-                    Image(systemName: "shuffle")
-                        .font(.title2.weight(.bold))
-                        .foregroundStyle(.white)
-                        .frame(width: 64, height: 64)
-                        .background(Circle().fill(Color.accentColor))
-                        .shadow(color: Color.accentColor.opacity(0.4), radius: 10, y: 4)
-                })
-                .buttonStyle(.plain)
-                .accessibilityLabel("Shuffle artist")
-
-                Button(action: { playAll(artist) }, label: {
-                    Image(systemName: "play.fill")
-                        .font(.title3)
-                        .foregroundStyle(.primary)
-                        .frame(width: 48, height: 48)
-                        .background(Circle().fill(Color(.secondarySystemGroupedBackground)))
-                })
-                .buttonStyle(.plain)
-                .accessibilityLabel("Play songs")
-                .disabled(artist.songs.isEmpty)
-            }
-            .padding(.top, 4)
+            Button(action: { playAll(artist) }, label: {
+                HeaderRoundIcon(systemImage: "play.fill", primary: .accentColor)
+            })
+            .accessibilityLabel("Play songs")
+            .disabled(artist.songs.isEmpty)
         }
-        // Room for the top bar's round buttons above the avatar.
+        // Room for the top bar's round buttons above the card.
         .padding(.top, safeTop + Self.topBarHeight + 8)
         .padding(.bottom, 16)
         .frame(maxWidth: .infinity)
         .background(alignment: .top) {
             BlurredArtworkBackdrop(url: ArtworkURLs.sized(artist.thumbnailUrl, width: 1200, height: 1200))
         }
-        .accessibilityElement(children: .contain)
+    }
+
+    /// "Artist · 15.5M subscribers", or just "Artist" without a count.
+    private func kindLine(for artist: ArtistDetailInfo) -> String {
+        guard let count = artist.subscriberCountText, !count.isEmpty else { return "Artist" }
+        return "Artist · \(subscriberLabel(for: count))"
     }
 
     /// The top bar: 18pt top inset, 40pt buttons, 6pt bottom inset.
@@ -715,7 +701,7 @@ struct ArtistDetailView: View {
 
             await MainActor.run {
                 if let current = viewModel.artist {
-                    viewModel.artist = ArtistDetailInfo(
+                    let updated = ArtistDetailInfo(
                         name: current.name,
                         thumbnailUrl: current.thumbnailUrl,
                         subscriberCountText: current.subscriberCountText,
@@ -729,6 +715,8 @@ struct ArtistDetailView: View {
                         playlists: current.playlists,
                         relatedArtists: current.relatedArtists
                     )
+                    viewModel.artist = updated
+                    ArtistDetailCache.update(updated)
                 }
             }
         }

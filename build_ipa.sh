@@ -117,7 +117,9 @@ DERIVED_DATA_PATH="$CASE_SENSITIVE_MOUNT/DerivedDataApp"
 STAGE_DIR="$CASE_SENSITIVE_MOUNT/stage"
 OUTPUT_APP_PATH="$STAGE_DIR/$APPLICATION_NAME.app"
 PAYLOAD_DIR="$STAGE_DIR/Payload"
-IPA_PATH="$BUILD_DIR/$APPLICATION_NAME.ipa"
+# Named after the app version, e.g. WoofMusic-1.3.0.ipa.
+MARKETING_VERSION="${MARKETING_VERSION:-$(sed -n 's/.*MARKETING_VERSION = \(.*\);/\1/p' "$WORKING_LOCATION/Trop.xcodeproj/project.pbxproj" | head -1)}"
+IPA_PATH="$BUILD_DIR/WoofMusic-$MARKETING_VERSION.ipa"
 FFMPEG_KIT_DIR="$BUILD_DIR/ffmpeg-kit-next"
 FFMPEG_KIT_XCF="$BUILD_DIR/ffmpeg-kit-xcframeworks"
 # v8.1.x tags are Nix-only (no ios.sh). v9.0.0+ ships the classic ios.sh entrypoint.

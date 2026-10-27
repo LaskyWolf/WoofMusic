@@ -314,58 +314,46 @@ struct AlbumDetailView: View {
 
     @ViewBuilder
     private func header(for album: AlbumDetailInfo) -> some View {
-        VStack(spacing: 12) {
-            // Album artwork
-            HeroArtworkView(url: album.thumbnailUrl)
-
-            // Album title
-            Text(album.title)
-                .font(.title2)
-                .fontWeight(.bold)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 24)
-
+        DetailHeaderCard(meta: kindLine(for: album), title: album.title) {
+            AsyncImageView(url: album.thumbnailUrl)
+                .clipShape(RoundedRectangle(cornerRadius: DesignTokens.cardRadius, style: .continuous))
+        } secondary: {
             // Clickable artist names
             if !album.artists.isEmpty {
-                HStack(spacing: 4) {
+                HStack(spacing: 0) {
                     ForEach(Array(album.artists.enumerated()), id: \.offset) { i, artist in
                         if i > 0 {
                             Text(", ")
-                                .foregroundColor(.secondary)
                         }
                         if let artistId = artist.id {
                             NavigationLink(value: DetailRoute.artist(browseId: artistId)) {
                                 Text(artist.name)
-                                    .font(.body)
-                                    .fontWeight(.medium)
-                                    .foregroundColor(.secondary)
                             }
                             .buttonStyle(.plain)
                         } else {
                             Text(artist.name)
-                                .font(.body)
-                                .fontWeight(.medium)
-                                .foregroundColor(.secondary)
                         }
                     }
                 }
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
             }
+        } buttons: {
+            Button(action: { showMoreSheet = true }, label: {
+                HeaderRoundIcon(systemImage: "ellipsis")
+            })
+            .accessibilityLabel("More options")
 
-            // Metadata: year • song count • duration
-            let metaParts = metaStrings(for: album)
-            if !metaParts.isEmpty {
-                Text(metaParts.joined(separator: " • "))
-                    .font(.subheadline)
-                    .foregroundStyle(.tertiary)
-            }
+            Button(action: { shufflePlay(album) }, label: {
+                HeaderRoundIcon(systemImage: "shuffle")
+            })
+            .accessibilityLabel("Shuffle")
 
-            // Action buttons: shuffle, play, more (matches playlist header)
-            PlaybackControlsView(
-                showsMore: true,
-                onPlay: { playAll(album) },
-                onShuffle: { shufflePlay(album) },
-                onMore: { showMoreSheet = true }
-            )
+            Button(action: { playAll(album) }, label: {
+                HeaderRoundIcon(systemImage: "play.fill", primary: .accentColor)
+            })
+            .accessibilityLabel("Play all")
         }
         .padding(.vertical, 16)
         .frame(maxWidth: .infinity)
@@ -420,13 +408,13 @@ struct AlbumDetailView: View {
 
     // MARK: - Helpers
 
-    /// Builds metadata strings like "2024 • 12 songs • 45:30"
-    private func metaStrings(for album: AlbumDetailInfo) -> [String] {
-        var parts: [String] = []
+    /// Builds the kind line, like "Album · 2024 · 12 songs · 45:30".
+    private func kindLine(for album: AlbumDetailInfo) -> String {
+        var parts = ["Album"]
         if let year = album.year { parts.append("\(year)") }
         if album.songCount > 0 { parts.append("\(album.songCount) song\(album.songCount != 1 ? "s" : "")") }
         if album.duration > 0 { parts.append(album.duration.formattedDuration) }
-        return parts
+        return parts.joined(separator: " · ")
     }
 }
 

@@ -73,7 +73,9 @@ final class PlaylistDetailViewModel {
         do {
             let browseId = playlistId.hasPrefix("VL") ? playlistId : "VL\(playlistId)"
             let (firstPage, rows) = try await SyncBridge.playlistDetail.fetchPlaylistRows(playlistId: playlistId)
-            let parsed = Self.parsePlaylistDetail(firstPage: firstPage, rows: rows, playlistId: playlistId)
+            var parsed = Self.parsePlaylistDetail(firstPage: firstPage, rows: rows, playlistId: playlistId)
+            // Keep the saved cover when the header has none, so the art doesn't switch to a mosaic.
+            if parsed.thumbnailUrl == nil { parsed.thumbnailUrl = playlist?.thumbnailUrl ?? saved?.thumbnailUrl }
 
             // Show the playlist first, then save it: 200+ rows take a while to write.
             playlist = parsed
@@ -582,50 +584,13 @@ struct PlaylistDetailView: View {
 
     @ViewBuilder
     private func header(for playlist: PlaylistDetailInfo) -> some View {
-        VStack(spacing: 12) {
-            // Playlist artwork
-            if let thumbnailUrl = playlist.thumbnailUrl {
-                HeroArtworkView(url: thumbnailUrl)
-            } else {
-                let songArtwork = playlist.songs.compactMap(\.thumbnailUrl)
-                if songArtwork.count >= 4 {
-                    ArtworkMosaicView(urls: songArtwork)
-                } else if let firstArtwork = songArtwork.first {
-                    HeroArtworkView(url: firstArtwork)
-                } else {
-                    RoundedRectangle(cornerRadius: 12)
-                        .fill(LinearGradient(colors: [.blue, .purple], startPoint: .topLeading, endPoint: .bottomTrailing))
-                        .frame(width: DesignTokens.heroArtwork, height: DesignTokens.heroArtwork)
-                        .overlay(
-                            Image(systemName: "music.note.list")
-                                .font(.system(size: 60))
-                                .foregroundColor(.white.opacity(0.8))
-                        )
-                        .shadow(color: .black.opacity(0.2), radius: 12, y: 4)
-                }
-            }
-
-            // Playlist title
-            Text(playlist.title)
-                .font(.title2)
-                .fontWeight(.bold)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 24)
-
-            // Metadata: song count | duration
-            let metaParts = metaStrings(for: playlist)
-            if !metaParts.isEmpty {
-                Text(metaParts.joined(separator: " | "))
-                    .font(.subheadline)
-                    .foregroundStyle(.tertiary)
-            }
-
-            // Shared playlist: the people on it, like the YouTube Music web page.
-            if !playlist.collaboratorAvatarUrls.isEmpty {
-                CollaboratorBadge(avatarUrls: playlist.collaboratorAvatarUrls, panelParams: playlist.collaboratorsPanelParams)
-            } else if let authorName = playlist.authorName {
-                // Author row: avatar + name, clickable → artist detail
-                Group {
+        VStack(spacing: 10) {
+            DetailHeaderCard(meta: kindLine(for: playlist), title: playlist.title) {
+                cover(for: playlist)
+            } secondary: {
+                // Author: avatar + name, clickable → artist detail. A shared
+                // playlist shows its people below the card instead.
+                if playlist.collaboratorAvatarUrls.isEmpty, let authorName = playlist.authorName {
                     if let authorId = playlist.authorBrowseId {
                         NavigationLink(value: DetailRoute.artist(browseId: authorId)) {
                             authorRow(name: authorName, avatarUrl: playlist.authorAvatarUrl)
@@ -635,6 +600,31 @@ struct PlaylistDetailView: View {
                         authorRow(name: authorName, avatarUrl: playlist.authorAvatarUrl)
                     }
                 }
+            } buttons: {
+                PlaylistActionsMenu(
+                    playlist: playlist,
+                    onSync: { Task { await viewModel.load(); await fetchEntity() } },
+                    isOwned: isEditable,
+                    onDelete: viewModel.autoRoute == nil ? { Task { await deletePlaylist() } } : nil
+                ) {
+                    HeaderRoundIcon(systemImage: "ellipsis")
+                        .accessibilityLabel("More options")
+                }
+
+                Button(action: { shufflePlay(playlist) }, label: {
+                    HeaderRoundIcon(systemImage: "shuffle")
+                })
+                .accessibilityLabel("Shuffle")
+
+                Button(action: { playAll(playlist) }, label: {
+                    HeaderRoundIcon(systemImage: "play.fill", primary: .accentColor)
+                })
+                .accessibilityLabel("Play all")
+            }
+
+            // Shared playlist: the people on it, like the YouTube Music web page.
+            if !playlist.collaboratorAvatarUrls.isEmpty {
+                CollaboratorBadge(avatarUrls: playlist.collaboratorAvatarUrls, panelParams: playlist.collaboratorsPanelParams)
             }
 
             // Description (only if fetched, no fallback)
@@ -643,25 +633,9 @@ struct PlaylistDetailView: View {
                     .font(.caption)
                     .foregroundColor(.secondary)
                     .lineLimit(3)
-                    .padding(.horizontal, 32)
-                    .padding(.top, 4)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, DesignTokens.screenHPadding + 4)
             }
-
-            // Action buttons: shuffle, play
-            PlaybackControlsView(
-                onPlay: { playAll(playlist) },
-                onShuffle: { shufflePlay(playlist) },
-                moreMenu: AnyView(
-                    PlaylistActionsMenu(
-                        playlist: playlist,
-                        onSync: { Task { await viewModel.load(); await fetchEntity() } },
-                        isOwned: isEditable,
-                        onDelete: viewModel.autoRoute == nil ? { Task { await deletePlaylist() } } : nil
-                    ) {
-                        MoreCircleGlyph()
-                    }
-                )
-            )
         }
         .padding(.vertical, 16)
         .frame(maxWidth: .infinity)
@@ -670,12 +644,32 @@ struct PlaylistDetailView: View {
         }
     }
 
+    /// Playlist art, else a mosaic or the first song's art, else a gradient.
+    @ViewBuilder
+    private func cover(for playlist: PlaylistDetailInfo) -> some View {
+        let songArtwork = playlist.songs.compactMap(\.thumbnailUrl)
+        if let url = playlist.thumbnailUrl ?? (songArtwork.count >= 4 ? nil : songArtwork.first) {
+            AsyncImageView(url: url)
+                .clipShape(RoundedRectangle(cornerRadius: DesignTokens.cardRadius, style: .continuous))
+        } else if songArtwork.count >= 4 {
+            ArtworkMosaicView(urls: songArtwork, size: DesignTokens.artMedium)
+        } else {
+            RoundedRectangle(cornerRadius: DesignTokens.cardRadius, style: .continuous)
+                .fill(LinearGradient(colors: [.blue, .purple], startPoint: .topLeading, endPoint: .bottomTrailing))
+                .overlay(
+                    Image(systemName: "music.note.list")
+                        .font(.system(size: 40))
+                        .foregroundColor(.white.opacity(0.8))
+                )
+        }
+    }
+
     @ViewBuilder
     private func authorRow(name: String, avatarUrl: String?) -> some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 6) {
             if let avatarUrl {
                 AsyncImageView(url: avatarUrl)
-                    .frame(width: 24, height: 24)
+                    .frame(width: 18, height: 18)
                     .clipShape(Circle())
             } else {
                 Image(systemName: "person.circle.fill")
@@ -686,6 +680,7 @@ struct PlaylistDetailView: View {
                 .font(.subheadline)
                 .fontWeight(.medium)
                 .foregroundColor(.secondary)
+                .lineLimit(1)
         }
     }
 
@@ -784,12 +779,12 @@ struct PlaylistDetailView: View {
 
     // MARK: - Helpers
 
-    /// Builds metadata strings like "50 songs • 3:25:10"
-    private func metaStrings(for playlist: PlaylistDetailInfo) -> [String] {
-        var parts: [String] = []
+    /// Builds the kind line, like "Playlist · 50 songs · 3:25:10".
+    private func kindLine(for playlist: PlaylistDetailInfo) -> String {
+        var parts = ["Playlist"]
         if playlist.songCount > 0 { parts.append("\(playlist.songCount) song\(playlist.songCount != 1 ? "s" : "")") }
         if playlist.duration > 0 { parts.append(playlist.duration.formattedDuration) }
-        return parts
+        return parts.joined(separator: " · ")
     }
 }
 

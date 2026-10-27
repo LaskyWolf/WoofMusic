@@ -44,75 +44,51 @@ struct PlaylistHeaderView: View {
     }
 
     var body: some View {
-        VStack(spacing: 14) {
+        DetailHeaderCard(
+            meta: songCount > 0 ? metadataLine : "",
+            title: title
+        ) {
             artwork
-            textBlock
+        } secondary: {
+            if let subtitle, !subtitle.isEmpty {
+                Text(subtitle)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+        } buttons: {
             if songCount > 0 {
-                playbackControls
+                if let onMore {
+                    Button(action: onMore) { HeaderRoundIcon(systemImage: "ellipsis") }
+                        .accessibilityLabel("More options")
+                }
+                Button(action: onShuffle) { HeaderRoundIcon(systemImage: "shuffle") }
+                    .accessibilityLabel("Shuffle")
+                Button(action: onPlay) { HeaderRoundIcon(systemImage: "play.fill", primary: accentColor) }
+                    .accessibilityLabel("Play all")
             }
         }
-        .frame(maxWidth: .infinity)
         .padding(.vertical, 20)
-        .padding(.horizontal, 16)
         // Same backdrop as the playlist, album and artist headers.
         .background(alignment: .top) {
             BlurredArtworkBackdrop(url: thumbnailUrl ?? thumbnails.first)
         }
     }
 
-    private var textBlock: some View {
-        VStack(spacing: 6) {
-            Text(title)
-                .font(.title2.weight(.bold))
-            if let subtitle, !subtitle.isEmpty {
-                Text(subtitle)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-            } else if songCount > 0 {
-                Text(metadataLine)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-            }
-        }
-    }
-
-    private var playbackControls: some View {
-        PlaybackControlsView(
-            accent: accentColor,
-            showsShuffle: true,
-            showsMore: onMore != nil,
-            onPlay: onPlay,
-            onShuffle: onShuffle,
-            onMore: { onMore?() }
-        )
-    }
-
     @ViewBuilder
     private var artwork: some View {
         if thumbnails.count >= 4 {
-            artGrid
+            ArtworkMosaicView(urls: thumbnails, size: DesignTokens.artMedium)
         } else if let url = thumbnailUrl ?? thumbnails.first {
-            artSingle(url: url)
+            AsyncImageView(url: url)
+                .clipShape(RoundedRectangle(cornerRadius: DesignTokens.cardRadius, style: .continuous))
         } else {
             artPlaceholder
         }
     }
 
-    private var artGrid: some View {
-        ArtworkMosaicView(urls: thumbnails)
-    }
-
-    private func artSingle(url: String) -> some View {
-        AsyncImageView(url: url)
-            .frame(width: DesignTokens.heroArtwork, height: DesignTokens.heroArtwork)
-            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-            .shadow(color: .black.opacity(0.22), radius: 16, y: 6)
-    }
-
     private var artPlaceholder: some View {
-        RoundedRectangle(cornerRadius: 16, style: .continuous)
+        RoundedRectangle(cornerRadius: DesignTokens.cardRadius, style: .continuous)
             .fill(
                 LinearGradient(
                     colors: [
@@ -124,14 +100,12 @@ struct PlaylistHeaderView: View {
                     endPoint: .bottomTrailing
                 )
             )
-            .frame(width: DesignTokens.heroArtwork, height: DesignTokens.heroArtwork)
             .overlay {
                 Image(systemName: "arrow.down.circle.fill")
-                    .font(.system(size: 56, weight: .medium))
+                    .font(.system(size: 40, weight: .medium))
                     .foregroundStyle(.white.opacity(0.95))
                     .symbolRenderingMode(.hierarchical)
             }
-            .shadow(color: accentColor.opacity(0.35), radius: 16, y: 6)
     }
 
     private var metadataLine: String {
@@ -141,5 +115,78 @@ struct PlaylistHeaderView: View {
             parts.append(duration.formattedDuration)
         }
         return parts.joined(separator: " · ")
+    }
+}
+
+// MARK: - Header card
+
+/// Header shared by the artist, playlist, album and Downloads pages: a
+/// translucent card over the blurred artwork, cover on the left; kind line,
+/// title, secondary line and round buttons on the right.
+struct DetailHeaderCard<Cover: View, Secondary: View, Buttons: View>: View {
+    let meta: String
+    let title: String
+    @ViewBuilder var cover: () -> Cover
+    @ViewBuilder var secondary: () -> Secondary
+    @ViewBuilder var buttons: () -> Buttons
+
+    static var radius: CGFloat { 18 }
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 14) {
+            cover()
+                .frame(width: DesignTokens.artMedium, height: DesignTokens.artMedium)
+                .shadow(color: .black.opacity(0.18), radius: 8, y: 3)
+
+            VStack(alignment: .leading, spacing: 3) {
+                if !meta.isEmpty {
+                    Text(meta)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                Text(title)
+                    .font(.title3.weight(.bold))
+                    .lineLimit(2)
+                    .multilineTextAlignment(.leading)
+                secondary()
+                Spacer(minLength: 8)
+                HStack(spacing: 10) {
+                    Spacer(minLength: 0)
+                    buttons()
+                }
+                .buttonStyle(ZoomPressStyle(scale: 0.92))
+            }
+            .frame(maxWidth: .infinity, minHeight: DesignTokens.artMedium, alignment: .leading)
+        }
+        .padding(12)
+        // Material lets the blurred artwork show through and stays legible in light and dark.
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: Self.radius, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: Self.radius, style: .continuous)
+                .strokeBorder(.white.opacity(0.12), lineWidth: 1)
+        }
+        .padding(.horizontal, DesignTokens.screenHPadding)
+        .accessibilityElement(children: .contain)
+    }
+}
+
+/// Round icon face for the header card buttons (same shape as the New
+/// Releases card buttons). `primary` fills it with that colour and a white glyph.
+struct HeaderRoundIcon: View {
+    let systemImage: String
+    var primary: Color?
+    var tint: Color = .primary
+
+    static let size: CGFloat = 38
+
+    var body: some View {
+        Image(systemName: systemImage)
+            .font(.system(size: 15, weight: .bold))
+            .contentTransition(.symbolEffect(.replace))
+            .foregroundStyle(primary == nil ? tint : .white)
+            .frame(width: Self.size, height: Self.size)
+            .background(Circle().fill(primary ?? Color.primary.opacity(0.1)))
+            .contentShape(Circle())
     }
 }

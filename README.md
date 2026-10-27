@@ -21,10 +21,17 @@ No ads, native iOS design, DJ-style transitions.
 | 🎧 **AutoMix** | Beat-matched transitions: matches the tempo of both songs and swaps the bass on the bar. |
 | ------------- | ------------- |
 | 🌊 **Smart Crossfade** | Fades into the next song where the current one winds down. |
-| 🌙 **Sleep timer** | 5 to 60 minutes or the end of the song, with a night-sky animation when it ends. |
+| 🌙 **Sleep timer** | A Clock-style countdown wheel or the end of the song, with a night-sky animation when it ends. |
 | ✅ **Bulk select** | Select many songs and play, queue, like, download or add them to a playlist at once. |
 
 ## Features
+
+### Home and Explore
+- Keep Listening card: recent songs, albums and playlists as a fanned stack that spreads with a tap
+- Quick Picks, Daily Discover and the rest of your YouTube Music Home feed
+- New albums and singles in Explore: cards tinted with each cover's colours, with a vinyl that slides out and spins while the album plays
+- Moods and genres as a looping row of coloured cards; genre families open a menu
+- Search tab with recent searches, sorting and results by songs, albums, artists and playlists
 
 ### Playback
 - Stream songs and podcasts from YouTube Music, with no ads
@@ -38,6 +45,9 @@ No ads, native iOS design, DJ-style transitions.
 - Playlist editing: name and cover in one sheet, synced to YouTube Music
 - Downloads for offline listening, with full-size cover art and progress on each row
 - Liked Songs, My Top 100 and Downloads shortcuts at the top of the Library
+- Grid or list layout for the Library
+- Artist, playlist and album pages with a header over a blurred copy of the cover
+- Covers open their playlist or album with the native iOS zoom transition
 - Long-press menus on songs, albums, playlists, artists and Home cards
 
 ### Lyrics
@@ -59,7 +69,7 @@ No ads, native iOS design, DJ-style transitions.
 
 You need iOS 26 or later and a YouTube Music account. You sign in through the in-app web view.
 
-1. Get `Music.ipa`: build it yourself (below). Releases do not include an IPA.
+1. Get `WoofMusic-<version>.ipa` (for example `WoofMusic-1.3.0.ipa`): build it yourself (below). Releases do not include an IPA.
 2. Sideload it with a tool that re-signs apps with your Apple ID: AltStore, SideStore, Feather or KravaSign. AltStore PAL is not supported.
 3. Open Woof Music and sign in from the top of Settings.
 
@@ -68,7 +78,7 @@ You need iOS 26 or later and a YouTube Music account. You sign in through the in
 **GitHub Actions (no Mac needed)**
 1. Fork this repository.
 2. Open the **Actions** tab and run the **iPhone Build** workflow.
-3. Download the `Music-iOS` artifact from the finished run. It contains `Music.ipa`.
+3. Download the `WoofMusic-iOS` artifact from the finished run. It contains `WoofMusic-<version>.ipa`.
 
 **macOS with Xcode**
 
@@ -76,7 +86,7 @@ You need iOS 26 or later and a YouTube Music account. You sign in through the in
 ./build_ipa.sh
 ```
 
-The IPA is written to `build/Music.ipa`.
+The IPA is written to `build/WoofMusic-<version>.ipa`. The version comes from `MARKETING_VERSION` in the Xcode project.
 
 ### Discord Social SDK
 

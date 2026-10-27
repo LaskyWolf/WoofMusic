@@ -123,8 +123,10 @@ struct SimilarSongsView: View {
                             },
                             onNavigate: onNavigate
                         )
+                        // The row brings its own 16pt side padding, like the other sheets' rows.
                         .listRowSeparator(.hidden)
-                        .listRowInsets(.init(top: 4, leading: 16, bottom: 4, trailing: 8))
+                        .listRowBackground(Color.clear)
+                        .listRowInsets(EdgeInsets())
                     }
                 }
                 .listStyle(.plain)

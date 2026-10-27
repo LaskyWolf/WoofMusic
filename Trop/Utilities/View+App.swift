@@ -14,8 +14,8 @@ extension View {
         modifier(MiniPlayerInlineOnScrollModifier())
     }
 
-    /// Registers standard DetailRoute navigation. Playlist and album pages zoom
-    /// out of their cover when one was marked with `coverZoomSource`.
+    /// Registers standard DetailRoute navigation. Playlist, album and Library
+    /// shortcut pages zoom out of their cover when one was marked with `coverZoomSource`.
     func detailRouteDestinations() -> some View {
         self.navigationDestination(for: DetailRoute.self) { route in
             DetailRouteDestinationView(route: route)
@@ -30,7 +30,7 @@ extension View {
     }
 
     /// Marks this cover as the place `route`'s page zooms out of. Only
-    /// playlists and albums zoom; other routes leave the view unchanged.
+    /// playlists, albums and the Library shortcuts zoom; other routes leave the view unchanged.
     func coverZoomSource(_ route: DetailRoute?) -> some View {
         modifier(CoverZoomSource(route: route))
     }
@@ -59,7 +59,7 @@ extension DetailRoute {
     /// Pages that open with the native zoom from their cover.
     var zoomsFromCover: Bool {
         switch self {
-        case .playlist, .album: true
+        case .playlist, .album, .autoPlaylist, .downloads: true
         default: false
         }
     }

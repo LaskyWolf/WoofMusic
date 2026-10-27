@@ -201,8 +201,10 @@ struct LibraryView: View {
     private var shortcutRow: some View {
         HStack(spacing: 10) {
             ForEach(autoPlaylists) { info in
-                NavigationLink(value: info.detailRoute ?? info.route.map(DetailRoute.autoPlaylist)) {
+                let route = info.detailRoute ?? info.route.map(DetailRoute.autoPlaylist)
+                NavigationLink(value: route) {
                     shortcutTile(info: info)
+                        .coverZoomSource(route)
                 }
                 .buttonStyle(ZoomPressStyle())
             }
@@ -288,6 +290,7 @@ struct LibraryView: View {
                             url: artist.thumbnailUrl,
                             title: artist.name,
                             subtitle: artist.isPodcastChannel ? "Podcast Channel" : "Artist",
+                            artistKindOf: artist.isPodcastChannel ? nil : artist.name,
                             isCircular: true
                         )
                     } else {
@@ -401,10 +404,11 @@ struct LibraryView: View {
     }
 
     private func listRow(
-        url: String?, title: String, subtitle: String?, detail: String? = nil, isCircular: Bool, zoomRoute: DetailRoute? = nil
+        url: String?, title: String, subtitle: String?, artistKindOf: String? = nil, detail: String? = nil,
+        isCircular: Bool, zoomRoute: DetailRoute? = nil
     ) -> some View {
         MediaListRow(
-            url: url, title: title, subtitle: subtitle, detail: detail, isCircular: isCircular,
+            url: url, title: title, subtitle: subtitle, artistKindOf: artistKindOf, detail: detail, isCircular: isCircular,
             artSize: DesignTokens.artSmall, zoomRoute: zoomRoute
         )
             .padding(.horizontal, DesignTokens.screenHPadding)

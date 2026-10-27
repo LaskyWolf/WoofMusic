@@ -12,6 +12,8 @@ struct MediaListRow: View {
     let url: String?
     let title: String
     var subtitle: String?
+    /// An artist name: its kind ("Band", "Singer"…) replaces `subtitle` once it resolves.
+    var artistKindOf: String? = nil
     /// Third line under the subtitle, such as "12 songs • 45:30".
     var detail: String?
     var isCircular = false
@@ -33,7 +35,12 @@ struct MediaListRow: View {
                     .font(.body.weight(.semibold))
                     .foregroundStyle(.primary)
                     .lineLimit(2)
-                if let subtitle, !subtitle.isEmpty {
+                if let artistKindOf {
+                    ArtistKindLabel(name: artistKindOf, fallback: subtitle ?? "Artist")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                } else if let subtitle, !subtitle.isEmpty {
                     Text(subtitle)
                         .font(.subheadline)
                         .foregroundStyle(.secondary)

@@ -117,3 +117,27 @@ extension PlaylistDetailInfo {
         descriptionText = descriptionText ?? snapshot.descriptionText
     }
 }
+
+/// Artist pages from recent loads, so reopening one shows it at once.
+/// Kept in memory only; entries older than `lifetime` still show but get refreshed.
+@MainActor
+enum ArtistDetailCache {
+    static let lifetime: TimeInterval = 10 * 60
+    // ponytail: unbounded, one entry per artist opened this session; add an LRU cap if memory grows.
+    private static var entries: [String: (info: ArtistDetailInfo, loadedAt: Date)] = [:]
+
+    static func entry(for browseId: String) -> (info: ArtistDetailInfo, isFresh: Bool)? {
+        guard let entry = entries[browseId] else { return nil }
+        return (entry.info, Date().timeIntervalSince(entry.loadedAt) < lifetime)
+    }
+
+    static func store(_ info: ArtistDetailInfo) {
+        entries[info.browseId] = (info, Date())
+    }
+
+    /// Keeps the cached copy in step with a local change without resetting its age.
+    static func update(_ info: ArtistDetailInfo) {
+        guard let loadedAt = entries[info.browseId]?.loadedAt else { return }
+        entries[info.browseId] = (info, loadedAt)
+    }
+}

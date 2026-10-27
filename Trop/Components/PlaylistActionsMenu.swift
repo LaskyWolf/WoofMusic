@@ -8,7 +8,7 @@
 import SwiftUI
 
 /// The playlist header's "⋯" button: a native pull-down menu. Edit opens
-/// the Edit Playlist sheet (cover and name) after the menu closes.
+/// the Edit Playlist sheet (cover, name and sync) after the menu closes.
 struct PlaylistActionsMenu<MenuLabel: View>: View {
     let playlist: PlaylistDetailInfo
     var onSync: (() -> Void)?

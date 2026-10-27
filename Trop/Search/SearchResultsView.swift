@@ -243,8 +243,8 @@ struct SearchResultsView: View {
             }, onNavigate: { pendingRoute = $0 })
         case .album(let album):
             mediaRow(item, subtitle: album.artists.map(\.name).joined(separator: ", "), detail: album.year.map { String($0) })
-        case .artist:
-            mediaRow(item, subtitle: "Artist", isCircular: true)
+        case .artist(let artist):
+            mediaRow(item, subtitle: "Artist", artistKindOf: artist.name, isCircular: true)
         case .playlist(let playlist):
             mediaRow(item, subtitle: playlist.author, detail: playlist.songCount.map { "\($0) songs" })
         case .podcast(let podcast):
@@ -252,12 +252,15 @@ struct SearchResultsView: View {
         }
     }
 
-    private func mediaRow(_ item: YTItem, subtitle: String?, detail: String? = nil, isCircular: Bool = false) -> some View {
+    private func mediaRow(
+        _ item: YTItem, subtitle: String?, artistKindOf: String? = nil, detail: String? = nil, isCircular: Bool = false
+    ) -> some View {
         Button {
             handleItemTap(item)
         } label: {
             MediaListRow(
-                url: item.thumbnailUrl, title: item.title, subtitle: subtitle, detail: detail, isCircular: isCircular,
+                url: item.thumbnailUrl, title: item.title, subtitle: subtitle, artistKindOf: artistKindOf,
+                detail: detail, isCircular: isCircular,
                 zoomRoute: YTItemRouter.detailRoute(for: item)
             )
                 .padding(.horizontal, DesignTokens.screenHPadding)

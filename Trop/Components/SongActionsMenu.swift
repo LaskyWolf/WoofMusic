@@ -36,6 +36,7 @@ struct SongActionsMenu<MenuLabel: View>: View {
     @State private var pin = PinState()
     @State private var sheet: Sheet?
     @State private var confirmRemoveDownload = false
+    @State private var confirmRemoveFromPlaylist = false
     @State private var isResolvingArtist = false
 
     var body: some View {
@@ -82,7 +83,11 @@ struct SongActionsMenu<MenuLabel: View>: View {
                 }
             }
 
-            RemoveMenuItems(song: song, onRemove: onRemove, confirmRemoveDownload: $confirmRemoveDownload)
+            RemoveMenuItems(
+                song: song, canRemove: onRemove != nil,
+                confirmRemoveFromPlaylist: $confirmRemoveFromPlaylist,
+                confirmRemoveDownload: $confirmRemoveDownload
+            )
 
             Menu("Go To", systemImage: "arrow.forward.circle") {
                 if !song.artists.filter({ !$0.name.isEmpty }).isEmpty {
@@ -103,6 +108,10 @@ struct SongActionsMenu<MenuLabel: View>: View {
             Button("Remove Download", role: .destructive) {
                 Task { await DownloadManager.shared.delete(videoId: song.videoId) }
             }
+        }
+        .confirmationDialog("Remove from this playlist?", isPresented: $confirmRemoveFromPlaylist,
+                            titleVisibility: .visible) {
+            Button("Remove from Playlist", role: .destructive) { onRemove?() }
         }
         .sheet(item: $sheet) { sheet in
             switch sheet {
@@ -327,18 +336,21 @@ private struct DownloadMenuButton: View {
 /// One compact entry for the destructive removals that apply to this song.
 private struct RemoveMenuItems: View {
     let song: SongItem
-    let onRemove: (() -> Void)?
+    let canRemove: Bool
+    @Binding var confirmRemoveFromPlaylist: Bool
     @Binding var confirmRemoveDownload: Bool
     @ObservedObject private var downloadManager = DownloadManager.shared
 
     var body: some View {
         let hasDownload = downloadManager.state(for: song.videoId) == .completed
-        if onRemove != nil || hasDownload {
+        if canRemove || hasDownload {
             Section {
                 Menu("Remove from…", systemImage: "minus.circle") {
-                    if let onRemove {
-                        Button("from Playlist", systemImage: "music.note.list", role: .destructive, action: onRemove)
-                            .tint(.red)
+                    if canRemove {
+                        Button("from Playlist", systemImage: "music.note.list", role: .destructive) {
+                            confirmRemoveFromPlaylist = true
+                        }
+                        .tint(.red)
                     }
                     if hasDownload {
                         Button("from Downloads", systemImage: "arrow.down.circle", role: .destructive) {
