@@ -306,6 +306,7 @@ struct PlaylistEditSheet: View {
         NavigationStack {
             VStack(spacing: 0) {
                 headerCard
+                    .fixedSize(horizontal: false, vertical: true)
                 Form {
                     if let wasSynced {
                         Section {
@@ -343,6 +344,8 @@ struct PlaylistEditSheet: View {
                 }
             }
         }
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
         .interactiveDismissDisabled(isSaving)
         .loadsPickedCover(item: $pickerItem, into: $coverImage)
         .task {

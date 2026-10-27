@@ -109,9 +109,9 @@ struct SongActionsMenu<MenuLabel: View>: View {
                 Task { await DownloadManager.shared.delete(videoId: song.videoId) }
             }
         }
-        .confirmationDialog("Remove from this playlist?", isPresented: $confirmRemoveFromPlaylist,
+        .confirmationDialog("Remove this song?", isPresented: $confirmRemoveFromPlaylist,
                             titleVisibility: .visible) {
-            Button("Remove from Playlist", role: .destructive) { onRemove?() }
+            Button("Remove", role: .destructive) { onRemove?() }
         }
         .sheet(item: $sheet) { sheet in
             switch sheet {

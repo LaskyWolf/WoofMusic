@@ -309,6 +309,8 @@ private struct MoodRow: View {
             .scrollTargetLayout()
         }
         .contentMargins(.horizontal, DesignTokens.screenHPadding, for: .scrollContent)
+        // The cards' glow reaches below the row.
+        .scrollClipDisabled()
         .scrollPosition(id: $scrolledIndex, anchor: .leading)
         .scrollTargetBehavior(.viewAligned)
     }

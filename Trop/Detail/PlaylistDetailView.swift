@@ -468,6 +468,14 @@ struct PlaylistDetailView: View {
         (playlistEntity?.isEditable == true || viewModel.playlist?.isEditable == true) && viewModel.autoRoute == nil
     }
 
+    /// Renaming, the cover, sync and deleting belong to the owner. On a shared
+    /// playlist that is the author; collaborators can only change the songs.
+    var ownsPlaylist: Bool {
+        guard isEditable else { return false }
+        guard viewModel.isCollaborative else { return true }
+        return viewModel.playlist?.authorName == AccountState.shared.accountName
+    }
+
     /// Owners and collaborators can add and remove songs; only owners delete the playlist.
     var canEditSongs: Bool {
         isEditable || (viewModel.isCollaborative && viewModel.autoRoute == nil)
@@ -551,7 +559,7 @@ struct PlaylistDetailView: View {
 
     private func deletePlaylist() async {
         do {
-            try await PlaylistRemoval.remove(playlistId: playlistId, owned: isEditable)
+            try await PlaylistRemoval.remove(playlistId: playlistId, owned: ownsPlaylist)
             dismiss()
         } catch {
             Log.playlistDetail.error("Failed to delete playlist: \(error)")
@@ -589,8 +597,11 @@ struct PlaylistDetailView: View {
                 cover(for: playlist)
             } secondary: {
                 // Author: avatar + name, clickable → artist detail. A shared
-                // playlist shows its people below the card instead.
-                if playlist.collaboratorAvatarUrls.isEmpty, let authorName = playlist.authorName {
+                // playlist shows its people here instead, like YouTube Music's page.
+                if !playlist.collaboratorAvatarUrls.isEmpty {
+                    CollaboratorBadge(avatarUrls: playlist.collaboratorAvatarUrls, panelParams: playlist.collaboratorsPanelParams)
+                        .padding(.top, 4)
+                } else if let authorName = playlist.authorName {
                     if let authorId = playlist.authorBrowseId {
                         NavigationLink(value: DetailRoute.artist(browseId: authorId)) {
                             authorRow(name: authorName, avatarUrl: playlist.authorAvatarUrl)
@@ -604,7 +615,7 @@ struct PlaylistDetailView: View {
                 PlaylistActionsMenu(
                     playlist: playlist,
                     onSync: { Task { await viewModel.load(); await fetchEntity() } },
-                    isOwned: isEditable,
+                    isOwned: ownsPlaylist,
                     onDelete: viewModel.autoRoute == nil ? { Task { await deletePlaylist() } } : nil
                 ) {
                     HeaderRoundIcon(systemImage: "ellipsis")
@@ -620,11 +631,6 @@ struct PlaylistDetailView: View {
                     HeaderRoundIcon(systemImage: "play.fill", primary: .accentColor)
                 })
                 .accessibilityLabel("Play all")
-            }
-
-            // Shared playlist: the people on it, like the YouTube Music web page.
-            if !playlist.collaboratorAvatarUrls.isEmpty {
-                CollaboratorBadge(avatarUrls: playlist.collaboratorAvatarUrls, panelParams: playlist.collaboratorsPanelParams)
             }
 
             // Description (only if fetched, no fallback)

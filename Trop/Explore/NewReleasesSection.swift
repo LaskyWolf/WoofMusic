@@ -50,6 +50,8 @@ struct NewReleasesSection: View {
             }
             .contentMargins(.horizontal, Self.inset, for: .scrollContent)
             .scrollTargetBehavior(.viewAligned)
+            // The cards' glow reaches below them; the backdrop still crops it.
+            .scrollClipDisabled()
         }
         .padding(.top, Self.inset + 2)
         .padding(.bottom, Self.inset)
@@ -151,6 +153,8 @@ struct NewReleaseCard: View {
         .frame(width: Self.size.width, height: Self.size.height, alignment: .topLeading)
         .background(background)
         .clipShape(shape)
+        // Same glow as the Library shortcuts, in the album's own colour.
+        .shadow(color: (colors?.first ?? Color(white: 0.22)).opacity(0.4), radius: 6, y: 4)
         .contentShape(shape)
         .contentShape(.contextMenuPreview, shape)
         // The buttons take their own taps; anywhere else opens the album.

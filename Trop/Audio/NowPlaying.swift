@@ -38,6 +38,8 @@ final class NowPlaying {
     }
     var thumbnailImage: Image?
     var thumbnailUIImage: UIImage?
+    /// The song `thumbnailUIImage` belongs to; it lags behind `videoId` while the new cover loads.
+    private(set) var thumbnailVideoId: String?
     var thumbnailVersion = 0
     var dominantColors: [Color] = [Color(red: 0.15, green: 0.15, blue: 0.2), Color(red: 0.05, green: 0.05, blue: 0.08)]
 
@@ -551,6 +553,7 @@ final class NowPlaying {
             }.value
             guard request == artworkRequest, lastLoadedVideoId == videoId else { return }
             thumbnailUIImage = cropped
+            thumbnailVideoId = videoId
             thumbnailImage = Image(uiImage: cropped)
             thumbnailVersion &+= 1
             dominantColors = colors

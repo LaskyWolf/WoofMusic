@@ -163,21 +163,11 @@ struct MiniPlayerBarView: View {
         .contentShape(Rectangle())
     }
 
-    @ViewBuilder
     private func barArtwork(for song: SongItem) -> some View {
-        let isCurrent = song.videoId == np.videoId
-        ZStack {
-            if isCurrent, let uiImage = np.thumbnailUIImage {
-                Image(uiImage: uiImage)
-                    .resizable()
-                    .scaledToFill()
-            } else {
-                // The neighbours load the same cover the player will show once the
-                // song is current, so the artwork doesn't change after the swipe.
-                MiniArtworkView(song: song)
-                    .id(song.videoId)
-            }
-        }
+        // Every page, the current one too, shows the same cached cover, so the
+        // cover doesn't change when a swipe makes a neighbour current.
+        MiniArtworkView(song: song)
+            .id(song.videoId)
         .frame(width: artworkSize, height: artworkSize)
         .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
     }
@@ -268,11 +258,11 @@ struct MiniPlayerBarView: View {
     private func commitSwipe(to direction: SwipeDirection, pageWidth: CGFloat) {
         isCommitting = true
         let target: CGFloat = direction == .next ? -pageWidth : pageWidth
-        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+        // The queue moves only once the slide has fully landed (no bounce), so the
+        // page that becomes current is already where the old one was: no jump.
+        withAnimation(.spring(duration: 0.3, bounce: 0), completionCriteria: .logicallyComplete) {
             dragOffset = target
-        }
-        Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 220_000_000)
+        } completion: {
             switch direction {
             case .next: np.playNext()
             case .previous: np.playPrevious()
@@ -318,7 +308,11 @@ private struct MiniArtworkView: View {
     init(song: SongItem) {
         self.song = song
         // Seeded here, not on appear, so a cached cover is there on the first frame.
-        _uiImage = State(initialValue: cachedArtwork(for: song))
+        // The player's own image covers songs whose cover isn't cached under this URL
+        // (downloads with embedded art), but only once it belongs to this song.
+        let np = NowPlaying.shared
+        _uiImage = State(initialValue: cachedArtwork(for: song)
+            ?? (np.thumbnailVideoId == song.videoId ? np.thumbnailUIImage : nil))
     }
 
     var body: some View {
