@@ -27,13 +27,13 @@ jobs:
           xcode-version: latest-stable
 
       - name: Cache ffmpeg-kit XCFrameworks
-        uses: actions/cache@v4
+        uses: actions/cache@v6.1.0
         with:
           path: build/ffmpeg-kit-xcframeworks
           key: ffmpeg-kit-${{ env.FFMPEG_KIT_TAG }}-arm64+sim-openssl-${{ runner.os }}
 
       - name: Cache DerivedData
-        uses: actions/cache@v4
+        uses: actions/cache@v6.1.0
         with:
           path: build/DerivedDataApp
           key: trop-dd-${{ runner.os }}-${{ hashFiles('Trop.xcodeproj/**', '**/Package.resolved', 'Trop/**/*.swift') }}
