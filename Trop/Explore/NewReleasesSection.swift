@@ -129,6 +129,12 @@ struct NewReleaseCard: View {
 
     private var np: NowPlaying { NowPlaying.shared }
 
+    /// The colour at the bottom of the card gradient, where the glow sits.
+    private var glowColor: Color {
+        guard let last = colors?.last else { return Color(white: 0.22) }
+        return last.mix(with: .black, by: 0.45)
+    }
+
     private var artistLine: String {
         album.artists.map(\.name).joined(separator: ", ")
     }
@@ -153,8 +159,8 @@ struct NewReleaseCard: View {
         .frame(width: Self.size.width, height: Self.size.height, alignment: .topLeading)
         .background(background)
         .clipShape(shape)
-        // Same glow as the Library shortcuts, in the album's own colour.
-        .shadow(color: (colors?.first ?? Color(white: 0.22)).opacity(0.4), radius: 6, y: 4)
+        // Same glow as the Library shortcuts, in the card's bottom colour (the darkened one).
+        .shadow(color: glowColor.opacity(0.5), radius: 8, y: 5)
         .contentShape(shape)
         .contentShape(.contextMenuPreview, shape)
         // The buttons take their own taps; anywhere else opens the album.

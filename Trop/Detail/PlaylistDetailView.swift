@@ -659,7 +659,7 @@ struct PlaylistDetailView: View {
             AsyncImageView(url: url)
                 .clipShape(RoundedRectangle(cornerRadius: DesignTokens.cardRadius, style: .continuous))
         } else if songArtwork.count >= 4 {
-            ArtworkMosaicView(urls: songArtwork, size: DesignTokens.artMedium)
+            ArtworkMosaicView(urls: songArtwork, size: DesignTokens.artLarge)
         } else {
             RoundedRectangle(cornerRadius: DesignTokens.cardRadius, style: .continuous)
                 .fill(LinearGradient(colors: [.blue, .purple], startPoint: .topLeading, endPoint: .bottomTrailing))

@@ -78,7 +78,7 @@ struct PlaylistHeaderView: View {
     @ViewBuilder
     private var artwork: some View {
         if thumbnails.count >= 4 {
-            ArtworkMosaicView(urls: thumbnails, size: DesignTokens.artMedium)
+            ArtworkMosaicView(urls: thumbnails, size: DesignTokens.artLarge)
         } else if let url = thumbnailUrl ?? thumbnails.first {
             AsyncImageView(url: url)
                 .clipShape(RoundedRectangle(cornerRadius: DesignTokens.cardRadius, style: .continuous))
