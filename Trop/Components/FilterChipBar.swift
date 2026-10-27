@@ -28,7 +28,8 @@ struct FilterChipBar<Item, ID: Hashable>: View {
                             .font(.subheadline)
                             .fontWeight(.medium)
                             .padding(.horizontal, 16)
-                            .padding(.vertical, 8)
+                            .padding(.vertical, 6)
+                            .frame(minHeight: DesignTokens.controlHeight)
                             .background(
                                 Capsule()
                                     .fill(isSelected(item)
@@ -42,7 +43,7 @@ struct FilterChipBar<Item, ID: Hashable>: View {
                     .buttonStyle(ZoomPressStyle())
                 }
             }
-            .padding(.horizontal, 16)
+            .padding(.horizontal, DesignTokens.screenHPadding)
             .padding(.vertical, 8)
         }
     }

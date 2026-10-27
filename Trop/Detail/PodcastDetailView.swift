@@ -5,6 +5,7 @@
 //  Created by 686udjie on 06/07/2026.
 //
 
+import Combine
 import SwiftUI
 
 // MARK: - View Model
@@ -547,17 +548,12 @@ struct PodcastDetailView: View {
     @ViewBuilder
     private func episodeList(for podcast: PodcastDetailInfo) -> some View {
         // No VStack wrapper: the ForEach must sit directly in the parent LazyVStack to stay lazy.
-        ForEach(Array(podcast.episodes.enumerated()), id: \.offset) { index, episode in
+        ForEach(Array(podcast.episodes.enumerated()), id: \.offset) { _, episode in
             EpisodeRowView(
                 episode: episode,
                 onTap: { playEpisode(episode, in: podcast) },
                 onNavigate: { AppRouter.shared.open($0) }
             )
-
-            if index < podcast.episodes.count - 1 {
-                Divider()
-                    .padding(.leading, 100)
-            }
         }
     }
 
@@ -734,7 +730,9 @@ private struct EpisodeRowView: View {
     var onTap: () -> Void
     var onNavigate: ((DetailRoute) -> Void)?
 
-    @ObservedObject private var downloadManager = DownloadManager.shared
+    /// Only this episode's downloaded flag: observing the whole manager would
+    /// redraw every visible row at each progress step of any download.
+    @State private var isDownloaded = false
     @State private var progress: Double = 0
     @State private var hasResume = false
 
@@ -742,7 +740,7 @@ private struct EpisodeRowView: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .top, spacing: 12) {
                 AsyncImageView(url: episode.thumbnailUrl)
-                    .frame(width: 72, height: 72)
+                    .frame(width: DesignTokens.artSmall, height: DesignTokens.artSmall)
                     .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                     .onTapGesture(perform: onTap)
 
@@ -766,7 +764,7 @@ private struct EpisodeRowView: View {
                     }
 
                     HStack(spacing: 4) {
-                        if downloadManager.isDownloaded(videoId: episode.videoId) {
+                        if isDownloaded {
                             Image(systemName: "arrow.down.circle.fill")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
@@ -802,6 +800,11 @@ private struct EpisodeRowView: View {
                 .padding(.trailing, 16)
                 .padding(.bottom, 6)
             }
+        }
+        .onReceive(DownloadManager.shared.$tracks.map { [videoId = episode.videoId] in
+            $0.contains { $0.id == videoId }
+        }.removeDuplicates()) {
+            isDownloaded = $0
         }
         .task(id: episode.videoId) {
             // Tracked progress drives the bar and auto-resume on tap.

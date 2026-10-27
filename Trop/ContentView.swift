@@ -30,6 +30,7 @@ struct ContentView: View {
                 exploreTab
             }
 
+            // The system search tab puts SearchView's native field in the tab bar.
             Tab("Search", systemImage: "magnifyingglass", value: 3, role: .search) {
                 SearchView().environment(\.layoutDirection, .leftToRight)
             }

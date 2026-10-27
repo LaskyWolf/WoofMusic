@@ -71,19 +71,27 @@ struct ProgressBar: View {
     }
 }
 
-/// Play/pause icon that turns into a spinner while the song is loading.
+/// Play/pause icon that turns into a spinner when a song takes longer than
+/// `spinnerDelay` to load. Shorter loads keep the icon unchanged.
 struct PlayPauseGlyph: View {
     let isPlaying: Bool
     let size: CGFloat
     var color: Color?
+
+    static let spinnerDelay: Duration = .milliseconds(500)
+
+    @State private var showsSpinner = false
+    /// `isPlaying` from when the load started, so a quick skip doesn't flicker the icon.
+    @State private var playingBeforeLoad: Bool?
 
     private var style: AnyShapeStyle {
         color.map { AnyShapeStyle($0) } ?? AnyShapeStyle(.tint)
     }
 
     var body: some View {
+        let isLoading = NowPlaying.shared.isLoadingTrack
         ZStack {
-            if NowPlaying.shared.isLoadingTrack {
+            if showsSpinner {
                 ProgressView()
                     .progressViewStyle(.circular)
                     .controlSize(.regular)
@@ -92,14 +100,24 @@ struct PlayPauseGlyph: View {
                     .transition(.opacity)
             } else {
                 // A moon replaces the button while the sleep timer animation plays.
-                Image(systemName: SleepTimer.shared.isCelebrating ? "moon.fill" : (isPlaying ? "pause.fill" : "play.fill"))
+                Image(systemName: SleepTimer.shared.isCelebrating ? "moon.fill" : ((playingBeforeLoad ?? isPlaying) ? "pause.fill" : "play.fill"))
                     .font(.system(size: size))
                     .foregroundStyle(style)
                     .contentTransition(.symbolEffect(.replace))
                     .transition(.opacity)
             }
         }
-        .animation(.easeOut(duration: 0.15), value: NowPlaying.shared.isLoadingTrack)
+        .animation(.easeOut(duration: 0.15), value: showsSpinner)
+        .task(id: isLoading) {
+            guard isLoading else {
+                showsSpinner = false
+                playingBeforeLoad = nil
+                return
+            }
+            playingBeforeLoad = isPlaying
+            try? await Task.sleep(for: Self.spinnerDelay)
+            if !Task.isCancelled { showsSpinner = true }
+        }
     }
 }
 
@@ -132,7 +150,8 @@ struct PlaybackControlsRow: View {
     @State private var nextAnimation = 0
 
     var body: some View {
-        HStack(spacing: 0) {
+        // A centered group with fixed gaps, not spread over the whole width.
+        HStack(spacing: 24) {
             Button {
                 previousAnimation &+= 1
                 onPrevious()
@@ -143,11 +162,9 @@ struct PlaybackControlsRow: View {
             .buttonStyle(PlayerSkipButtonStyle())
             .disabled(!hasPrevious)
             .opacity(hasPrevious ? 1 : 0.3)
-            .frame(maxWidth: .infinity)
             .accessibilityLabel("Previous")
 
             PlayerPlayPauseButton(isPlaying: isPlaying, action: onPlayPause)
-            .frame(maxWidth: .infinity)
 
             Button {
                 nextAnimation &+= 1
@@ -159,10 +176,8 @@ struct PlaybackControlsRow: View {
             .buttonStyle(PlayerSkipButtonStyle())
             .disabled(!hasNext)
             .opacity(hasNext ? 1 : 0.3)
-            .frame(maxWidth: .infinity)
             .accessibilityLabel("Next")
         }
-        .padding(.horizontal, 24)
     }
 }
 

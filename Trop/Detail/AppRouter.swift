@@ -20,11 +20,18 @@ final class AppRouter: ObservableObject {
     @Published var explorePath = NavigationPath()
     @Published var searchPath = NavigationPath()
     @Published var selectedTabIndex = 0
+    /// Set by the "Search" quick action; SearchView opens its field and clears it.
+    @Published var focusSearchField = false
 
     /// Last route opened from an overlay; ContentView listens to collapse the player.
     @Published private(set) var activeRoute: DetailRoute?
 
     @Published private(set) var playerExpandToken = 0
+
+    /// Route shown as a sheet over the Big Player, which stays open.
+    /// Tab NavigationStacks sit under the player's full-screen cover, so a
+    /// push from there would be invisible without collapsing the player.
+    @Published var sheetRoute: DetailRoute?
 
     var activePathDepth: Int {
         switch selectedTabIndex {
@@ -57,5 +64,40 @@ final class AppRouter: ObservableObject {
         default: homePath.append(route)
         }
         activeRoute = route
+    }
+
+    /// Opens `route` in a sheet over the Big Player instead of pushing it.
+    /// Doesn't touch `activeRoute`, so the player isn't collapsed.
+    func presentSheet(_ route: DetailRoute) {
+        sheetRoute = route
+    }
+}
+
+/// Presents `AppRouter.sheetRoute`. Attach once, inside the Big Player.
+private struct RouterSheetModifier: ViewModifier {
+    @ObservedObject private var router = AppRouter.shared
+
+    func body(content: Content) -> some View {
+        // Registers destinations so links inside the sheet push within it.
+        content.sheet(item: $router.sheetRoute) { route in
+            NavigationStack {
+                DetailRouteDestinationView(route: route)
+                    .detailRouteDestinations()
+            }
+            .environment(\.isInRouterSheet, true)
+        }
+    }
+}
+
+extension EnvironmentValues {
+    /// True for pages shown by `routerSheet()`, so custom top bars can clear
+    /// the sheet's rounded corners.
+    @Entry var isInRouterSheet = false
+}
+
+extension View {
+    /// Shows routes opened with `AppRouter.presentSheet(_:)` as a sheet.
+    func routerSheet() -> some View {
+        modifier(RouterSheetModifier())
     }
 }

@@ -24,15 +24,25 @@ final class PlaylistDetailViewModel {
     /// Bumped by each auto-playlist load, so an older load that finishes late
     /// can't overwrite the result of a newer sort or period choice.
     @ObservationIgnored private var autoLoadGeneration = 0
+    /// Shared-playlist header from the last visit, shown until the network load lands.
+    let cachedHeader: PlaylistHeaderSnapshot?
 
     init(playlistId: String) {
         self.playlistId = playlistId
         self.autoRoute = nil
+        self.cachedHeader = PlaylistHeaderCache.snapshot(for: playlistId)
     }
 
     init(autoPlaylistRoute: AutoPlaylistRoute) {
         self.playlistId = ""
         self.autoRoute = autoPlaylistRoute
+        self.cachedHeader = nil
+    }
+
+    /// Collaborators can add and remove songs. Falls back to the cached header
+    /// so the edit buttons don't wait for the network.
+    var isCollaborative: Bool {
+        playlist?.isCollaborative ?? cachedHeader?.isCollaborative ?? false
     }
 
     /// Fetches every playlist page from InnerTube and parses the response.
@@ -63,11 +73,14 @@ final class PlaylistDetailViewModel {
         do {
             let browseId = playlistId.hasPrefix("VL") ? playlistId : "VL\(playlistId)"
             let (firstPage, rows) = try await SyncBridge.playlistDetail.fetchPlaylistRows(playlistId: playlistId)
-            let parsed = Self.parsePlaylistDetail(firstPage: firstPage, rows: rows, playlistId: playlistId)
+            var parsed = Self.parsePlaylistDetail(firstPage: firstPage, rows: rows, playlistId: playlistId)
+            // Keep the saved cover when the header has none, so the art doesn't switch to a mosaic.
+            if parsed.thumbnailUrl == nil { parsed.thumbnailUrl = playlist?.thumbnailUrl ?? saved?.thumbnailUrl }
 
             // Show the playlist first, then save it: 200+ rows take a while to write.
             playlist = parsed
             isLoading = false
+            PlaylistHeaderCache.store(parsed, for: playlistId)
             await persist(parsed, rows: rows, browseId: browseId)
         } catch {
             // A saved copy stays on screen when the refresh fails.
@@ -151,7 +164,7 @@ final class PlaylistDetailViewModel {
             arguments: [playlistId]
         )
         let songItems = songs.toSongItems()
-        return PlaylistDetailInfo(
+        var info = PlaylistDetailInfo(
             title: entity.name,
             authorName: nil,
             authorBrowseId: nil,
@@ -163,6 +176,8 @@ final class PlaylistDetailViewModel {
             playlistId: playlistId,
             songs: songItems
         )
+        if let cachedHeader { info.apply(cachedHeader) }
+        return info
     }
 
     private func loadAutoPlaylist(route: AutoPlaylistRoute) async {
@@ -378,13 +393,14 @@ extension PlaylistDetailViewModel {
             .flatMap { $0["avatarViewModel"] as? [String: Any] }
             .flatMap { ($0["image"] as? [String: Any])?["sources"] as? [[String: Any]] }
             .flatMap { $0.first?["url"] as? String }
-        let panelParams = (((headerRenderer?["facepile"] as? [String: Any])?["avatarStackViewModel"] as? [String: Any])?["rendererContext"] as? [String: Any])
+        let panelEndpoint = (((headerRenderer?["facepile"] as? [String: Any])?["avatarStackViewModel"] as? [String: Any])?["rendererContext"] as? [String: Any])
             .flatMap { $0["commandContext"] as? [String: Any] }
             .flatMap { $0["onTap"] as? [String: Any] }
             .flatMap { $0["innertubeCommand"] as? [String: Any] }
             .flatMap { $0["showEngagementPanelEndpoint"] as? [String: Any] }
-            .flatMap { $0["globalConfiguration"] as? [String: Any] }
-            .flatMap { $0["params"] as? String }
+        let panelParams = (panelEndpoint?["globalConfiguration"] as? [String: Any])?["params"] as? String
+        // Same check as ytmusicapi's parse_playlist_header_meta.
+        let isCollaborative = (panelEndpoint?["identifier"] as? [String: Any])?["tag"] as? String == "PAplaylist_collaborate"
         let avatarUrls = ((headerRenderer?["facepile"] as? [String: Any])?["avatarStackViewModel"] as? [String: Any])
             .flatMap { $0["avatars"] as? [[String: Any]] }?
             .compactMap { avatar in
@@ -416,10 +432,11 @@ extension PlaylistDetailViewModel {
             thumbnailUrl: thumbnailUrl,
             playlistId: playlistId,
             songs: songs,
-            collaboratorAvatarUrls: avatarUrls.count > 1 ? avatarUrls : [],
+            collaboratorAvatarUrls: isCollaborative || avatarUrls.count > 1 ? avatarUrls : [],
             collaboratorsPanelParams: panelParams,
             isEditable: firstTabSection?["musicEditablePlaylistDetailHeaderRenderer"] != nil
-                || (json["header"] as? [String: Any])?["musicEditablePlaylistDetailHeaderRenderer"] != nil
+                || (json["header"] as? [String: Any])?["musicEditablePlaylistDetailHeaderRenderer"] != nil,
+            isCollaborative: isCollaborative
         )
     }
 }
@@ -432,6 +449,7 @@ struct PlaylistDetailView: View {
     @State private var playlistEntity: PlaylistEntity?
     @State private var showAddSongs = false
     @State private var deleteError: String?
+    @State private var editError: String?
     @State private var selection = SongSelection()
 
     @Environment(\.dismiss) private var dismiss
@@ -447,7 +465,20 @@ struct PlaylistDetailView: View {
     }
 
     var isEditable: Bool {
-        playlistEntity?.isEditable == true && viewModel.autoRoute == nil
+        (playlistEntity?.isEditable == true || viewModel.playlist?.isEditable == true) && viewModel.autoRoute == nil
+    }
+
+    /// Renaming, the cover, sync and deleting belong to the owner. On a shared
+    /// playlist that is the author; collaborators can only change the songs.
+    var ownsPlaylist: Bool {
+        guard isEditable else { return false }
+        guard viewModel.isCollaborative else { return true }
+        return viewModel.playlist?.authorName == AccountState.shared.accountName
+    }
+
+    /// Owners and collaborators can add and remove songs; only owners delete the playlist.
+    var canEditSongs: Bool {
+        isEditable || (viewModel.isCollaborative && viewModel.autoRoute == nil)
     }
 
     var body: some View {
@@ -487,6 +518,14 @@ struct PlaylistDetailView: View {
         } message: {
             Text(deleteError ?? "")
         }
+        .alert("Couldn't remove song", isPresented: Binding(
+            get: { editError != nil },
+            set: { if !$0 { editError = nil } }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(editError ?? "")
+        }
     }
 
     // MARK: - Multi-select
@@ -499,14 +538,14 @@ struct PlaylistDetailView: View {
             SongSelectionToolbar(
                 selection: selection,
                 songs: songs,
-                onRemove: isEditable ? { picked in Task { await removeSongs(picked) } } : nil
+                onRemove: canEditSongs ? { picked in Task { await removeSongs(picked) } } : nil
             )
         } else {
             ToolbarItemGroup(placement: .primaryAction) {
                 if !songs.isEmpty {
                     Button("Select", systemImage: "checkmark.circle") { selection.begin() }
                 }
-                if isEditable {
+                if canEditSongs {
                     Button("Add Songs", systemImage: "plus") { showAddSongs = true }
                 }
             }
@@ -520,7 +559,7 @@ struct PlaylistDetailView: View {
 
     private func deletePlaylist() async {
         do {
-            try await PlaylistRemoval.remove(playlistId: playlistId, owned: isEditable)
+            try await PlaylistRemoval.remove(playlistId: playlistId, owned: ownsPlaylist)
             dismiss()
         } catch {
             Log.playlistDetail.error("Failed to delete playlist: \(error)")
@@ -553,50 +592,16 @@ struct PlaylistDetailView: View {
 
     @ViewBuilder
     private func header(for playlist: PlaylistDetailInfo) -> some View {
-        VStack(spacing: 12) {
-            // Playlist artwork
-            if let thumbnailUrl = playlist.thumbnailUrl {
-                HeroArtworkView(url: thumbnailUrl)
-            } else {
-                let songArtwork = playlist.songs.compactMap(\.thumbnailUrl)
-                if songArtwork.count >= 4 {
-                    ArtworkMosaicView(urls: songArtwork)
-                } else if let firstArtwork = songArtwork.first {
-                    HeroArtworkView(url: firstArtwork)
-                } else {
-                    RoundedRectangle(cornerRadius: 12)
-                        .fill(LinearGradient(colors: [.blue, .purple], startPoint: .topLeading, endPoint: .bottomTrailing))
-                        .frame(width: 200, height: 200)
-                        .overlay(
-                            Image(systemName: "music.note.list")
-                                .font(.system(size: 60))
-                                .foregroundColor(.white.opacity(0.8))
-                        )
-                        .shadow(color: .black.opacity(0.2), radius: 12, y: 4)
-                }
-            }
-
-            // Playlist title
-            Text(playlist.title)
-                .font(.title2)
-                .fontWeight(.bold)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 24)
-
-            // Metadata: song count | duration
-            let metaParts = metaStrings(for: playlist)
-            if !metaParts.isEmpty {
-                Text(metaParts.joined(separator: " | "))
-                    .font(.subheadline)
-                    .foregroundStyle(.tertiary)
-            }
-
-            // Shared playlist: the people on it, like the YouTube Music web page.
-            if !playlist.collaboratorAvatarUrls.isEmpty {
-                CollaboratorBadge(avatarUrls: playlist.collaboratorAvatarUrls, panelParams: playlist.collaboratorsPanelParams)
-            } else if let authorName = playlist.authorName {
-                // Author row: avatar + name, clickable → artist detail
-                Group {
+        VStack(spacing: 10) {
+            DetailHeaderCard(meta: kindLine(for: playlist), title: playlist.title) {
+                cover(for: playlist)
+            } secondary: {
+                // Author: avatar + name, clickable → artist detail. A shared
+                // playlist shows its people here instead, like YouTube Music's page.
+                if !playlist.collaboratorAvatarUrls.isEmpty {
+                    CollaboratorBadge(avatarUrls: playlist.collaboratorAvatarUrls, panelParams: playlist.collaboratorsPanelParams)
+                        .padding(.top, 4)
+                } else if let authorName = playlist.authorName {
                     if let authorId = playlist.authorBrowseId {
                         NavigationLink(value: DetailRoute.artist(browseId: authorId)) {
                             authorRow(name: authorName, avatarUrl: playlist.authorAvatarUrl)
@@ -606,6 +611,26 @@ struct PlaylistDetailView: View {
                         authorRow(name: authorName, avatarUrl: playlist.authorAvatarUrl)
                     }
                 }
+            } buttons: {
+                PlaylistActionsMenu(
+                    playlist: playlist,
+                    onSync: { Task { await viewModel.load(); await fetchEntity() } },
+                    isOwned: ownsPlaylist,
+                    onDelete: viewModel.autoRoute == nil ? { Task { await deletePlaylist() } } : nil
+                ) {
+                    HeaderRoundIcon(systemImage: "ellipsis")
+                        .accessibilityLabel("More options")
+                }
+
+                Button(action: { shufflePlay(playlist) }, label: {
+                    HeaderRoundIcon(systemImage: "shuffle")
+                })
+                .accessibilityLabel("Shuffle")
+
+                Button(action: { playAll(playlist) }, label: {
+                    HeaderRoundIcon(systemImage: "play.fill", primary: .accentColor)
+                })
+                .accessibilityLabel("Play all")
             }
 
             // Description (only if fetched, no fallback)
@@ -614,35 +639,44 @@ struct PlaylistDetailView: View {
                     .font(.caption)
                     .foregroundColor(.secondary)
                     .lineLimit(3)
-                    .padding(.horizontal, 32)
-                    .padding(.top, 4)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, DesignTokens.screenHPadding + 4)
             }
-
-            // Action buttons: shuffle, play
-            PlaybackControlsView(
-                onPlay: { playAll(playlist) },
-                onShuffle: { shufflePlay(playlist) },
-                moreMenu: AnyView(
-                    PlaylistActionsMenu(
-                        playlist: playlist,
-                        onSync: { Task { await viewModel.load(); await fetchEntity() } },
-                        isOwned: isEditable,
-                        onDelete: viewModel.autoRoute == nil ? { Task { await deletePlaylist() } } : nil
-                    ) {
-                        MoreCircleGlyph()
-                    }
-                )
-            )
         }
         .padding(.vertical, 16)
+        .frame(maxWidth: .infinity)
+        .background(alignment: .top) {
+            BlurredArtworkBackdrop(url: playlist.thumbnailUrl ?? playlist.songs.first?.thumbnailUrl)
+        }
+    }
+
+    /// Playlist art, else a mosaic or the first song's art, else a gradient.
+    @ViewBuilder
+    private func cover(for playlist: PlaylistDetailInfo) -> some View {
+        // The mosaic shows four tiles at most: stop there instead of walking every song.
+        let songArtwork = Array(playlist.songs.lazy.compactMap(\.thumbnailUrl).prefix(4))
+        if let url = playlist.thumbnailUrl ?? (songArtwork.count >= 4 ? nil : songArtwork.first) {
+            AsyncImageView(url: url)
+                .clipShape(RoundedRectangle(cornerRadius: DesignTokens.cardRadius, style: .continuous))
+        } else if songArtwork.count >= 4 {
+            ArtworkMosaicView(urls: songArtwork, size: DesignTokens.artLarge)
+        } else {
+            RoundedRectangle(cornerRadius: DesignTokens.cardRadius, style: .continuous)
+                .fill(LinearGradient(colors: [.blue, .purple], startPoint: .topLeading, endPoint: .bottomTrailing))
+                .overlay(
+                    Image(systemName: "music.note.list")
+                        .font(.system(size: 40))
+                        .foregroundColor(.white.opacity(0.8))
+                )
+        }
     }
 
     @ViewBuilder
     private func authorRow(name: String, avatarUrl: String?) -> some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 6) {
             if let avatarUrl {
                 AsyncImageView(url: avatarUrl)
-                    .frame(width: 24, height: 24)
+                    .frame(width: 18, height: 18)
                     .clipShape(Circle())
             } else {
                 Image(systemName: "person.circle.fill")
@@ -653,6 +687,7 @@ struct PlaylistDetailView: View {
                 .font(.subheadline)
                 .fontWeight(.medium)
                 .foregroundColor(.secondary)
+                .lineLimit(1)
         }
     }
 
@@ -703,19 +738,15 @@ struct PlaylistDetailView: View {
             ForEach(Array(playlist.songs.enumerated()), id: \.offset) { index, song in
                 SongRowView(
                     song: song,
+                    artSize: DesignTokens.artSmall, artRadius: DesignTokens.cardRadius,
                     onTap: { selection.isActive ? selection.toggle(song) : playSong(song, in: playlist) },
                     onNavigate: { AppRouter.shared.open($0) },
                     isSelecting: selection.isActive,
                     isSelected: selection.selected.contains(song.videoId),
                     onSelect: { selection.begin(with: song) },
-                    onRemove: isEditable ? { Task { await removeSongs([song]) } } : nil
+                    onRemove: canEditSongs ? { Task { await removeSongs([song]) } } : nil
                 )
                 .trackRowFrame(selection, index: index)
-
-                if index < playlist.songs.count - 1 {
-                    Divider()
-                        .padding(.leading, 68)
-                }
             }
         }
         .songSelectionColumn(selection, songs: playlist.songs)
@@ -729,7 +760,12 @@ struct PlaylistDetailView: View {
                 arguments: [playlistId, song.videoId]
             )) ?? []
             guard let setVideoId = maps.first?.setVideoId else { continue }
-            try? await SyncBridge.mutations.removeFromPlaylist(playlistId: playlistId, songId: song.videoId, setVideoId: setVideoId)
+            do {
+                try await PlaylistSongEdits.remove(songId: song.videoId, setVideoId: setVideoId, from: playlistId)
+            } catch {
+                Log.playlistDetail.error("Failed to remove \(song.videoId) from \(playlistId): \(error)")
+                editError = error.localizedDescription
+            }
         }
         await viewModel.load()
     }
@@ -750,12 +786,12 @@ struct PlaylistDetailView: View {
 
     // MARK: - Helpers
 
-    /// Builds metadata strings like "50 songs • 3:25:10"
-    private func metaStrings(for playlist: PlaylistDetailInfo) -> [String] {
-        var parts: [String] = []
+    /// Builds the kind line, like "Playlist · 50 songs · 3:25:10".
+    private func kindLine(for playlist: PlaylistDetailInfo) -> String {
+        var parts = ["Playlist"]
         if playlist.songCount > 0 { parts.append("\(playlist.songCount) song\(playlist.songCount != 1 ? "s" : "")") }
         if playlist.duration > 0 { parts.append(playlist.duration.formattedDuration) }
-        return parts
+        return parts.joined(separator: " · ")
     }
 }
 
@@ -770,6 +806,7 @@ struct AddSongToPlaylistView: View {
     @State private var searchText = ""
     @State private var isLoading = true
     @State private var addingIds = Set<String>()
+    @State private var addError: String?
 
     private var filteredSongs: [SongEntity] {
         if searchText.isEmpty { return songs }
@@ -827,6 +864,7 @@ struct AddSongToPlaylistView: View {
                                 }
                             }
                             .padding(.vertical, 2)
+                            .listRowSeparator(.hidden)
                         }
                     }
                     .searchable(text: $searchText, prompt: "Search songs")
@@ -841,6 +879,14 @@ struct AddSongToPlaylistView: View {
             }
             .task {
                 await loadSongs()
+            }
+            .alert("Couldn't add song", isPresented: Binding(
+                get: { addError != nil },
+                set: { if !$0 { addError = nil } }
+            )) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(addError ?? "")
             }
         }
     }
@@ -861,11 +907,12 @@ struct AddSongToPlaylistView: View {
     private func addSong(_ song: SongEntity) async {
         addingIds.insert(song.id)
         do {
-            try await SyncBridge.mutations.addToPlaylist(playlistId: playlistId, songId: song.id)
+            try await PlaylistSongEdits.add(songId: song.id, to: playlistId)
             await onDone()
             dismiss()
         } catch {
             Log.addSong.error("Failed to add song: \(error)")
+            addError = error.localizedDescription
         }
         addingIds.remove(song.id)
     }

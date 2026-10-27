@@ -109,21 +109,15 @@ struct DownloadsView: View {
 
     /// Rows sit directly in the parent `LazyVStack`, so only the visible ones are built.
     private func songList(_ songs: [SongItem]) -> some View {
-        ForEach(Array(songs.enumerated()), id: \.offset) { index, song in
-            VStack(spacing: 0) {
-                SongRowView(
-                    song: song,
-                    artSize: 48,
-                    artRadius: 8,
-                    onTap: { playSong(song) },
-                    onNavigate: { AppRouter.shared.open($0) }
-                )
-
-                if index < songs.count - 1 {
-                    Divider()
-                        .padding(.leading, 76)
-                }
-            }
+        // No separators: the row's own vertical padding keeps songs apart.
+        ForEach(Array(songs.enumerated()), id: \.offset) { _, song in
+            SongRowView(
+                song: song,
+                artSize: DesignTokens.artSmall,
+                artRadius: DesignTokens.cardRadius,
+                onTap: { playSong(song) },
+                onNavigate: { AppRouter.shared.open($0) }
+            )
         }
     }
 

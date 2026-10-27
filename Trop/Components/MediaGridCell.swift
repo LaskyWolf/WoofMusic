@@ -13,10 +13,9 @@ private struct OpensPageBadge: ViewModifier {
         content.overlay(alignment: .bottomTrailing) {
             Image(systemName: "chevron.right")
                 .font(.system(size: 10, weight: .bold))
-                .foregroundStyle(.white)
-                .frame(width: 22, height: 22)
-                .background(.black.opacity(0.55), in: Circle())
-                .overlay(Circle().strokeBorder(.white.opacity(0.35), lineWidth: 0.5))
+                .foregroundStyle(.primary)
+                .frame(width: 24, height: 24)
+                .glassEffect(.regular, in: Circle())
                 .padding(6)
                 .accessibilityHidden(true)
         }
@@ -31,37 +30,72 @@ extension View {
     }
 }
 
-/// Square artwork card with two-line title + optional subtitle, shared by the
-/// artist albums carousel and search album carousel. `size` fixes the width
-/// for carousels; nil sizes flexibly for grids.
+/// Square artwork card with a two-line title and optional subtitle, shared by
+/// the artist page carousels, Search's album carousel and Library's grid.
+/// Large covers by default, like Home's carousel cards; a nil `size` fills
+/// the width it is given (Library's grid columns).
 struct MediaGridCell: View {
     var thumbnailUrl: String?
     var title: String
     var subtitle: String?
-    var size: CGFloat?
+    var size: CGFloat? = DesignTokens.artLarge
+    /// Shows the ">" badge: the card opens a page.
+    var opensPage = true
+    /// The route this card pushes; its page zooms out of the cover.
+    var zoomRoute: DetailRoute? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: DesignTokens.cardInnerSpacing) {
-            AsyncImageView(url: thumbnailUrl)
-                .aspectRatio(1, contentMode: .fill)
-                .frame(width: size, height: size)
+            Color.clear
+                .aspectRatio(1, contentMode: .fit)
+                .frame(width: size)
+                .overlay { AsyncImageView(url: thumbnailUrl) }
                 .clipShape(RoundedRectangle(cornerRadius: DesignTokens.cardRadius))
-                .opensPageBadge()
+                .coverZoomSource(zoomRoute)
+                .opensPageBadge(opensPage)
 
             Text(title)
                 .font(.caption)
                 .fontWeight(.medium)
                 .foregroundColor(.primary)
                 .lineLimit(2)
-                .frame(width: size, alignment: .leading)
+                .frame(maxWidth: size ?? .infinity, alignment: .leading)
 
             if let subtitle, !subtitle.isEmpty {
                 Text(subtitle)
                     .font(.caption2)
                     .foregroundColor(.secondary)
                     .lineLimit(1)
-                    .frame(width: size, alignment: .leading)
+                    .frame(maxWidth: size ?? .infinity, alignment: .leading)
             }
+        }
+        .frame(width: size)
+    }
+}
+
+struct ArtistCircleCell: View {
+    var thumbnailUrl: String?
+    var name: String
+    /// nil fills the width it is given, like `MediaGridCell`.
+    var size: CGFloat? = DesignTokens.artLarge
+
+    var body: some View {
+        VStack(spacing: DesignTokens.cardInnerSpacing) {
+            Color.clear
+                .aspectRatio(1, contentMode: .fit)
+                .frame(width: size)
+                .overlay { AsyncImageView(url: thumbnailUrl) }
+                .clipShape(Circle())
+            Text(name)
+                .font(.caption)
+                .fontWeight(.medium)
+                .foregroundColor(.primary)
+                .lineLimit(2)
+                .multilineTextAlignment(.center)
+            ArtistKindLabel(name: name)
+                .font(.caption2)
+                .foregroundColor(.secondary)
+                .lineLimit(1)
         }
         .frame(width: size)
     }

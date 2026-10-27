@@ -258,13 +258,12 @@ final class HomeViewModel {
     private func loadPhase2Sections() async {
         guard isLoggedIn else { return }
 
-        async let ap: HomeSection = personalization.buildAccountPlaylists()
+        // "Your Playlists" is not built: it repeats the Library tab.
         async let dd: HomeSection = personalization.buildDailyDiscover()
         async let artistSections = personalization.buildArtistSections()
 
-        let (apResult, ddResult, artistResult) = await (ap, dd, artistSections)
+        let (ddResult, artistResult) = await (dd, artistSections)
         var phase2: [HomeSection] = []
-        if !apResult.items.isEmpty { phase2.append(apResult) }
         if !ddResult.items.isEmpty { phase2.append(ddResult) }
         if !artistResult.community.items.isEmpty { phase2.append(artistResult.community) }
         phase2.append(contentsOf: artistResult.similar)
@@ -369,8 +368,9 @@ final class HomeViewModel {
 
     private func orderSections(_ sections: [HomeSection]) -> [HomeSection] {
         let filtered = sections.compactMap { section -> HomeSection? in
-            // Videos aren't supported, so YouTube's video shelves are dropped.
-            if case .homePageSection(let data, _) = section, data.title.lowercased().contains("music video") {
+            // Videos aren't supported, so YouTube's video shelves are dropped,
+            // along with shelves that repeat Library, Explore or local sections.
+            if case .homePageSection(let data, _) = section, Self.isHiddenServerShelf(data.title) {
                 return nil
             }
             let f = applyFilters(section)
@@ -399,6 +399,19 @@ final class HomeViewModel {
                 return weightA != weightB ? weightA > weightB : a.offset < b.offset
             }
             .map(\.element)
+    }
+
+    /// Lowercased fragments of YouTube shelf titles Home doesn't show.
+    /// "daily discover" only matches YouTube's shelf: the app's own
+    /// Daily Discover is a `.dailyDiscover` section, not a server shelf.
+    private static let hiddenServerShelfFragments = [
+        "music video", "from your library", "your playlist",
+        "daily discover", "shorts", "new release"
+    ]
+
+    private static func isHiddenServerShelf(_ title: String) -> Bool {
+        let title = title.lowercased()
+        return hiddenServerShelfFragments.contains { title.contains($0) }
     }
 
     private func applyFilters(_ section: HomeSection) -> HomeSection {
@@ -442,8 +455,9 @@ final class HomeViewModel {
 
     private func sectionWeight(_ section: HomeSection) -> Int {
         switch section {
+        // Keep Listening is a small strip that sits directly above Quick Picks.
+        case .keepListening: return 110
         case .quickPicks: return 100
-        case .keepListening: return 80
         case .forgottenFavorites: return 60
         case .homePageSection(_, let index): return 40 - index
         case .dailyDiscover: return 70

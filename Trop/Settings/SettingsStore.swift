@@ -81,6 +81,21 @@ enum LyricsAlignment: String, CaseIterable, Identifiable, SettingsOption {
     }
 }
 
+/// How Library shows playlists, albums, artists and podcasts.
+enum LibraryLayout: String, CaseIterable, Identifiable, SettingsOption {
+    case grid
+    case list
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .grid: return "Grid"
+        case .list: return "List"
+        }
+    }
+}
+
 extension AudioQuality: SettingsOption {
     public var displayName: String {
         switch self {
@@ -165,6 +180,10 @@ final class SettingsStore {
 
     var defaultTab: Int {
         didSet { Self.defaults.set(defaultTab, forKey: Keys.defaultTab) }
+    }
+
+    var libraryLayout: LibraryLayout {
+        didSet { Self.defaults.set(libraryLayout.rawValue, forKey: Keys.libraryLayout) }
     }
 
     // MARK: - Lyrics appearance
@@ -388,6 +407,7 @@ final class SettingsStore {
         static let hideExplicit = "settings.hideExplicit"
         static let showQuickPicks = "settings.showQuickPicks"
         static let quickPicksSize = "settings.quickPicksSize"
+        static let libraryLayout = "settings.libraryLayout"
         static let contentCountry = "settings.contentCountry"
         static let disabledLyricsProviders = "settings.disabledLyricsProviders"
         static let trackSearchHistory = "settings.trackSearchHistory"
@@ -426,6 +446,7 @@ final class SettingsStore {
         accentName = d.string(forKey: Keys.accentName) ?? AccentPreset.all[0].name
         playerBackgroundStyle = Self.loadEnum(Keys.playerBackgroundStyle, default: .dynamic)
         defaultTab = Self.load(Keys.defaultTab, default: 0)
+        libraryLayout = Self.loadEnum(Keys.libraryLayout, default: .grid)
         lyricsFontSize = Self.load(Keys.lyricsFontSize, default: 17)
         lyricsAlignment = Self.loadEnum(Keys.lyricsAlignment, default: .center)
         lyricsOffsetSeconds = Self.load(Keys.lyricsOffsetSeconds, default: 0)

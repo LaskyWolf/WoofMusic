@@ -32,6 +32,8 @@ enum SearchSort: String, CaseIterable {
 @Observable
 final class SearchViewModel {
 
+    static let placeholder = "Songs, artists, albums"
+
     // MARK: - Phase
 
     enum Phase {
@@ -351,6 +353,13 @@ final class SearchViewModel {
     }
 
     // MARK: - Field changes
+
+    /// Clears the field and any results, cancelling an in-flight fetch.
+    /// Clearing `fieldText` alone is ignored while loading.
+    func cancel() {
+        fieldText = ""
+        resetToIdle()
+    }
 
     private func handleFieldTextChange() {
         // While fetching, the field is owned by the submission flow.

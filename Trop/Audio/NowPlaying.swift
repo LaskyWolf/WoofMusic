@@ -38,6 +38,8 @@ final class NowPlaying {
     }
     var thumbnailImage: Image?
     var thumbnailUIImage: UIImage?
+    /// The song `thumbnailUIImage` belongs to; it lags behind `videoId` while the new cover loads.
+    private(set) var thumbnailVideoId: String?
     var thumbnailVersion = 0
     var dominantColors: [Color] = [Color(red: 0.15, green: 0.15, blue: 0.2), Color(red: 0.05, green: 0.05, blue: 0.08)]
 
@@ -46,7 +48,12 @@ final class NowPlaying {
         return primary
     }
 
-    var queueSongs: [SongItem] = []
+    var queueSongs: [SongItem] = [] {
+        didSet { queueNeedsSave = true }
+    }
+    /// The encoded queue is rewritten only after the songs change, not on
+    /// every index move.
+    @ObservationIgnored private var queueNeedsSave = true
     var queueIndex = 0
     private var playNextEnd: Int?
 
@@ -125,8 +132,9 @@ final class NowPlaying {
             UserDefaults.standard.removeObject(forKey: Self.repeatKey)
             return
         }
-        if let data = try? JSONEncoder().encode(queueSongs) {
+        if queueNeedsSave, let data = try? JSONEncoder().encode(queueSongs) {
             UserDefaults.standard.set(data, forKey: Self.queueKey)
+            queueNeedsSave = false
         }
         UserDefaults.standard.set(playNextEnd, forKey: Self.playNextEndKey)
         UserDefaults.standard.set(queueIndex, forKey: Self.queueIndexKey)
@@ -359,6 +367,12 @@ final class NowPlaying {
             return queueSongs[index].videoId
         }
         urls.append(contentsOf: neighborIds.compactMap { URL(string: Self.artworkURL(for: $0)) })
+        // The previous song's cover, which the mini player shows beside the current one.
+        if queueSongs.indices.contains(queueIndex - 1),
+           let previous = queueSongs[queueIndex - 1].thumbnailUrl,
+           let url = URL(string: ArtworkURLs.highRes(previous) ?? previous) {
+            urls.append(url)
+        }
         guard !urls.isEmpty else { return }
         Task { await ImagePreloader.shared.append(urls) }
     }
@@ -539,6 +553,7 @@ final class NowPlaying {
             }.value
             guard request == artworkRequest, lastLoadedVideoId == videoId else { return }
             thumbnailUIImage = cropped
+            thumbnailVideoId = videoId
             thumbnailImage = Image(uiImage: cropped)
             thumbnailVersion &+= 1
             dominantColors = colors
@@ -644,7 +659,7 @@ final class NowPlaying {
     @MainActor
     private func timerTick() {
         // Also writes currentTime and duration.
-        PlayerController.shared.updateNowPlayingProgress()
+        PlayerController.shared.updateNowPlayingProgress(onlyIfDrifted: true)
         Crossfade.shared.tick()
         SponsorBlock.shared.tick()
         ListenBrainz.shared.tick()

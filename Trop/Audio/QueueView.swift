@@ -156,14 +156,13 @@ struct QueueView: View {
         }
         .buttonStyle(.plain)
         .listRowInsets(EdgeInsets())
+        // Always a real view, clear when not current: an empty background
+        // lets the list fall back to its own cell background, which stays
+        // dark on a row after it is dragged.
         .listRowBackground(
-            Group {
-                if isCurrent {
-                    RoundedRectangle(cornerRadius: 10)
-                        .fill(Color.white.opacity(0.08))
-                        .padding(.horizontal, 12)
-                }
-            }
+            RoundedRectangle(cornerRadius: 10)
+                .fill(Color.white.opacity(isCurrent ? 0.08 : 0))
+                .padding(.horizontal, 12)
         )
         .listRowSeparator(.hidden)
         .swipeActions(edge: .trailing, allowsFullSwipe: true) {

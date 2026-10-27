@@ -7,61 +7,71 @@
 
 import SwiftUI
 
+/// The Search tab's root page: its own search field where Home and Library
+/// show their filter chips, then recent searches or results underneath.
 struct SearchView: View {
     @Environment(SettingsStore.self) private var settings
-    @State private var viewModel = SearchViewModel()
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var searchModel = SearchViewModel()
     @ObservedObject private var router = AppRouter.shared
-    @FocusState private var fieldFocused: Bool
 
-    @State private var pendingRoute: DetailRoute?
+    @FocusState private var fieldFocused: Bool
+    /// Shared by this tab's covers and the pages they open, for the zoom transition.
+    @Namespace private var coverZoom
+
+    private let accountState = AccountState.shared
+
+    /// Cancel and the sort menu show while typing or while a search is on screen.
+    private var isActive: Bool { fieldFocused || !searchModel.fieldText.isEmpty }
 
     var body: some View {
         NavigationStack(path: $router.searchPath) {
             VStack(spacing: 0) {
-                searchTopBar
+                TabHeaderView(
+                    title: "Search",
+                    accountIsLoggedIn: accountState.isLoggedIn,
+                    accountImageUrl: accountState.accountImageUrl,
+                    onHistory: { router.searchPath.append(DetailRoute.history) },
+                    onAccount: { router.searchPath.append(DetailRoute.settings) }
+                )
 
-                content
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .contentShape(Rectangle())
-                    .simultaneousGesture(TapGesture().onEnded { fieldFocused = false })
-                    .scrollDismissesKeyboard(.interactively)
+                searchBar
+
+                SearchResultsView(viewModel: searchModel, fieldFocused: $fieldFocused)
             }
             .frame(maxHeight: .infinity, alignment: .top)
             .toolbar(.hidden, for: .navigationBar)
-            .toolbar(fieldFocused ? .hidden : .visible, for: .tabBar)
             .detailRouteDestinations()
-            .onChange(of: pendingRoute) { _, route in
-                if let route {
-                    router.searchPath.append(route)
-                    pendingRoute = nil
-                }
+            .onChange(of: router.focusSearchField) { _, requested in
+                if requested { consumeFocusRequest() }
             }
-            .onAppear {
-                viewModel.loadSearchHistory()
-                focusIfSearchTab()
-            }
-            .onChange(of: router.selectedTabIndex) { _, _ in
-                focusIfSearchTab()
-            }
+            .onAppear { consumeFocusRequest() }
         }
+        .coverZoomNamespace(coverZoom)
     }
 
-    // MARK: - Top bar
+    private var searchAnimation: Animation {
+        reduceMotion ? .easeInOut(duration: 0.2) : .timingCurve(0.16, 1, 0.3, 1, duration: 0.4)
+    }
 
-    /// Search field + sort menu pinned above the filter chips.
-    private var searchTopBar: some View {
+    /// A field the height of the filter chips; Cancel and the sort menu slide
+    /// in on the trailing side while it is active.
+    private var searchBar: some View {
         HStack(spacing: 10) {
             HStack(spacing: 8) {
                 Image(systemName: "magnifyingglass")
                     .foregroundStyle(.secondary)
-                TextField("Search", text: $viewModel.fieldText)
+                TextField(SearchViewModel.placeholder, text: $searchModel.fieldText)
                     .focused($fieldFocused)
                     .submitLabel(.search)
                     .autocorrectionDisabled()
-                    .onSubmit { submit(nil) }
-                if !viewModel.fieldText.isEmpty {
+                    .onSubmit {
+                        fieldFocused = false
+                        searchModel.submit()
+                    }
+                if !searchModel.fieldText.isEmpty {
                     Button {
-                        viewModel.fieldText = ""
+                        searchModel.fieldText = ""
                     } label: {
                         Image(systemName: "xmark.circle.fill")
                             .foregroundStyle(.secondary)
@@ -71,25 +81,36 @@ struct SearchView: View {
                 }
             }
             .padding(.horizontal, 12)
-            .padding(.vertical, 10)
-            .background(
-                Capsule()
-                    .fill(Color(.systemGray5).opacity(0.6))
-            )
+            .padding(.vertical, 6)
+            .frame(minHeight: DesignTokens.controlHeight)
+            .background(Capsule().fill(Color(.systemGray5).opacity(0.6)))
 
-            sortMenu
+            if isActive {
+                Group {
+                    sortMenu
+                    Button("Cancel", action: cancelSearch)
+                        .foregroundStyle(settings.accentColor)
+                }
+                .transition(reduceMotion ? .opacity : .move(edge: .trailing).combined(with: .opacity))
+            }
         }
-        .padding(.horizontal, 16)
+        .padding(.horizontal, DesignTokens.screenHPadding)
         .padding(.vertical, 8)
+        .animation(searchAnimation, value: isActive)
+    }
+
+    private func cancelSearch() {
+        fieldFocused = false
+        searchModel.cancel()
     }
 
     private var sortMenu: some View {
         Menu {
             ForEach(SearchSort.allCases, id: \.self) { option in
                 Button {
-                    viewModel.sort = option
+                    searchModel.sort = option
                 } label: {
-                    if viewModel.sort == option {
+                    if searchModel.sort == option {
                         Label(option.title, systemImage: "checkmark")
                     } else {
                         Text(option.title)
@@ -100,330 +121,20 @@ struct SearchView: View {
             Image(systemName: "arrow.up.arrow.down")
                 .font(.body)
                 .foregroundStyle(.primary)
-                .frame(width: 44, height: 44)
+                .frame(width: DesignTokens.controlHeight, height: DesignTokens.controlHeight)
                 .background(Circle().fill(Color(.systemGray5).opacity(0.6)))
         }
         .accessibilityLabel("Sort results")
     }
 
-    /// Focuses the field (raising the keyboard) whenever the Search tab
-    /// becomes active.
-    private func focusIfSearchTab() {
-        if AppRouter.shared.selectedTabIndex == 3 {
+    /// Home Screen "Search" quick action: focus the field.
+    private func consumeFocusRequest() {
+        guard router.focusSearchField else { return }
+        router.focusSearchField = false
+        Task {
+            // The tab switch must land before the field can take focus.
+            try? await Task.sleep(for: .milliseconds(150))
             fieldFocused = true
         }
-    }
-
-    // MARK: - Content
-
-    @ViewBuilder
-    private var content: some View {
-        switch viewModel.phase {
-        case .idle:
-            if viewModel.searchHistory.isEmpty {
-                noRecentSearchesView
-            } else {
-                searchHistoryView
-            }
-        case .loading:
-            loadingView
-        case .results:
-            searchResultsList
-        case .noResults:
-            noResultsView
-        case .failed:
-            errorView(viewModel.error)
-        }
-    }
-
-    private var loadingView: some View {
-        VStack {
-            Spacer()
-            ShimmerLoadingView()
-            Spacer()
-        }
-    }
-
-    // MARK: - Submission
-
-    private func submit(_ text: String? = nil) {
-        if let text {
-            viewModel.fieldText = text
-        }
-        fieldFocused = false
-        viewModel.submit()
-    }
-
-    private var searchHistoryView: some View {
-        ScrollView {
-            LazyVStack(alignment: .leading, spacing: 0) {
-                HStack {
-                    Text("Recently searched")
-                        .font(.headline)
-                        .foregroundColor(.primary)
-                    Spacer()
-                    Button("Clear") {
-                        viewModel.clearSearchHistory()
-                    }
-                    .font(.subheadline)
-                    .foregroundColor(settings.accentColor)
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
-
-                ForEach(viewModel.searchHistory, id: \.query) { entry in
-                    Button {
-                        submit(entry.query)
-                    } label: {
-                        HStack {
-                            Image(systemName: "clock.arrow.trianglehead.counterclockwise.rotate.90")
-                                .foregroundColor(settings.accentColor)
-                            Text(entry.query)
-                                .foregroundColor(.primary)
-                            Spacer()
-                        }
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 12)
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .contextMenu {
-                        Button(role: .destructive) {
-                            viewModel.deleteSearchHistoryEntry(entry)
-                        } label: {
-                            Label("Delete", systemImage: "trash")
-                        }
-                        .tint(.red)
-                    }
-
-                    Divider()
-                        .padding(.leading, 16)
-                }
-            }
-        }
-        .scrollIndicators(.automatic)
-        .miniPlayerTracksScroll()
-    }
-
-    private var searchResultsList: some View {
-        ScrollView {
-            LazyVStack(alignment: .leading, spacing: 0) {
-                if !viewModel.availableFilters.isEmpty {
-                    filterChips
-                }
-
-                if let hero = viewModel.heroArtist {
-                    artistHeroCard(hero, songs: viewModel.heroSongs)
-                        .padding(.horizontal, 16)
-                        .padding(.top, 8)
-                }
-
-                ForEach(viewModel.filteredResults) { section in
-                    sectionHeader(section.title)
-
-                    switch section.title {
-                    case "Artists":
-                        artistCarousel(items: section.items)
-                    case "Albums":
-                        albumCarousel(items: section.items)
-                    default:
-                        ForEach(section.items, id: \.id) { item in
-                            YouTubeListItemView(item: item, onTap: {
-                                handleItemTap(item)
-                            }, onNavigate: { pendingRoute = $0 })
-                        }
-                    }
-                }
-            }
-            .padding(.bottom, 16)
-        }
-        .scrollIndicators(.automatic)
-        .miniPlayerTracksScroll()
-    }
-
-    /// Section title with chevron — taps drill into (or clear) the filter.
-    private func sectionHeader(_ title: String) -> some View {
-        Button {
-            if viewModel.selectedSectionFilter == title {
-                viewModel.selectedSectionFilter = nil
-            } else {
-                viewModel.selectedSectionFilter = title
-                viewModel.isShowingLibrary = false
-            }
-        } label: {
-            HStack(spacing: 4) {
-                Text(title)
-                    .font(.headline)
-                    .fontWeight(.bold)
-                    .foregroundStyle(.primary)
-                Image(systemName: "chevron.right")
-                    .font(.subheadline)
-                    .fontWeight(.semibold)
-                    .foregroundStyle(.secondary)
-                Spacer()
-            }
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .padding(.horizontal, 16)
-        .padding(.top, 16)
-        .padding(.bottom, 4)
-    }
-
-    /// Artist-first hero: big circular artwork + name, then top songs.
-    private func artistHeroCard(_ artist: ArtistItem, songs: [SongItem]) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Button {
-                router.searchPath.append(DetailRoute.artist(browseId: artist.browseId))
-            } label: {
-                HStack(spacing: 12) {
-                    AsyncImageView(url: artist.thumbnailUrl)
-                        .frame(width: 56, height: 56)
-                        .clipShape(Circle())
-                    Text(artist.name)
-                        .font(.title3)
-                        .fontWeight(.bold)
-                        .foregroundStyle(.primary)
-                        .lineLimit(1)
-                    Spacer()
-                    Text("•••")
-                        .font(.body.weight(.black))
-                        .foregroundStyle(settings.accentColor)
-                }
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-
-            ForEach(songs, id: \.videoId) { song in
-                let item = YTItem.song(song)
-                YouTubeListItemView(item: item, onTap: {
-                    handleItemTap(item)
-                }, onNavigate: { pendingRoute = $0 })
-            }
-        }
-        .background(
-            RoundedRectangle(cornerRadius: 16)
-                .fill(Color(.systemGray6))
-        )
-    }
-
-    private func artistCarousel(items: [YTItem]) -> some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            LazyHStack(alignment: .top, spacing: 16) {
-                ForEach(items, id: \.id) { item in
-                    if case .artist(let artist) = item {
-                        Button {
-                            router.searchPath.append(DetailRoute.artist(browseId: artist.browseId))
-                        } label: {
-                            VStack(spacing: 8) {
-                                AsyncImageView(url: artist.thumbnailUrl)
-                                    .frame(width: 110, height: 110)
-                                    .clipShape(Circle())
-                                Text(artist.name)
-                                    .font(.subheadline)
-                                    .foregroundStyle(.primary)
-                                    .lineLimit(1)
-                                    .frame(width: 110)
-                                Text("Artist")
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                        .buttonStyle(ZoomPressStyle())
-                        .artistCardMenu(browseId: artist.browseId)
-                    }
-                }
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 4)
-        }
-    }
-
-    private func albumCarousel(items: [YTItem]) -> some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            LazyHStack(alignment: .top, spacing: 12) {
-                ForEach(items, id: \.id) { item in
-                    if case .album(let album) = item {
-                        Button {
-                            router.searchPath.append(DetailRoute.album(browseId: album.browseId))
-                        } label: {
-                            MediaGridCell(
-                                thumbnailUrl: album.thumbnailUrl,
-                                title: album.title,
-                                subtitle: album.artists.map(\.name).joined(separator: ", "),
-                                size: 140
-                            )
-                        }
-                        .buttonStyle(ZoomPressStyle())
-                        .albumCardMenu(browseId: album.browseId, artists: album.artists)
-                    }
-                }
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 4)
-        }
-    }
-
-    private var filterChips: some View {
-        FilterChipBar(
-            items: ["All Results"] + viewModel.availableFilters,
-            id: \.self,
-            title: { $0 },
-            isSelected: { filter in
-                if filter == "All Results" {
-                    return viewModel.selectedSectionFilter == nil && !viewModel.isShowingLibrary
-                }
-                return filter == "Library"
-                    ? viewModel.isShowingLibrary
-                    : viewModel.selectedSectionFilter == filter
-            },
-            onTap: { filter in
-                if filter == "All Results" {
-                    viewModel.selectedSectionFilter = nil
-                    viewModel.isShowingLibrary = false
-                } else if filter == "Library" {
-                    let willShow = !viewModel.isShowingLibrary
-                    viewModel.isShowingLibrary = willShow
-                    viewModel.selectedSectionFilter = nil
-                } else {
-                    viewModel.selectedSectionFilter = filter
-                    viewModel.isShowingLibrary = false
-                }
-            }
-        )
-    }
-
-    private var noResultsView: some View {
-        ContentUnavailableView(
-            "No Results",
-            systemImage: "magnifyingglass",
-            description: Text("No results found for \"\(viewModel.submittedQuery)\"")
-        )
-    }
-
-    private var noRecentSearchesView: some View {
-        ContentUnavailableView(
-            "No Recent Searches",
-            systemImage: "magnifyingglass",
-            description: Text("Your recent searches will appear here.")
-        )
-    }
-
-    private func errorView(_ error: Error?) -> some View {
-        ContentUnavailableView(
-            "Search failed",
-            systemImage: "exclamationmark.triangle",
-            description: Text(error?.localizedDescription ?? "Something went wrong.")
-        )
-    }
-
-    private func handleItemTap(_ item: YTItem) {
-        YTItemRouter.route(
-            item,
-            playSong: { PlaybackQueue.playSingleWithRadio($0, log: Log.searchView) },
-            appendRoute: { router.searchPath.append($0) }
-        )
     }
 }

@@ -11,7 +11,7 @@ import SwiftUI
 /// header. Shared by PlaylistHeaderView and the playlist detail header.
 struct ArtworkMosaicView: View {
     var urls: [String]
-    var size: CGFloat = 200
+    var size: CGFloat = DesignTokens.heroArtwork
 
     var body: some View {
         let columns = Array(repeating: GridItem(.flexible(), spacing: 3), count: 2)

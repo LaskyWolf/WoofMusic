@@ -56,7 +56,7 @@ struct TabHeaderView: View {
                 .accessibilityLabel("Account")
             }
         }
-        .padding(.horizontal)
+        .padding(.horizontal, DesignTokens.screenHPadding)
         .padding(.vertical, 8)
     }
 }

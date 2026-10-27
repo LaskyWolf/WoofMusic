@@ -33,6 +33,10 @@ struct PlaylistEntity: Codable, Hashable, FetchableRecord, PersistableRecord {
 }
 
 extension PlaylistEntity {
+    /// YouTube Music's built-in "Episodes for Later" list ("SE", or "VLSE" as a
+    /// browse id). Trop has no use for it, so no playlist list shows it.
+    static let hiddenIds: Set<String> = ["SE", "VLSE"]
+
     /// Merges fetched playlist metadata over the stored row, preserving the
     /// user's name/editability/bookmark/thumbnail. Used when materializing a
     /// playlist's contents (sync + detail); the liked-playlists sync keeps

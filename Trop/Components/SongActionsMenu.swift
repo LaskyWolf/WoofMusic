@@ -5,6 +5,7 @@
 //  Created by 686udjie on 21/08/2026.
 //
 
+import GRDB
 import SwiftUI
 
 /// The "⋯" song menu: a native pull-down menu, like Apple Music.
@@ -26,7 +27,7 @@ struct SongActionsMenu<MenuLabel: View>: View {
     @ViewBuilder var label: () -> MenuLabel
 
     private enum Sheet: Identifiable {
-        case playlist, radio, details, similar
+        case playlist, radio, details, similar, artists, sleepTimer
         var id: Self { self }
     }
 
@@ -34,8 +35,8 @@ struct SongActionsMenu<MenuLabel: View>: View {
     // the menu items below, so a row whose menu never opens observes nothing.
     @State private var pin = PinState()
     @State private var sheet: Sheet?
-    @State private var showArtistPicker = false
     @State private var confirmRemoveDownload = false
+    @State private var confirmRemoveFromPlaylist = false
     @State private var isResolvingArtist = false
 
     var body: some View {
@@ -82,7 +83,11 @@ struct SongActionsMenu<MenuLabel: View>: View {
                 }
             }
 
-            RemoveMenuItems(song: song, onRemove: onRemove, confirmRemoveDownload: $confirmRemoveDownload)
+            RemoveMenuItems(
+                song: song, canRemove: onRemove != nil,
+                confirmRemoveFromPlaylist: $confirmRemoveFromPlaylist,
+                confirmRemoveDownload: $confirmRemoveDownload
+            )
 
             Menu("Go To", systemImage: "arrow.forward.circle") {
                 if !song.artists.filter({ !$0.name.isEmpty }).isEmpty {
@@ -98,16 +103,15 @@ struct SongActionsMenu<MenuLabel: View>: View {
                 Button("Song Details…", systemImage: "info.circle") { sheet = .details }
             }
         }
-        .confirmationDialog("Go to Artist", isPresented: $showArtistPicker, titleVisibility: .visible) {
-            ForEach(song.artists.filter { !$0.name.isEmpty }, id: \.self) { artist in
-                Button(artist.name) { openArtist(artist) }
-            }
-        }
         .confirmationDialog("Remove this download?", isPresented: $confirmRemoveDownload,
                             titleVisibility: .visible) {
             Button("Remove Download", role: .destructive) {
                 Task { await DownloadManager.shared.delete(videoId: song.videoId) }
             }
+        }
+        .confirmationDialog("Remove this song?", isPresented: $confirmRemoveFromPlaylist,
+                            titleVisibility: .visible) {
+            Button("Remove", role: .destructive) { onRemove?() }
         }
         .sheet(item: $sheet) { sheet in
             switch sheet {
@@ -143,6 +147,13 @@ struct SongActionsMenu<MenuLabel: View>: View {
                     }
                 }
                 .appSheetChrome()
+            case .artists:
+                ArtistPickerSheet(artists: song.artists.filter { !$0.name.isEmpty }) { artist in
+                    self.sheet = nil
+                    openArtist(artist)
+                }
+            case .sleepTimer:
+                SleepTimerSheet()
             }
         }
     }
@@ -160,24 +171,10 @@ struct SongActionsMenu<MenuLabel: View>: View {
 
     private var sleepTimerMenu: some View {
         let timer = SleepTimer.shared
-        return Menu {
-            Button("End of Song", systemImage: "music.note") { timer.stopAtSongEnd() }
-            ForEach(SleepTimer.presetMinutes, id: \.self) { minutes in
-                Button(minutes == 60 ? "1 Hour" : "\(minutes) Minutes", systemImage: "timer") {
-                    timer.start(minutes: minutes)
-                }
-            }
-            if timer.isActive {
-                Section {
-                    Button("Turn Off", systemImage: "moon.zzz") { timer.cancel() }
-                }
-            }
-        } label: {
-            Label(
-                timer.summary.map { "Sleep Timer · \($0)" } ?? "Sleep Timer",
-                systemImage: timer.isActive ? "moon.zzz.fill" : "moon.zzz"
-            )
-        }
+        return Button(
+            timer.summary.map { "Sleep Timer · \($0)" } ?? "Sleep Timer…",
+            systemImage: timer.isActive ? "moon.zzz.fill" : "moon.zzz"
+        ) { sheet = .sleepTimer }
     }
 
     private func addToQueue() {
@@ -187,12 +184,21 @@ struct SongActionsMenu<MenuLabel: View>: View {
     }
 
     private func navigate(_ route: DetailRoute) {
+        let hadSheet = sheet != nil
         sheet = nil
         onCollapseRequest?()
         // Appends directly to the selected tab's NavigationPath — plain state
         // mutation, so it lands even while the player is tearing down.
         if let onNavigate {
-            onNavigate(route)
+            // A sheet presented by the caller can't appear while this one is still dismissing.
+            if hadSheet {
+                Task { @MainActor in
+                    try? await Task.sleep(for: .milliseconds(400))
+                    onNavigate(route)
+                }
+            } else {
+                onNavigate(route)
+            }
         } else {
             AppRouter.shared.open(route)
         }
@@ -202,7 +208,7 @@ struct SongActionsMenu<MenuLabel: View>: View {
         guard !isResolvingArtist else { return }
         let namedArtists = song.artists.filter { !$0.name.isEmpty }
         if namedArtists.count > 1 {
-            showArtistPicker = true
+            sheet = .artists
             return
         }
         guard let artist = namedArtists.first else { return }
@@ -330,18 +336,21 @@ private struct DownloadMenuButton: View {
 /// One compact entry for the destructive removals that apply to this song.
 private struct RemoveMenuItems: View {
     let song: SongItem
-    let onRemove: (() -> Void)?
+    let canRemove: Bool
+    @Binding var confirmRemoveFromPlaylist: Bool
     @Binding var confirmRemoveDownload: Bool
     @ObservedObject private var downloadManager = DownloadManager.shared
 
     var body: some View {
         let hasDownload = downloadManager.state(for: song.videoId) == .completed
-        if onRemove != nil || hasDownload {
+        if canRemove || hasDownload {
             Section {
                 Menu("Remove from…", systemImage: "minus.circle") {
-                    if let onRemove {
-                        Button("from Playlist", systemImage: "music.note.list", role: .destructive, action: onRemove)
-                            .tint(.red)
+                    if canRemove {
+                        Button("from Playlist", systemImage: "music.note.list", role: .destructive) {
+                            confirmRemoveFromPlaylist = true
+                        }
+                        .tint(.red)
                     }
                     if hasDownload {
                         Button("from Downloads", systemImage: "arrow.down.circle", role: .destructive) {
@@ -357,6 +366,314 @@ private struct RemoveMenuItems: View {
 }
 
 
+// MARK: - Go to Artist Picker
+
+/// Lists a song's artists when it has several; tapping one opens that artist.
+private struct ArtistPickerSheet: View {
+    let artists: [YTArtist]
+    let onPick: (YTArtist) -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            List(artists, id: \.self) { artist in
+                Button {
+                    onPick(artist)
+                } label: {
+                    ArtistPickerRow(artist: artist)
+                }
+                .listRowSeparator(.hidden)
+                .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
+            }
+            .listStyle(.plain)
+            .navigationTitle("Go to Artist")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                }
+            }
+        }
+        .appSheetChrome([.medium])
+    }
+}
+
+/// Avatars and kinds per artist, kept for the session so reopening the
+/// picker shows them at once.
+@MainActor
+private enum ArtistPickerCache {
+    // ponytail: unbounded, one entry per artist opened from the picker; add eviction if it grows.
+    static var thumbnails: [String: String] = [:]
+    static var kinds: [String: String] = [:]
+}
+
+/// Profile picture, name and kind of act. The picture comes from the library
+/// when the artist is saved, otherwise from the artist page.
+private struct ArtistPickerRow: View {
+    let artist: YTArtist
+    @State private var thumbnailUrl: String?
+    @State private var kind: String?
+
+    private static let avatarSize = DesignTokens.artSmall
+
+    init(artist: YTArtist) {
+        self.artist = artist
+        _thumbnailUrl = State(initialValue: artist.id.flatMap { ArtistPickerCache.thumbnails[$0] })
+        _kind = State(initialValue: ArtistPickerCache.kinds[Self.kindKey(artist)])
+    }
+
+    var body: some View {
+        HStack(spacing: DesignTokens.menuRowSpacing) {
+            ZStack {
+                Circle().fill(Color(.tertiarySystemFill))
+                if let thumbnailUrl {
+                    AsyncImageView(url: thumbnailUrl)
+                } else {
+                    Image(systemName: "person.fill")
+                        .font(.title3)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .frame(width: Self.avatarSize, height: Self.avatarSize)
+            .clipShape(Circle())
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(artist.name)
+                    .font(.body.weight(.medium))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                Text(kind ?? "Artist")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 0)
+
+            Image(systemName: "chevron.right")
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(.tertiary)
+        }
+        .padding(.vertical, 6)
+        .contentShape(Rectangle())
+        .accessibilityElement(children: .combine)
+        .task(id: artist.id) {
+            if thumbnailUrl == nil, let browseId = artist.id,
+               let url = await Self.thumbnailUrl(browseId: browseId) {
+                ArtistPickerCache.thumbnails[browseId] = url
+                thumbnailUrl = url
+            }
+            if kind == nil, let found = await ArtistKindService.shared.kind(for: artist.name) {
+                ArtistPickerCache.kinds[Self.kindKey(artist)] = found
+                kind = found
+            }
+        }
+    }
+
+    /// Browse id when known; the name otherwise, which is what the kind lookup uses.
+    private static func kindKey(_ artist: YTArtist) -> String {
+        artist.id ?? artist.name
+    }
+
+    private static func thumbnailUrl(browseId: String) async -> String? {
+        let pixels = Int(avatarSize * 3)
+        if let saved = try? await DatabaseService.shared.fetchOne(ArtistEntity.self, key: browseId)?.thumbnailUrl {
+            return ArtworkURLs.sized(saved, width: pixels, height: pixels)
+        }
+        guard let json = try? await InnerTubeClient.tropShared.browse(browseId: browseId) else { return nil }
+        let page = ArtistDetailViewModel.parseArtistDetail(from: json, browseId: browseId)
+        return ArtworkURLs.sized(page.thumbnailUrl, width: pixels, height: pixels)
+    }
+}
+
+// MARK: - Sleep Timer Picker
+
+/// A countdown wheel with Cancel and Start, like the Clock app's timer,
+/// plus an End of Song option.
+private struct SleepTimerSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var duration: TimeInterval
+    /// Measured height of the sheet's content; the first value is replaced on the first layout.
+    @State private var contentHeight: CGFloat = 520
+
+    private static let lastMinutesKey = "sleepTimerLastMinutes"
+    private static let defaultMinutes = 15
+
+    init() {
+        let saved = UserDefaults.standard.integer(forKey: Self.lastMinutesKey)
+        let minutes = SleepTimer.shared.minutes ?? (saved > 0 ? saved : Self.defaultMinutes)
+        _duration = State(initialValue: TimeInterval(minutes * 60))
+    }
+
+    var body: some View {
+        let timer = SleepTimer.shared
+        let minutes = Int(duration / 60)
+        VStack(spacing: 20) {
+            header
+
+            if timer.isActive {
+                SleepTimerStatus(timer: timer)
+            }
+
+            CountdownPicker(duration: $duration)
+                .frame(maxWidth: .infinity)
+
+            HStack {
+                ClockRoundButton(title: "Cancel", systemImage: "xmark", isAccent: false) {
+                    timer.cancel()
+                }
+                .disabled(!timer.isActive)
+                Spacer()
+                ClockRoundButton(title: "Start", systemImage: "play.fill", isAccent: true) {
+                    UserDefaults.standard.set(minutes, forKey: Self.lastMinutesKey)
+                    timer.start(minutes: minutes)
+                    dismiss()
+                }
+                .disabled(minutes < 1)
+            }
+
+            Button {
+                timer.stopAtSongEnd()
+                dismiss()
+            } label: {
+                Label("End of Song", systemImage: "music.note")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.large)
+            .accessibilityAddTraits(timer.stopsAtSongEnd ? .isSelected : [])
+        }
+        .padding(.horizontal, 20)
+        .padding(.top, 16)
+        .padding(.bottom, 20)
+        .fixedSize(horizontal: false, vertical: true)
+        .onGeometryChange(for: CGFloat.self) { proxy in
+            proxy.size.height
+        } action: { height in
+            contentHeight = height
+        }
+        .frame(maxHeight: .infinity, alignment: .top)
+        // As tall as the content, so nothing is left empty under End of Song;
+        // large stays available for big Dynamic Type sizes.
+        .appSheetChrome([.height(contentHeight), .large])
+    }
+
+    /// Inline title with Done, in place of a navigation bar, so the measured
+    /// height covers the whole sheet.
+    private var header: some View {
+        ZStack {
+            Text("Sleep Timer")
+                .font(.headline)
+                .accessibilityAddTraits(.isHeader)
+            HStack {
+                Spacer()
+                Button("Done") { dismiss() }
+                    .fontWeight(.semibold)
+            }
+        }
+    }
+}
+
+/// One line saying the timer runs and when it pauses playback.
+private struct SleepTimerStatus: View {
+    let timer: SleepTimer
+
+    var body: some View {
+        Group {
+            if let endsAt = timer.endsAt {
+                TimelineView(.periodic(from: .now, by: 1)) { context in
+                    Label {
+                        Text("\(Self.countdown(endsAt.timeIntervalSince(context.date))) left · pauses at \(endsAt.formatted(date: .omitted, time: .shortened))")
+                            .monospacedDigit()
+                    } icon: {
+                        Image(systemName: "moon.zzz.fill")
+                    }
+                }
+            } else {
+                Label("Pauses when this song ends", systemImage: "moon.zzz.fill")
+            }
+        }
+        .font(.subheadline.weight(.medium))
+        .foregroundStyle(.tint)
+    }
+
+    /// "12:34" or "1:05:00".
+    private static func countdown(_ seconds: TimeInterval) -> String {
+        let total = max(Int(seconds.rounded(.up)), 0)
+        let hours = total / 3600
+        let minutes = total / 60 % 60
+        let secs = total % 60
+        return hours > 0
+            ? String(format: "%d:%02d:%02d", hours, minutes, secs)
+            : String(format: "%d:%02d", minutes, secs)
+    }
+}
+
+/// The Clock app's round timer button: a tinted disc.
+private struct ClockRoundButton: View {
+    let title: String
+    let systemImage: String
+    let isAccent: Bool
+    let action: () -> Void
+    @Environment(\.isEnabled) private var isEnabled
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(.title2.weight(.semibold))
+                .foregroundStyle(isAccent ? AnyShapeStyle(.tint) : AnyShapeStyle(.primary))
+                .frame(width: 72, height: 72)
+                .background(disc)
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .opacity(isEnabled ? 1 : 0.4)
+        .accessibilityLabel(title)
+    }
+
+    @ViewBuilder private var disc: some View {
+        if isAccent {
+            Circle().fill(.tint).opacity(0.22)
+        } else {
+            Circle().fill(Color(.tertiarySystemFill))
+        }
+    }
+}
+
+/// UIDatePicker in countdown mode: the Clock app's hours and min wheels.
+/// It never goes below one minute.
+private struct CountdownPicker: UIViewRepresentable {
+    @Binding var duration: TimeInterval
+
+    func makeUIView(context: Context) -> UIDatePicker {
+        let picker = UIDatePicker()
+        picker.datePickerMode = .countDownTimer
+        picker.preferredDatePickerStyle = .wheels
+        picker.addTarget(context.coordinator, action: #selector(Coordinator.changed(_:)), for: .valueChanged)
+        // Set after the first layout pass: a countdown picker configured
+        // before it is on screen skips its first value change.
+        let initial = duration
+        Task { @MainActor in picker.countDownDuration = initial }
+        return picker
+    }
+
+    func updateUIView(_ picker: UIDatePicker, context: Context) {
+        context.coordinator.duration = $duration
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator(duration: $duration) }
+
+    final class Coordinator: NSObject {
+        var duration: Binding<TimeInterval>
+
+        init(duration: Binding<TimeInterval>) { self.duration = duration }
+
+        @objc func changed(_ sender: UIDatePicker) {
+            duration.wrappedValue = sender.countDownDuration
+        }
+    }
+}
+
 // MARK: - Add to Playlist Picker
 
 /// Lets the user pick which playlist to add `song` to, or create a new one.
@@ -368,6 +685,7 @@ struct AddSongToPlaylistSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var playlists: [PlaylistEntity] = []
+    @State private var songCounts: [String: Int] = [:]
     @State private var isLoading = true
     @State private var addedTo: Set<String> = []
     @State private var showNewPlaylistAlert = false
@@ -378,8 +696,14 @@ struct AddSongToPlaylistSheet: View {
         NavigationStack {
             Group {
                 if isLoading {
-                    ProgressView()
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    // Same rows and insets as the playlist list below.
+                    VStack(spacing: 0) {
+                        ForEach(0..<6, id: \.self) { _ in
+                            ShimmerMediaRow()
+                                .padding(.horizontal, 16)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                 } else if playlists.isEmpty {
                     ContentUnavailableView(
                         "No Playlists",
@@ -388,27 +712,29 @@ struct AddSongToPlaylistSheet: View {
                     )
                 } else {
                     List(playlists, id: \.id) { playlist in
+                        let isAdded = addedTo.contains(playlist.id)
                         Button {
                             addTo(playlist)
                         } label: {
-                            HStack {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(playlist.name)
-                                        .foregroundStyle(.primary)
-                                    if let count = playlist.remoteSongCount {
-                                        Text("\(count) songs")
-                                            .font(.footnote)
-                                            .foregroundStyle(.secondary)
-                                    }
-                                }
-                                Spacer()
-                                if addedTo.contains(playlist.id) {
+                            HStack(spacing: 12) {
+                                MediaListRow(
+                                    url: playlist.thumbnailUrl,
+                                    title: playlist.name,
+                                    subtitle: (songCounts[playlist.id] ?? playlist.remoteSongCount).map { "\($0) songs" }
+                                )
+                                if isAdded {
                                     Image(systemName: "checkmark")
+                                        .fontWeight(.semibold)
                                         .foregroundStyle(.green)
                                 }
                             }
                         }
+                        .accessibilityAddTraits(isAdded ? .isSelected : [])
+                        .listRowSeparator(.hidden)
+                        .listRowBackground(Color.clear)
+                        .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
                     }
+                    .listStyle(.plain)
                 }
             }
             .navigationTitle("Add to Playlist")
@@ -446,7 +772,23 @@ struct AddSongToPlaylistSheet: View {
 
     private func loadPlaylists() async {
         playlists = (try? await DatabaseService.shared.fetchPlaylists(limit: 100)) ?? []
+        songCounts = (try? await Self.fetchSongCounts()) ?? [:]
         isLoading = false
+    }
+
+    /// Saved songs per playlist, counted like the Library list.
+    private static func fetchSongCounts() async throws -> [String: Int] {
+        let rows: [(String, Int)] = try await DatabaseService.shared.read { db in
+            try Row.fetchAll(
+                db,
+                sql: "SELECT playlist_id, COUNT(*) as cnt "
+                    + "FROM playlist_song_map "
+                    + "WHERE EXISTS (SELECT 1 FROM song WHERE id = song_id) "
+                    + "GROUP BY playlist_id"
+            )
+            .map { ($0["playlist_id"] as String, $0["cnt"] as Int) }
+        }
+        return Dictionary(uniqueKeysWithValues: rows)
     }
 
     private func addTo(_ playlist: PlaylistEntity) {
@@ -454,7 +796,7 @@ struct AddSongToPlaylistSheet: View {
         Task {
             do {
                 for song in songs {
-                    try await SyncBridge.mutations.addToPlaylist(playlistId: playlist.id, songId: song.videoId)
+                    try await PlaylistSongEdits.add(songId: song.videoId, to: playlist.id)
                 }
                 addedTo.insert(playlist.id)
             } catch {
@@ -471,7 +813,7 @@ struct AddSongToPlaylistSheet: View {
         do {
             let playlistId = try await SyncBridge.mutations.createPlaylist(title: title)
             for song in songs {
-                try await SyncBridge.mutations.addToPlaylist(playlistId: playlistId, songId: song.videoId)
+                try await PlaylistSongEdits.add(songId: song.videoId, to: playlistId)
             }
             await loadPlaylists()
             addedTo.insert(playlistId)

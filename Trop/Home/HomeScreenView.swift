@@ -11,6 +11,8 @@ struct HomeScreenView: View {
     @Environment(SettingsStore.self) private var settings
     @ObservedObject private var router = AppRouter.shared
     @State private var viewModel = HomeViewModel()
+    /// Shared by this tab's covers and the pages they open, for the zoom transition.
+    @Namespace private var coverZoom
     private let account = AccountState.shared
 
     @State private var pendingRoute: DetailRoute?
@@ -79,6 +81,7 @@ struct HomeScreenView: View {
                 Task { await reloadSpeedDial() }
             }
         }
+        .coverZoomNamespace(coverZoom)
     }
 
     private var homescreenContent: some View {
@@ -93,7 +96,7 @@ struct HomeScreenView: View {
                 }
 
                 if viewModel.isChipLoading {
-                    ShimmerLoadingView(showsChips: false)
+                    ShimmerLoadingView(isChipFeed: true)
                 } else {
                     // Keyed by section id, so a new section fades in instead of popping in.
                     ForEach(viewModel.homeSections) { section in
@@ -159,14 +162,15 @@ struct HomeScreenView: View {
     private var loadingMorePlaceholder: some View {
         VStack(alignment: .leading, spacing: 0) {
             ShimmerSectionTitle(width: 180)
-            HStack(alignment: .top, spacing: 12) {
+            HStack(alignment: .top, spacing: DesignTokens.cardSpacing) {
                 ForEach(0..<3, id: \.self) { _ in ShimmerCard() }
             }
             .padding(.horizontal, DesignTokens.screenHPadding)
-            .padding(.vertical, 4)
+            .padding(.top, DesignTokens.titleContentGap)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .clipped()
+        .padding(.bottom, DesignTokens.sectionGap)
     }
 
     @ViewBuilder
@@ -175,7 +179,7 @@ struct HomeScreenView: View {
         case .quickPicks:
             quickPicksSection(section)
         case .keepListening:
-            mixedSection(section)
+            keepListeningSection(section)
         case .forgottenFavorites:
             songsSection(section)
         case .homePageSection(let sectionData, _):
@@ -207,7 +211,7 @@ struct HomeScreenView: View {
             let size = settings.quickPicksSize
             let cards = Array((pinnedSongs.map { ($0, true) } + quickSongs.map { ($0, false) }).prefix(size.count))
             let pages = stride(from: 0, to: cards.count, by: size.perPage).map { Array(cards[$0..<min($0 + size.perPage, cards.count)]) }
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: DesignTokens.titleContentGap) {
                 NavigationTitleView(title: section.displayTitle)
                 ScrollView(.horizontal, showsIndicators: false) {
                     // Spacing equals the side margin, so the next page stays off screen.
@@ -237,8 +241,10 @@ struct HomeScreenView: View {
                     .accessibilityHidden(true)
                 }
             }
+            .padding(.bottom, DesignTokens.sectionGap)
         }
     }
+
 
     private func quickPicksPage(_ cards: [(SongItem, Bool)], queue: [SongItem], columns: Int) -> some View {
         LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: columns), spacing: 8) {
@@ -256,26 +262,34 @@ struct HomeScreenView: View {
 
     private func songsSection(_ section: HomeSection) -> some View {
         let queue = section.items.compactMap { if case .song(let s) = $0 { return s } else { return nil } }
-        return HorizontalSection(title: section.displayTitle, vSpacing: 8, contentVerticalPadding: 0) {
-            LazyHGrid(rows: Array(repeating: GridItem(.fixed(60)), count: 4), spacing: 12) {
+        // Columns a bit narrower than the screen, so the next column's artwork
+        // peeks at the right edge; scrolling snaps one column at a time.
+        return HorizontalSection(title: section.displayTitle, snapsToItems: true) {
+            LazyHGrid(rows: Array(repeating: GridItem(.fixed(YouTubeListItemView.rowHeight), spacing: 8), count: 4), spacing: 0) {
                 ForEach(section.items.indices, id: \.self) { i in
                     let item = section.items[i]
-                    if case .song(let s) = item {
-                        YouTubeListItemView(item: item, onTap: { handleSongTap(s, in: queue) }, onNavigate: { pendingRoute = $0 })
-                            .frame(width: 280)
-                    } else {
-                        YouTubeListItemView(item: item, onTap: { handleItemTap(item) }, onNavigate: { pendingRoute = $0 })
-                            .frame(width: 280)
+                    Group {
+                        if case .song(let s) = item {
+                            YouTubeListItemView(item: item, onTap: { handleSongTap(s, in: queue) }, onNavigate: { pendingRoute = $0 })
+                        } else {
+                            YouTubeListItemView(item: item, onTap: { handleItemTap(item) }, onNavigate: { pendingRoute = $0 })
+                        }
                     }
+                    .containerRelativeFrame(.horizontal) { width, _ in width - Self.songColumnPeek }
                 }
             }
+            .scrollTargetLayout()
         }
     }
 
+    /// How much of the next song column shows at the right edge.
+    static let songColumnPeek: CGFloat = 40
+
     private func mixedSection(_ section: HomeSection) -> some View {
         let queue = section.items.compactMap { if case .song(let s) = $0 { return s } else { return nil } }
-        return HorizontalSection(title: section.displayTitle, vSpacing: 8, contentVerticalPadding: 0) {
-            LazyHStack(spacing: 12) {
+        return HorizontalSection(title: section.displayTitle) {
+            // Top-aligned, so captions line up when titles wrap to two lines.
+            LazyHStack(alignment: .top, spacing: DesignTokens.cardSpacing) {
                 ForEach(section.items.indices, id: \.self) { i in
                     let item = section.items[i]
                     if case .song(let s) = item, !queue.isEmpty {
@@ -285,7 +299,21 @@ struct HomeScreenView: View {
                     }
                 }
             }
-        }.padding(.top, 8)
+        }
+    }
+
+    /// Same taps as `mixedSection`: songs play within the section's songs, the rest route.
+    private func keepListeningSection(_ section: HomeSection) -> some View {
+        let queue = section.items.compactMap { if case .song(let s) = $0 { return s } else { return nil } }
+        return KeepListeningStrip(title: section.displayTitle, items: section.items) { item in
+            if case .song(let s) = item, !queue.isEmpty {
+                handleSongTap(s, in: queue)
+            } else {
+                handleItemTap(item)
+            }
+        }
+        // Same gap under the chips as Library's shortcut tiles.
+        .padding(.top, 8)
     }
 
     // MARK: - Quick Picks (pinned)

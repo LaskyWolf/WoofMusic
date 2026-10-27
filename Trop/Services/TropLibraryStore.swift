@@ -42,10 +42,14 @@ extension TropLibraryStore {
     }
 
     func applyPlaylistSync(items: [ParsedPlaylist]) async throws -> Set<String> {
+        // Dropping "Episodes for Later" here also clears a copy saved by an older sync.
+        let items = items.filter { !PlaylistEntity.hiddenIds.contains($0.browseId) }
         let remoteIds = Set(items.map(\.browseId))
         try await db.write { db in
             for item in items {
                 let existing = try PlaylistEntity.fetchOne(db, key: item.browseId)
+                // A YouTube id without a browse id is a playlist you stopped syncing.
+                if let existing, existing.browseId == nil { continue }
                 let entity = PlaylistEntity(
                     id: item.browseId,
                     browseId: item.browseId,
@@ -103,6 +107,8 @@ extension TropLibraryStore {
     }
 
     func applyPodcastSync(items: [ParsedPodcast]) async throws -> Set<String> {
+        // Dropping "Episodes for Later" here also clears a copy saved by an older sync.
+        let items = items.filter { !PlaylistEntity.hiddenIds.contains($0.browseId) }
         let remoteIds = Set(items.map(\.browseId))
         try await db.write { db in
             for item in items {
@@ -186,6 +192,26 @@ extension TropLibraryStore {
 extension TropLibraryStore {
     func fetchPlaylist(id: String) async throws -> SyncPlaylist? {
         try await db.fetchOne(PlaylistEntity.self, key: id)?.toSync()
+    }
+
+    /// Stops syncing a playlist: it keeps its songs and is edited only on this
+    /// iPhone. The playlist on YouTube Music is left as it is. The row keeps
+    /// its YouTube id without a browse id, which `applyPlaylistSync` skips.
+    func detachPlaylist(id: String) async throws {
+        try await db.write { db in
+            try db.execute(sql: "UPDATE playlist SET browse_id = NULL, is_auto_sync = 0, is_editable = 1 WHERE id = ?",
+                           arguments: [id])
+        }
+    }
+
+    /// Syncs a detached playlist again. Its songs reload from YouTube Music the
+    /// next time it opens, so local changes must reach YouTube Music first
+    /// (`PlaylistReattach`).
+    func reattachPlaylist(id: String) async throws {
+        let browseId = id.hasPrefix("VL") ? id : "VL\(id)"
+        try await db.write { db in
+            try db.execute(sql: "UPDATE playlist SET browse_id = ? WHERE id = ?", arguments: [browseId, id])
+        }
     }
 
     func savePlaylist(_ playlist: SyncPlaylist) async throws {

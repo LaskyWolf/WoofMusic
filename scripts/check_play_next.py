@@ -21,7 +21,10 @@ final class SettingsStore {
     var persistQueue = true
 }
 final class QueueCheck {
-    var queueSongs: [SongItem] = []
+    var queueSongs: [SongItem] = [] {
+        didSet { queueNeedsSave = true }
+    }
+    private var queueNeedsSave = true
     var queueIndex = 0
     var playNextEnd: Int?
     var originalQueue: [SongItem]?

@@ -19,7 +19,9 @@ struct AsyncImageView: View {
             let request = imageRequest(targetSize: geometry.size)
             Group {
                 // A memory-cache hit shows at once, so scrolling back doesn't flash the placeholder.
-                if let image = request.flatMap({ Self.cachedImage(for: $0) }) ?? loadedImage {
+                // The same artwork already shown at another size (a library row, a
+                // grid tile) stands in until this size loads, so headers open with art.
+                if let image = request.flatMap({ Self.cachedImage(for: $0) }) ?? loadedImage ?? Self.anySizeImage(for: url) {
                     Image(uiImage: image)
                         .resizable()
                         .aspectRatio(contentMode: contentMode)
@@ -37,6 +39,30 @@ struct AsyncImageView: View {
 
     private static func cachedImage(for request: ImageRequest) -> UIImage? {
         ImagePipeline.shared.cache.cachedImage(for: request, caches: .memory)?.image
+    }
+
+    /// Last image loaded for each artwork, whatever size it was requested at.
+    /// Nuke keys its memory cache by URL and resize processor, so the same
+    /// cover at 60pt and at 115pt are two entries; this one ignores the size.
+    /// NSCache evicts on memory pressure.
+    private static let anySizeCache: NSCache<NSString, UIImage> = {
+        let cache = NSCache<NSString, UIImage>()
+        cache.countLimit = 300
+        return cache
+    }()
+
+    /// Size-free key: CDN URLs differ only in their `w<N>-h<N>` part.
+    private static func anySizeKey(for url: String) -> NSString {
+        normalizeThumbnailURL(url, pixels: 0) as NSString
+    }
+
+    private static func anySizeImage(for url: String?) -> UIImage? {
+        url.flatMap { anySizeCache.object(forKey: anySizeKey(for: $0)) }
+    }
+
+    private static func rememberAnySize(_ image: UIImage, for url: String?) {
+        guard let url else { return }
+        anySizeCache.setObject(image, forKey: anySizeKey(for: url))
     }
 
     private func imageRequest(targetSize: CGSize) -> ImageRequest? {
@@ -72,11 +98,13 @@ struct AsyncImageView: View {
         }
         if let cached = Self.cachedImage(for: request) {
             loadedImage = cached
+            Self.rememberAnySize(cached, for: url)
             return
         }
         do {
             let image = try await ImagePipeline.shared.image(for: request)
             guard !Task.isCancelled else { return }
+            Self.rememberAnySize(image, for: url)
             withAnimation(.easeInOut(duration: 0.2)) {
                 loadedImage = image
             }

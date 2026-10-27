@@ -8,10 +8,13 @@
 import SwiftUI
 
 struct ExploreView: View {
+    @Environment(SettingsStore.self) private var settings
     @State private var viewModel = ExploreViewModel()
     @ObservedObject private var router = AppRouter.shared
 
     @State private var pendingRoute: DetailRoute?
+    /// Shared by this tab's covers and the pages they open, for the zoom transition.
+    @Namespace private var coverZoom
 
     private let accountState = AccountState.shared
 
@@ -27,6 +30,7 @@ struct ExploreView: View {
                 )
 
                 content
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             }
             .frame(maxHeight: .infinity, alignment: .top)
             .toolbar(.hidden, for: .navigationBar)
@@ -42,6 +46,7 @@ struct ExploreView: View {
             }
             .onAppear { viewModel.load() }
         }
+        .coverZoomNamespace(coverZoom)
     }
 
     // MARK: - Content
@@ -75,8 +80,11 @@ struct ExploreView: View {
 
     private var sectionsList: some View {
         ScrollView {
-            ExploreSectionsList(sections: viewModel.sections, pendingRoute: $pendingRoute)
-                .padding(.bottom, 16)
+            ExploreSectionsList(
+                sections: viewModel.sections,
+                pendingRoute: $pendingRoute,
+                newReleases: viewModel.newReleases
+            )
         }
         .scrollIndicators(.automatic)
         .miniPlayerTracksScroll()
@@ -86,21 +94,29 @@ struct ExploreView: View {
 
 // MARK: - Shared section list
 
-/// Renders Explore sections (song grids, card carousels, mood grids).
+/// Renders Explore sections (song grids, card carousels, the moods carousel).
 /// Shared by the Explore tab and mood category pages.
 struct ExploreSectionsList: View {
-    @ObservedObject private var router = AppRouter.shared
+    /// Only appended to, never read: observing it would redraw this view on every tab's navigation.
+    private let router = AppRouter.shared
     var sections: [ExploreSection]
     var pendingRoute: Binding<DetailRoute?>
+    /// The Explore tab's new releases shelf, drawn as `NewReleasesSection`.
+    var newReleases: ExploreViewModel.NewReleases?
 
     var body: some View {
-        LazyVStack(alignment: .leading, spacing: 2) {
+        // Sections space themselves (HorizontalSection adds the section gap).
+        LazyVStack(alignment: .leading, spacing: 0) {
             ForEach(sections) { section in
                 switch section.kind {
                 case .rows:
                     songGrid(section)
                 case .cards:
-                    cardsCarousel(section)
+                    if let newReleases, section.id == newReleases.sectionId {
+                        NewReleasesSection(section: section, kinds: newReleases.kinds, onOpen: openItem)
+                    } else {
+                        cardsCarousel(section)
+                    }
                 case .moods:
                     moodsGrid(section)
                 }
@@ -116,33 +132,41 @@ struct ExploreSectionsList: View {
 
     // MARK: - Rows
 
-    /// Song rows in a 4-row grid scrolling horizontally.
+    /// Song rows in a 4-row grid scrolling horizontally, one column per swipe.
+    /// A column is the screen width minus `songColumnPeek`, so the next one shows.
+    /// Not HorizontalSection: paging needs content margins instead of padding,
+    /// or the snapped column would lose its edge inset.
     private func songGrid(_ section: ExploreSection) -> some View {
-        HorizontalSection(title: section.title) {
-            LazyHGrid(
-                rows: [
-                    GridItem(.flexible(), spacing: 0),
-                    GridItem(.flexible(), spacing: 0),
-                    GridItem(.flexible(), spacing: 0),
-                    GridItem(.flexible(), spacing: 0)
-                ],
-                spacing: 12
-            ) {
-                ForEach(section.items, id: \.id) { item in
-                    YouTubeListItemView(item: item, onTap: {
-                        openItem(item)
-                    }, onNavigate: { pendingRoute.wrappedValue = $0 })
-                    .frame(width: 320, alignment: .leading)
+        VStack(alignment: .leading, spacing: DesignTokens.titleContentGap) {
+            NavigationTitleView(title: section.title)
+            ScrollView(.horizontal, showsIndicators: false) {
+                LazyHGrid(rows: Self.songRows, spacing: DesignTokens.cardSpacing) {
+                    ForEach(section.items, id: \.id) { item in
+                        YouTubeListItemView(item: item, onTap: {
+                            openItem(item)
+                        }, onNavigate: { pendingRoute.wrappedValue = $0 })
+                        .containerRelativeFrame(.horizontal, alignment: .leading) { width, _ in
+                            width - Self.songColumnPeek
+                        }
+                    }
                 }
+                .scrollTargetLayout()
             }
+            .scrollTargetBehavior(.viewAligned)
         }
+        .padding(.bottom, DesignTokens.sectionGap)
     }
+
+    /// Four 64 pt song rows per column.
+    static let songRows = Array(repeating: GridItem(.fixed(64), spacing: 8), count: 4)
+    /// How much of the next column peeks in from the trailing edge.
+    static let songColumnPeek: CGFloat = 40
 
     // MARK: - Cards carousel
 
     private func cardsCarousel(_ section: ExploreSection) -> some View {
         HorizontalSection(title: section.title) {
-            LazyHStack(alignment: .top, spacing: 12) {
+            LazyHStack(alignment: .top, spacing: DesignTokens.cardSpacing) {
                 ForEach(section.items, id: \.id) { item in
                     YouTubeGridItemView(item: item, onTap: {
                         openItem(item)
@@ -154,43 +178,15 @@ struct ExploreSectionsList: View {
 
     // MARK: - Moods grid
 
+    @ViewBuilder
     private func moodsGrid(_ section: ExploreSection) -> some View {
         let entries = MoodFamily.entries(for: section.moods)
-        return HorizontalSection(title: "Moods") {
-            // Two-row grid scrolling horizontally: all 50+ moods reachable
-            // without a dominating vertical wall.
-            LazyHGrid(
-                rows: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)],
-                spacing: 10
-            ) {
-                ForEach(entries) { entry in
-                    switch entry.kind {
-                    case .group(let family, let members):
-                        // Native pop-up: pick the sub-genre without leaving the page.
-                        Menu {
-                            let icons = MoodFamily.uniqueIcons(for: members)
-                            ForEach(members) { mood in
-                                Button { router.explorePath.append(mood) } label: {
-                                    Label(mood.title, systemImage: icons[mood.id] ?? "music.note")
-                                }
-                            }
-                        } label: {
-                            MoodCard(
-                                title: family,
-                                color: MoodCard.swatch(family: family, title: family),
-                                subtitle: "\(members.count) genres",
-                                trailingSymbol: "chevron.up.chevron.down"
-                            )
-                        }
-                        .buttonStyle(ZoomPressStyle())
-                    case .mood(let mood, let family):
-                        NavigationLink(value: mood) {
-                            MoodCard(title: mood.title, color: MoodCard.swatch(family: family, title: mood.title))
-                        }
-                        .buttonStyle(ZoomPressStyle())
-                    }
-                }
+        if !entries.isEmpty {
+            VStack(alignment: .leading, spacing: DesignTokens.titleContentGap) {
+                NavigationTitleView(title: "Moods")
+                MoodRow(entries: entries)
             }
+            .padding(.bottom, DesignTokens.sectionGap)
         }
     }
 
@@ -240,6 +236,8 @@ private enum MoodFamily {
         return families.first { $0.words.contains { title.contains($0) } }?.name
     }
 
+    /// Families with two or more genres become one group card that opens a
+    /// dialog with its genres. Everything else keeps its place.
     /// An icon per sub-genre from its title. Two genres never share one: the
     /// second falls back to the next free icon of the family's set.
     static func uniqueIcons(for members: [MoodItem]) -> [UUID: String] {
@@ -255,8 +253,6 @@ private enum MoodFamily {
         return icons
     }
 
-    /// Families with two or more genres become one group card that opens a
-    /// pop-up with its genres. Everything else keeps its place.
     static func entries(for moods: [MoodItem]) -> [Entry] {
         var members: [String: [MoodItem]] = [:]
         for mood in moods { if let f = family(of: mood.title) { members[f, default: []].append(mood) } }
@@ -275,6 +271,79 @@ private enum MoodFamily {
     }
 }
 
+/// One looping row of mood cards stacked on an arc: the centre card is the
+/// biggest and on top; its neighbours shrink, dim, drop and tilt outwards like a
+/// fanned hand. Swipe or tap a side card to bring it to the centre; tap the
+/// centre card to open it.
+///
+/// Every card is the same plain view whatever its distance, so a gesture in
+/// flight never loses its view. A UIKit pan drives the drag: it starts only on
+/// a horizontal swipe (vertical ones scroll the page) and cancels the tap under
+/// the finger once it starts.
+/// One row of mood cards that loops: scrolling past the last mood brings the
+/// first one back. A family opens the native pop-up menu with its genres.
+private struct MoodRow: View {
+    let entries: [MoodFamily.Entry]
+
+    /// Only appended to, never read: observing it would redraw this view on every tab's navigation.
+    private let router = AppRouter.shared
+    @State private var scrolledIndex: Int?
+
+    /// The entries are repeated this many times and the row starts in the
+    /// middle, so it never reaches an end in practice.
+    // ponytail: repeated copies fake the loop; a recentering scroll view if anyone scrolls 20+ laps.
+    private static let copies = 40
+
+    init(entries: [MoodFamily.Entry]) {
+        self.entries = entries
+        _scrolledIndex = State(initialValue: entries.count * Self.copies / 2)
+    }
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            LazyHStack(spacing: DesignTokens.cardSpacing) {
+                ForEach(0..<entries.count * Self.copies, id: \.self) { index in
+                    card(entries[index % entries.count])
+                }
+            }
+            .scrollTargetLayout()
+        }
+        .contentMargins(.horizontal, DesignTokens.screenHPadding, for: .scrollContent)
+        // The cards' glow reaches below the row.
+        .scrollClipDisabled()
+        .scrollPosition(id: $scrolledIndex, anchor: .leading)
+        .scrollTargetBehavior(.viewAligned)
+    }
+
+    @ViewBuilder
+    private func card(_ entry: MoodFamily.Entry) -> some View {
+        switch entry.kind {
+        case .group(let family, let members):
+            Menu {
+                let icons = MoodFamily.uniqueIcons(for: members)
+                ForEach(members) { mood in
+                    Button { router.explorePath.append(mood) } label: {
+                        Label(mood.title, systemImage: icons[mood.id] ?? "music.note")
+                    }
+                }
+            } label: {
+                MoodCard(
+                    title: family,
+                    color: MoodCard.swatch(family: family, title: family),
+                    subtitle: "\(members.count) genres",
+                    trailingSymbol: "chevron.up.chevron.down"
+                )
+            }
+            .buttonStyle(ZoomPressStyle())
+        case .mood(let mood, let family):
+            Button { router.explorePath.append(mood) } label: {
+                MoodCard(title: mood.title, color: MoodCard.swatch(family: family, title: mood.title))
+            }
+            .buttonStyle(ZoomPressStyle())
+        }
+    }
+}
+
 /// A colored mood tile, like Apple Music's category cards. The color is a
 /// Pantone color, picked from the family (or the title) so a category keeps its
 /// color between launches. YouTube Music's own colors are muddy, so unused.
@@ -283,6 +352,8 @@ private struct MoodCard: View {
     let color: Color
     var subtitle: String?
     var trailingSymbol: String?
+    var size = Self.defaultSize
+    static let defaultSize = CGSize(width: 172, height: 100)
 
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
@@ -332,7 +403,7 @@ private struct MoodCard: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
             }
         }
-        .frame(width: 172, height: 100)
+        .frame(width: size.width, height: size.height)
         .clipShape(shape)
         .shadow(color: color.opacity(0.4), radius: 6, y: 4)
     }
@@ -451,7 +522,6 @@ private struct MoodDetailView: View {
                 } else {
                     ScrollView {
                         ExploreSectionsList(sections: sections, pendingRoute: $pendingRoute)
-                            .padding(.bottom, 16)
                     }
                     .scrollIndicators(.automatic)
                     .miniPlayerTracksScroll()
@@ -495,108 +565,91 @@ private struct MoodDetailView: View {
 
 // MARK: - Explore tab skeleton
 
-/// Loading placeholder mirroring the Explore tab: album cards (title only),
-/// the 2-row moods grid, then a vertical Trending song list — the same
-/// shimmer animation as Home, composed for this layout.
+/// Loading placeholder mirroring the Explore tab: new releases, the Trending
+/// song columns, then the moods row. The section builders mirror
+/// `ExploreSectionsList`, so the mood page skeleton reuses them.
 private struct ExploreSkeletonView: View {
     var body: some View {
         ScrollView {
-            LazyVStack(alignment: .leading, spacing: 2) {
-                // Card carousel: square cover, title and subtitle, like the real cards.
-                skeletonSection(titleWidth: 220) {
-                    HStack(alignment: .top, spacing: 12) {
-                        ForEach(0..<5, id: \.self) { _ in
-                            ShimmerCard()
+            LazyVStack(alignment: .leading, spacing: 0) {
+                NewReleasesSkeleton()
+                Self.songsSection(titleWidth: 120)
+                // Moods: one row of cards, the next one peeking in.
+                VStack(alignment: .leading, spacing: DesignTokens.titleContentGap) {
+                    ShimmerSectionTitle(width: 80)
+                    HStack(spacing: DesignTokens.cardSpacing) {
+                        ForEach(0..<3, id: \.self) { _ in
+                            ShimmerBlock(width: MoodCard.defaultSize.width, height: MoodCard.defaultSize.height, radius: 14)
                         }
                     }
+                    .padding(.leading, DesignTokens.screenHPadding)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .clipped()
                 }
-                // Moods: two rows of 172 x 100 cards.
-                skeletonSection(titleWidth: 80) {
-                    LazyHGrid(
-                        rows: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)],
-                        spacing: 10
-                    ) {
-                        ForEach(0..<12, id: \.self) { _ in
-                            ShimmerBlock(width: 172, height: 100, radius: 14)
-                        }
-                    }
-                }
-                // Song rows: four rows scrolling sideways, 320 wide.
-                skeletonSection(titleWidth: 120) {
-                    LazyHGrid(
-                        rows: Array(repeating: GridItem(.flexible(), spacing: 0), count: 4),
-                        spacing: 12
-                    ) {
-                        ForEach(0..<8, id: \.self) { _ in
-                            ShimmerRow()
-                                .frame(width: 320, alignment: .leading)
-                        }
-                    }
-                }
+                .padding(.bottom, DesignTokens.sectionGap)
             }
-            .padding(.bottom, 16)
         }
         .scrollIndicators(.hidden)
         .allowsHitTesting(false)
     }
 
-    /// Same structure as `HorizontalSection`: a title over a sideways-scrolling row.
-    private func skeletonSection<Content: View>(
+    /// Card carousel: square cover, title and subtitle, like the real cards.
+    static func cardsSection(titleWidth: CGFloat) -> some View {
+        section(titleWidth: titleWidth) {
+            HStack(alignment: .top, spacing: DesignTokens.cardSpacing) {
+                ForEach(0..<5, id: \.self) { _ in
+                    ShimmerCard()
+                }
+            }
+        }
+    }
+
+    /// Song columns like `songGrid`: four rows each, the next column peeking in.
+    static func songsSection(titleWidth: CGFloat) -> some View {
+        section(titleWidth: titleWidth) {
+            LazyHGrid(rows: ExploreSectionsList.songRows, spacing: DesignTokens.cardSpacing) {
+                ForEach(0..<8, id: \.self) { _ in
+                    ShimmerListItem()
+                        .containerRelativeFrame(.horizontal, alignment: .leading) { width, _ in
+                            width - ExploreSectionsList.songColumnPeek
+                        }
+                }
+            }
+            // The rows carry their own 16 pt inset, like the real song grid.
+            .padding(.leading, -DesignTokens.screenHPadding)
+        }
+    }
+
+    /// A title over a sideways row with the same content margins as `songGrid`.
+    private static func section<Content: View>(
         titleWidth: CGFloat,
         @ViewBuilder content: () -> Content
     ) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
+        VStack(alignment: .leading, spacing: DesignTokens.titleContentGap) {
             ShimmerSectionTitle(width: titleWidth)
             ScrollView(.horizontal, showsIndicators: false) {
                 content()
-                    .padding(.horizontal, DesignTokens.screenHPadding)
-                    .padding(.vertical, 4)
             }
+            .contentMargins(.horizontal, DesignTokens.screenHPadding, for: .scrollContent)
         }
+        .padding(.bottom, DesignTokens.sectionGap)
     }
 }
 
 // MARK: - Mood detail skeleton
 
-/// Loading placeholder mirroring the mood page layout: a vertical song
-/// list followed by large playlist cards.
+/// Loading placeholder mirroring the mood page, which renders through
+/// `ExploreSectionsList`: song columns, then card carousels.
 private struct MoodDetailSkeletonView: View {
     var body: some View {
         ScrollView {
-            LazyVStack(alignment: .leading, spacing: 2) {
-                VStack(alignment: .leading, spacing: 0) {
-                    ShimmerSectionTitle(width: 80)
-                    VStack(spacing: 0) {
-                        ForEach(0..<5, id: \.self) { _ in
-                            HStack(spacing: 12) {
-                                ShimmerRow(titleWidth: 190, subtitleWidth: 130)
-                                ShimmerBlock(width: 90, height: 20, radius: 4)
-                            }
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 6)
-                        }
-                    }
-                }
-                skeletonCardsSection(titleWidth: 200)
-                skeletonCardsSection(titleWidth: 220)
+            LazyVStack(alignment: .leading, spacing: 0) {
+                ExploreSkeletonView.songsSection(titleWidth: 80)
+                ExploreSkeletonView.cardsSection(titleWidth: 200)
+                ExploreSkeletonView.cardsSection(titleWidth: 220)
             }
-            .padding(.bottom, 16)
         }
         .scrollIndicators(.hidden)
-    }
-
-    private func skeletonCardsSection(titleWidth: CGFloat) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            ShimmerSectionTitle(width: titleWidth)
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(alignment: .top, spacing: 12) {
-                    ForEach(0..<4, id: \.self) { _ in
-                        ShimmerCard(showsSubtitle: false)
-                    }
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 4)
-            }
-        }
+        .allowsHitTesting(false)
     }
 }

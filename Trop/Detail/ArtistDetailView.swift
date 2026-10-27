@@ -17,16 +17,28 @@ final class ArtistDetailViewModel {
     var artist: ArtistDetailInfo?
     var isLoading = true
     var error: Error?
+    /// A cached page is on screen but older than `ArtistDetailCache.lifetime`.
+    var isStale = false
 
     private let innerTube = InnerTubeClient.tropShared
 
     init(browseId: String) {
         self.browseId = browseId
+        // A recent visit shows at once, without the loading skeleton.
+        if let cached = ArtistDetailCache.entry(for: browseId) {
+            artist = cached.info
+            isLoading = false
+            isStale = !cached.isFresh
+        }
     }
 
+    /// No page yet, or a cached one due for a refresh.
+    var needsLoad: Bool { isLoading || isStale }
+
     /// Fetches artist browse page from InnerTube and parses the response.
+    /// With a cached page on screen it refreshes silently and keeps it on failure.
     func load() async {
-        isLoading = true
+        if artist == nil { isLoading = true }
         error = nil
 
         do {
@@ -34,11 +46,12 @@ final class ArtistDetailViewModel {
             let parsed = Self.parseArtistDetail(from: json, browseId: browseId)
             Self.preloadHeroArtwork(for: parsed.thumbnailUrl)
             artist = parsed
-            isLoading = false
+            ArtistDetailCache.store(parsed)
         } catch {
-            self.error = error
-            isLoading = false
+            if artist == nil { self.error = error }
         }
+        isLoading = false
+        isStale = false
     }
 }
 
@@ -268,16 +281,19 @@ struct ArtistDetailView: View {
     let browseId: String
     @State private var viewModel: ArtistDetailViewModel
 
-    @Environment(\.dismiss) private var dismiss
-    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
-
     /// 0...1 fade of the top bar. Clamped in the scroll-geometry transform, so
-    /// the view only updates while the offset is inside the fade range.
+    /// it only changes while the offset is inside the fade range. Only
+    /// `ArtistTopBar` reads it (through a binding), so the fade redraws the bar
+    /// and not the whole page.
     @State private var barProgress: CGFloat = 0
     @State private var linkCopied = false
+    /// "Rapper", "DJ"… from MusicBrainz; nil shows "Artist".
+    @State private var artistKind: String?
+    /// Status bar height: the scroll view ignores it, so the header adds it back.
+    @State private var safeTop: CGFloat = 0
     @State private var linkResetTask: Task<Void, Never>?
 
-    private static let barFadeStart: CGFloat = 80
+    private static let barFadeStart: CGFloat = 120
     private static let barFadeDistance: CGFloat = 120
 
     init(browseId: String) {
@@ -307,91 +323,27 @@ struct ArtistDetailView: View {
                     barProgress = newProgress
                 }
             )
+            // Scrolls under the status bar, so the backdrop fills the top of the screen.
             .ignoresSafeArea(edges: .top)
             .toolbar(.hidden, for: .navigationBar)
             .task {
-                guard viewModel.isLoading else { return }
+                guard viewModel.needsLoad else { return }
                 await viewModel.load()
             }
 
-            customTopBar
+            ArtistTopBar(
+                barProgress: $barProgress,
+                artistName: viewModel.artist?.name,
+                linkCopied: linkCopied,
+                onCopyLink: copyArtistLink
+            )
+        }
+        .onGeometryChange(for: CGFloat.self) { proxy in
+            proxy.safeAreaInsets.top
+        } action: { top in
+            safeTop = top
         }
         .onDisappear { linkResetTask?.cancel() }
-    }
-
-    private var customTopBar: some View {
-        HStack(spacing: 8) {
-            topBarBackButton
-
-            if let artist = viewModel.artist {
-                Text(artist.name)
-                    .font(.headline)
-                    .lineLimit(1)
-                    .opacity(barProgress)
-            }
-
-            Spacer(minLength: 0)
-
-            topBarCopyLinkButton
-        }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 6)
-        .background(
-            Color(.systemBackground)
-                .opacity(barProgress)
-                .ignoresSafeArea(edges: .top)
-                .allowsHitTesting(false)
-        )
-        .overlay(alignment: .bottom) {
-            Divider()
-                .opacity(barProgress)
-        }
-    }
-
-    private var topBarBackButton: some View {
-        topBarCircleButton(
-            systemName: "chevron.left",
-            accessibilityLabel: "Back",
-            action: { dismiss() }
-        )
-    }
-
-    private var topBarCopyLinkButton: some View {
-        topBarCircleButton(
-            systemName: linkCopied ? "checkmark" : "link",
-            fadedColor: linkCopied ? Color.accentColor : .primary,
-            accessibilityLabel: linkCopied ? "Artist link copied" : "Copy artist link",
-            action: { copyArtistLink() }
-        )
-        .disabled(viewModel.artist == nil)
-    }
-
-    /// Round top-bar button matching the back chevron: white with shadow over
-    /// the banner artwork, crossfading to `fadedColor` as the bar fills in.
-    private func topBarCircleButton(
-        systemName: String,
-        fadedColor: Color = .primary,
-        accessibilityLabel: String,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button(action: action, label: {
-            ZStack {
-                Image(systemName: systemName)
-                    .font(.body.weight(.semibold))
-                    .foregroundStyle(.white)
-                    .shadow(color: .black.opacity(0.5), radius: 3, y: 1)
-                    .opacity(1 - barProgress)
-                Image(systemName: systemName)
-                    .font(.body.weight(.semibold))
-                    .foregroundStyle(fadedColor)
-                    .opacity(barProgress)
-            }
-            .frame(width: 40, height: 40)
-            .glassEffect(.regular.interactive(), in: .circle)
-            .contentShape(Circle())
-        })
-        .buttonStyle(.plain)
-        .accessibilityLabel(accessibilityLabel)
     }
 
     private func copyArtistLink() {
@@ -424,10 +376,6 @@ struct ArtistDetailView: View {
                 singlesSection(singles: artist.singles)
             }
 
-            if !artist.videos.isEmpty {
-                videosSection(videos: artist.videos)
-            }
-
             if !artist.playlists.isEmpty {
                 playlistsSection(playlists: artist.playlists)
             }
@@ -441,7 +389,7 @@ struct ArtistDetailView: View {
             }
 
             if artist.songs.isEmpty && artist.albums.isEmpty && artist.singles.isEmpty
-                && artist.videos.isEmpty && artist.playlists.isEmpty && artist.relatedArtists.isEmpty {
+                && artist.playlists.isEmpty && artist.relatedArtists.isEmpty {
                 VStack(spacing: 8) {
                     Spacer().frame(height: 40)
                     Text("No content found")
@@ -452,91 +400,53 @@ struct ArtistDetailView: View {
         }
     }
 
-    @ViewBuilder
+    /// Header card over the blurred avatar: round avatar, subscribers, name,
+    /// then Subscribe, Shuffle and Play. Same card as the playlist and album headers.
     private func header(for artist: ArtistDetailInfo) -> some View {
-        if horizontalSizeClass == .regular {
-            GeometryReader { proxy in
-                headerBanner(
-                    for: artist,
-                    size: CGSize(width: proxy.size.width, height: Self.iPadBannerHeight)
+        DetailHeaderCard(meta: artistKind ?? "Artist", title: artist.name) {
+            AsyncImageView(url: ArtworkURLs.sized(artist.thumbnailUrl, width: 1200, height: 1200))
+                .clipShape(Circle())
+        } secondary: {
+            if let count = artist.subscriberCountText, !count.isEmpty {
+                Text(subscriberLabel(for: count))
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+        } buttons: {
+            Button(action: { toggleSubscribe(artist) }, label: {
+                HeaderRoundIcon(
+                    systemImage: artist.isSubscribed ? "person.fill.checkmark" : "person.badge.plus",
+                    tint: artist.isSubscribed ? Color.accentColor : .primary
                 )
-            }
-            .frame(height: Self.iPadBannerHeight)
-            .accessibilityElement(children: .contain)
-        } else {
-            // iPhone: full-width square banner.
-            GeometryReader { proxy in
-                headerBanner(for: artist, size: proxy.size)
-            }
-            .aspectRatio(1, contentMode: .fit)
-            .accessibilityElement(children: .contain)
+            })
+            .accessibilityLabel(artist.isSubscribed ? "Unsubscribe" : "Subscribe")
+
+            Button(action: { shufflePlay(artist) }, label: {
+                HeaderRoundIcon(systemImage: "shuffle")
+            })
+            .accessibilityLabel("Shuffle artist")
+
+            Button(action: { playAll(artist) }, label: {
+                HeaderRoundIcon(systemImage: "play.fill", primary: .accentColor)
+            })
+            .accessibilityLabel("Play songs")
+            .disabled(artist.songs.isEmpty)
+        }
+        // Room for the top bar's round buttons above the card.
+        .padding(.top, safeTop + Self.topBarHeight + 8)
+        .padding(.bottom, 16)
+        .frame(maxWidth: .infinity)
+        .background(alignment: .top) {
+            BlurredArtworkBackdrop(url: ArtworkURLs.sized(artist.thumbnailUrl, width: 1200, height: 1200))
+        }
+        .task(id: artist.name) {
+            artistKind = await ArtistKindService.shared.kind(for: artist.name)
         }
     }
 
-    private static let iPadBannerHeight: CGFloat = 400
-
-    private func headerBanner(for artist: ArtistDetailInfo, size: CGSize) -> some View {
-        ZStack(alignment: .bottomLeading) {
-            Color(.systemGray5)
-
-            AsyncImageView(
-                url: ArtworkURLs.sized(artist.thumbnailUrl, width: 1200, height: 1200),
-                contentMode: .fill
-            )
-            .frame(width: size.width, height: size.height)
-            .clipped()
-
-            LinearGradient(
-                colors: [.clear, .black.opacity(0.18), .black.opacity(0.78)],
-                startPoint: .center,
-                endPoint: .bottom
-            )
-
-            VStack(alignment: .leading, spacing: 14) {
-                Text(artist.name)
-                    .font(.system(size: 34, weight: .bold, design: .rounded))
-                    .foregroundStyle(.white)
-                    .lineLimit(2)
-                    .shadow(color: .black.opacity(0.35), radius: 4, y: 2)
-
-                HStack(spacing: 12) {
-                    Button(action: { toggleSubscribe(artist) }, label: {
-                        Text(artist.isSubscribed ? "Subscribed" : "Subscribe")
-                            .font(.subheadline.weight(.bold))
-                            .foregroundStyle(artist.isSubscribed ? Color.white : Color.black)
-                            .padding(.horizontal, 20)
-                            .frame(height: 44)
-                            .glassEffect(
-                                artist.isSubscribed ? .regular.interactive() : .regular.tint(.white.opacity(0.9)).interactive(),
-                                in: .capsule
-                            )
-                    })
-                    .buttonStyle(.plain)
-
-                    Spacer(minLength: 0)
-
-                    if let subText = artist.subscriberCountText, !subText.isEmpty {
-                        Text(subscriberLabel(for: subText))
-                            .font(.subheadline)
-                            .foregroundStyle(.white.opacity(0.88))
-                            .lineLimit(1)
-                    }
-
-                    Button(action: { shufflePlay(artist) }, label: {
-                        Image(systemName: "shuffle")
-                            .font(.title3.weight(.bold))
-                            .foregroundStyle(.white)
-                            .frame(width: 52, height: 52)
-                            .background(Circle().fill(Color.accentColor))
-                    })
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Shuffle artist")
-                }
-            }
-            .padding(.horizontal, horizontalSizeClass == .regular ? 32 : 20)
-            .padding(.bottom, 24)
-        }
-    }
+    /// The top bar: 18pt top inset, 40pt buttons, 6pt bottom inset.
+    private static let topBarHeight: CGFloat = 64
 
     private func subscriberLabel(for count: String) -> String {
         count.localizedCaseInsensitiveContains("subscriber") ? count : "\(count) subscribers"
@@ -561,24 +471,21 @@ struct ArtistDetailView: View {
 
     @ViewBuilder
     private func songsSection(songs: [SongItem]) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 0) {
             Text("Songs")
                 .font(.title2)
                 .fontWeight(.bold)
                 .padding(.horizontal, 16)
                 .padding(.top, 20)
+                .padding(.bottom, 4)
 
-            ForEach(Array(songs.enumerated()), id: \.offset) { index, song in
+            ForEach(Array(songs.enumerated()), id: \.offset) { _, song in
                 SongRowView(
                     song: song,
+                    artSize: DesignTokens.artSmall, artRadius: DesignTokens.cardRadius,
                     onTap: { playSong(song) },
                     onNavigate: { AppRouter.shared.open($0) }
                 )
-
-                if index < songs.count - 1 {
-                    Divider()
-                        .padding(.leading, 72)
-                }
             }
         }
     }
@@ -588,12 +495,13 @@ struct ArtistDetailView: View {
         carouselSection(title: "Albums") {
             ForEach(albums.indices, id: \.self) { i in
                 let album = albums[i]
-                NavigationLink(value: DetailRoute.album(browseId: album.browseId)) {
+                let route = DetailRoute.album(browseId: album.browseId)
+                NavigationLink(value: route) {
                     MediaGridCell(
                         thumbnailUrl: album.thumbnailUrl,
                         title: album.title,
                         subtitle: album.artists.map(\.name).joined(separator: ", "),
-                        size: 156
+                        zoomRoute: route
                     )
                 }
                 .buttonStyle(ZoomPressStyle())
@@ -607,12 +515,13 @@ struct ArtistDetailView: View {
         carouselSection(title: "Singles & EPs") {
             ForEach(singles.indices, id: \.self) { i in
                 let single = singles[i]
-                NavigationLink(value: DetailRoute.album(browseId: single.browseId)) {
+                let route = DetailRoute.album(browseId: single.browseId)
+                NavigationLink(value: route) {
                     MediaGridCell(
                         thumbnailUrl: single.thumbnailUrl,
                         title: single.title,
                         subtitle: single.artists.map(\.name).joined(separator: ", "),
-                        size: 156
+                        zoomRoute: route
                     )
                 }
                 .buttonStyle(ZoomPressStyle())
@@ -622,44 +531,17 @@ struct ArtistDetailView: View {
     }
 
     @ViewBuilder
-    private func videosSection(videos: [SongItem]) -> some View {
-        carouselSection(title: "Videos") {
-            ForEach(videos.indices, id: \.self) { i in
-                let video = videos[i]
-                Button(action: { playVideo(video) }, label: {
-                    VStack(alignment: .leading, spacing: 6) {
-                        AsyncImageView(url: video.thumbnailUrl)
-                            .frame(width: 200, height: 112)
-                            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                        Text(video.title)
-                            .font(.caption)
-                            .fontWeight(.medium)
-                            .foregroundColor(.primary)
-                            .lineLimit(2)
-                            .frame(width: 200, alignment: .leading)
-                        if !video.duration.formattedDuration.isEmpty {
-                            Text(video.duration.formattedDuration)
-                                .font(.caption2)
-                                .foregroundColor(.secondary)
-                        }
-                    }
-                })
-                .buttonStyle(ZoomPressStyle())
-            }
-        }
-    }
-
-    @ViewBuilder
     private func playlistsSection(playlists: [PlaylistItem]) -> some View {
         carouselSection(title: "Playlists") {
             ForEach(playlists.indices, id: \.self) { i in
                 let playlist = playlists[i]
-                NavigationLink(value: DetailRoute.playlist(playlistId: playlist.id)) {
+                let route = DetailRoute.playlist(playlistId: playlist.id)
+                NavigationLink(value: route) {
                     MediaGridCell(
                         thumbnailUrl: playlist.thumbnailUrl,
                         title: playlist.title,
                         subtitle: playlistSubtitle(playlist.author),
-                        size: 156
+                        zoomRoute: route
                     )
                 }
                 .buttonStyle(ZoomPressStyle())
@@ -674,18 +556,7 @@ struct ArtistDetailView: View {
             ForEach(artists.indices, id: \.self) { i in
                 let related = artists[i]
                 NavigationLink(value: DetailRoute.artist(browseId: related.browseId)) {
-                    VStack(spacing: 8) {
-                        AsyncImageView(url: related.thumbnailUrl)
-                            .frame(width: 120, height: 120)
-                            .clipShape(Circle())
-                        Text(related.name)
-                            .lineLimit(1)
-                            .font(.callout)
-                        Text("Artist")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                    }
-                    .frame(width: 120)
+                    ArtistCircleCell(thumbnailUrl: related.thumbnailUrl, name: related.name)
                 }
                 .buttonStyle(ZoomPressStyle())
                 .artistCardMenu(browseId: related.browseId)
@@ -708,7 +579,7 @@ struct ArtistDetailView: View {
                 .padding(.top, 24)
 
             ScrollView(.horizontal, showsIndicators: false) {
-                LazyHStack(spacing: spacing) {
+                LazyHStack(alignment: .top, spacing: spacing) {
                     content()
                 }
                 .padding(.horizontal, 16)
@@ -723,14 +594,13 @@ struct ArtistDetailView: View {
         PlaybackQueue.playShuffled(artist.songs, log: Log.artistDetail, context: "Shuffle playback")
     }
 
+    private func playAll(_ artist: ArtistDetailInfo) {
+        PlaybackQueue.play(artist.songs, log: Log.artistDetail, context: "Playback")
+    }
+
     private func playSong(_ song: SongItem) {
         guard let artist = viewModel.artist else { return }
         PlaybackQueue.play(song, in: artist.songs, log: Log.artistDetail, context: "Playback")
-    }
-
-    private func playVideo(_ video: SongItem) {
-        guard let artist = viewModel.artist else { return }
-        PlaybackQueue.play(video, in: artist.videos, log: Log.artistDetail, context: "Video playback")
     }
 
     /// The tile subtitle's first run is the generic "Playlist" type label —
@@ -762,7 +632,7 @@ struct ArtistDetailView: View {
 
             await MainActor.run {
                 if let current = viewModel.artist {
-                    viewModel.artist = ArtistDetailInfo(
+                    let updated = ArtistDetailInfo(
                         name: current.name,
                         thumbnailUrl: current.thumbnailUrl,
                         subscriberCountText: current.subscriberCountText,
@@ -776,8 +646,99 @@ struct ArtistDetailView: View {
                         playlists: current.playlists,
                         relatedArtists: current.relatedArtists
                     )
+                    viewModel.artist = updated
+                    ArtistDetailCache.update(updated)
                 }
             }
         }
+    }
+}
+
+/// The artist page's top bar: back and copy-link buttons, and the name fading
+/// in with a background as the page scrolls past the header.
+private struct ArtistTopBar: View {
+    @Binding var barProgress: CGFloat
+    let artistName: String?
+    let linkCopied: Bool
+    let onCopyLink: () -> Void
+
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        HStack(spacing: 8) {
+            topBarBackButton
+
+            if let artistName {
+                Text(artistName)
+                    .font(.headline)
+                    .lineLimit(1)
+                    .opacity(barProgress)
+            }
+
+            Spacer(minLength: 0)
+
+            topBarCopyLinkButton
+        }
+        // Same inset pushed and in a sheet: in a sheet it keeps the round
+        // buttons clear of the sheet's top corners.
+        .padding(.horizontal, 20)
+        .padding(.top, 18)
+        .padding(.bottom, 6)
+        .background(
+            Color(.systemBackground)
+                .opacity(barProgress)
+                .ignoresSafeArea(edges: .top)
+                .allowsHitTesting(false)
+        )
+        .overlay(alignment: .bottom) {
+            Divider()
+                .opacity(barProgress)
+        }
+    }
+
+    private var topBarBackButton: some View {
+        topBarCircleButton(
+            systemName: "chevron.left",
+            accessibilityLabel: "Back",
+            action: { dismiss() }
+        )
+    }
+
+    private var topBarCopyLinkButton: some View {
+        topBarCircleButton(
+            systemName: linkCopied ? "checkmark" : "link",
+            fadedColor: linkCopied ? Color.accentColor : .primary,
+            accessibilityLabel: linkCopied ? "Artist link copied" : "Copy artist link",
+            action: onCopyLink
+        )
+        .disabled(artistName == nil)
+    }
+
+    /// Round top-bar button matching the back chevron: white with shadow over
+    /// the banner artwork, crossfading to `fadedColor` as the bar fills in.
+    private func topBarCircleButton(
+        systemName: String,
+        fadedColor: Color = .primary,
+        accessibilityLabel: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action, label: {
+            ZStack {
+                Image(systemName: systemName)
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .shadow(color: .black.opacity(0.5), radius: 3, y: 1)
+                    .opacity(1 - barProgress)
+                Image(systemName: systemName)
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(fadedColor)
+                    .opacity(barProgress)
+            }
+            .frame(width: 40, height: 40)
+            .glassEffect(.regular.interactive(), in: .circle)
+            .contentShape(Circle())
+        })
+        .buttonStyle(.plain)
+        .accessibilityLabel(accessibilityLabel)
     }
 }

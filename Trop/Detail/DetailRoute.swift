@@ -78,14 +78,20 @@ enum YTItemRouter {
             playSong(s)
         case .episode(let e):
             playSong(e.toSongItem())
-        case .album(let a):
-            appendRoute(.album(browseId: a.browseId))
-        case .artist(let a):
-            appendRoute(.artist(browseId: a.browseId))
-        case .playlist(let p):
-            appendRoute(.playlist(playlistId: p.id))
-        case .podcast(let p):
-            appendRoute(.podcast(browseId: p.browseId))
+        default:
+            if let route = detailRoute(for: item) { appendRoute(route) }
+        }
+    }
+
+    /// The page `item` opens, or nil for songs and episodes, which play.
+    /// Cards also use it as their cover's zoom source, so both always match.
+    static func detailRoute(for item: YTItem) -> DetailRoute? {
+        switch item {
+        case .song, .episode: nil
+        case .album(let a): .album(browseId: a.browseId)
+        case .artist(let a): .artist(browseId: a.browseId)
+        case .playlist(let p): .playlist(playlistId: p.id)
+        case .podcast(let p): .podcast(browseId: p.browseId)
         }
     }
 }

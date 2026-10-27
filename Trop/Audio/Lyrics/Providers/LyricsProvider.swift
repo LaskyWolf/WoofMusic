@@ -25,17 +25,18 @@ protocol LyricsProvider: Sendable {
 }
 
 enum LyricsParsing {
+    /// One or more leading [..] tags. Compiled once: parsing runs per line.
+    private static let leadingTagsRegex = try? NSRegularExpression(pattern: #"^(?:\[(\d{1,2}):(\d{1,2})(?:\.(\d{1,3}))?\])+"#)
+    private static let tagRegex = try? NSRegularExpression(pattern: #"\[(\d{1,2}):(\d{1,2})(?:\.(\d{1,3}))?\]"#)
+
     /// Parses an `[mm:ss.xx]` or `[mm:ss]` timestamp at the start of a line
     static func parseLrcTimestamp(_ line: String) -> (time: TimeInterval, text: String)? {
-        // Match one or more leading [..] tags
-        let pattern = #"^(?:\[(\d{1,2}):(\d{1,2})(?:\.(\d{1,3}))?\])+"#
-        guard let regex = try? NSRegularExpression(pattern: pattern),
+        guard let regex = leadingTagsRegex,
               let match = regex.firstMatch(in: line, range: NSRange(line.startIndex..., in: line))
         else { return nil }
 
         // The last matched tag holds the time we care about
-        let tagPattern = #"\[(\d{1,2}):(\d{1,2})(?:\.(\d{1,3}))?\]"#
-        guard let tagRegex = try? NSRegularExpression(pattern: tagPattern) else { return nil }
+        guard let tagRegex = Self.tagRegex else { return nil }
         let tagMatches = tagRegex.matches(in: line, range: NSRange(line.startIndex..., in: line))
         guard let last = tagMatches.last else { return nil }
         let mins = Int((line as NSString).substring(with: last.range(at: 1))) ?? 0

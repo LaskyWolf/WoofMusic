@@ -38,27 +38,36 @@ final class FileLog {
         UserDefaults.standard.set(true, forKey: cleanupKey)
     }
 
+    /// Kept open between lines instead of reopened for each one. Only touched on `queue`.
+    private var handle: FileHandle?
+    /// Size of the file behind `handle`, so rotation needs no file stat per line.
+    private var size = 0
+
     func append(_ category: String, _ level: String, _ message: String) {
         queue.async { [weak self] in
             guard let self, let url = self.fileURL else { return }
             let stamp = Self.formatter.string(from: Date())
             let line = "\(stamp) [\(level)][\(category)] \(message)\n"
+            guard let data = line.data(using: .utf8) else { return }
 
-            if let data = line.data(using: .utf8) {
-                if let attrs = try? FileManager.default.attributesOfItem(atPath: url.path),
-                   let size = attrs[.size] as? Int, size > self.maxBytes {
-                    // Rotate: keep it simple — start a fresh file.
-                    try? data.write(to: url, options: .atomic)
-                } else {
-                    if let handle = try? FileHandle(forWritingTo: url) {
-                        defer { try? handle.close() }
-                        _ = try? handle.seekToEnd()
-                        try? handle.write(contentsOf: data)
-                    } else {
-                        try? data.write(to: url, options: .atomic)
-                    }
+            if self.handle == nil {
+                self.handle = try? FileHandle(forWritingTo: url)
+                self.size = Int((try? self.handle?.seekToEnd()) ?? 0)
+            }
+            if let handle = self.handle, self.size <= self.maxBytes {
+                do {
+                    try handle.write(contentsOf: data)
+                    self.size += data.count
+                    return
+                } catch {
+                    // Falls through to a fresh file below.
                 }
             }
+            // No file yet, past ~1 MB (rotate: keep it simple, start a fresh
+            // file) or a failed write. The next line reopens the new file.
+            try? self.handle?.close()
+            self.handle = nil
+            try? data.write(to: url, options: .atomic)
         }
     }
 
