@@ -336,8 +336,7 @@ struct LibraryView: View {
                         url: podcast.thumbnailUrl,
                         title: podcast.name,
                         // The library stores no author, so the row names the kind.
-                        subtitle: isList ? "Podcast" : nil,
-                        opensPage: false
+                        subtitle: isList ? "Podcast" : nil
                     )
                 }
                 .buttonStyle(ZoomPressStyle(scale: pressScale))
@@ -393,13 +392,12 @@ struct LibraryView: View {
         title: String,
         subtitle: String?,
         detail: String? = nil,
-        opensPage: Bool = true,
         zoomRoute: DetailRoute? = nil
     ) -> some View {
         if isList {
             listRow(url: url, title: title, subtitle: subtitle, detail: detail, isCircular: false, zoomRoute: zoomRoute)
         } else {
-            MediaGridCell(thumbnailUrl: url, title: title, subtitle: subtitle, size: nil, opensPage: opensPage, zoomRoute: zoomRoute)
+            MediaGridCell(thumbnailUrl: url, title: title, subtitle: subtitle, size: nil, opensPage: false, zoomRoute: zoomRoute)
         }
     }
 

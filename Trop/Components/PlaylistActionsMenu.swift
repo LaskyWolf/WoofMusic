@@ -28,6 +28,8 @@ struct PlaylistActionsMenu<MenuLabel: View>: View {
             ControlGroup {
                 Button("Edit", systemImage: "pencil") { showEdit = true }
                     .disabled(!isOwned)
+                    // The compact icon row keeps the accent colour when disabled.
+                    .tint(isOwned ? Color.accentColor : Color.gray)
                 Button("Sync", systemImage: "arrow.triangle.2.circlepath") { onSync?() }
                     .disabled(onSync == nil)
                 if let url = URL.playlistShareURL(id: playlist.playlistId) {
