@@ -16,7 +16,7 @@ env:
 jobs:
   build-ios:
     name: Build iOS IPA
-    runs-on: macos-15-intel
+    runs-on: macos-15
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6.0.2
