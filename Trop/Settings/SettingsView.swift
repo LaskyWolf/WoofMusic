@@ -10,11 +10,22 @@ import SwiftUI
 struct SettingsView: View {
     @Environment(SettingsStore.self) private var settings
     private let account = AccountState.shared
+    @State private var isEditingPicture = false
+    /// Picture fetched after Studio closes. AccountState keeps its own fetch
+    /// private, so only this screen shows the new picture until next launch.
 
     var body: some View {
         List {
             Section {
                 accountRow
+                if account.isLoggedIn {
+                    Button {
+                        isEditingPicture = true
+                    } label: {
+                        Label("Change Profile Picture", systemImage: "camera")
+                    }
+                    .tint(settings.accentColor)
+                }
             }
 
             Section {
@@ -58,21 +69,55 @@ struct SettingsView: View {
         .navigationBarTitleDisplayMode(.inline)
         .miniPlayerTracksScroll()
         .loginSheet()
+        .sheet(isPresented: $isEditingPicture, onDismiss: { Task { await account.fetchAccountInfo() } }) {
+            NavigationStack {
+                ProfilePictureWebView()
+                    .ignoresSafeArea(edges: .bottom)
+                    .navigationTitle("YouTube Studio")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("Done") { isEditingPicture = false }
+                        }
+                    }
+            }
+        }
+    }
+
+    private var avatar: some View {
+        Group {
+            if account.isLoggedIn {
+                AsyncImageView(url: account.accountImageUrl)
+            } else {
+                Image(systemName: "person.crop.circle.fill")
+                    .resizable()
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(width: 48, height: 48)
+        .clipShape(Circle())
     }
 
     private var accountRow: some View {
         HStack(spacing: 14) {
-            Group {
-                if account.isLoggedIn {
-                    AsyncImageView(url: account.accountImageUrl)
-                } else {
-                    Image(systemName: "person.crop.circle.fill")
-                        .resizable()
-                        .foregroundStyle(.secondary)
+            if account.isLoggedIn {
+                Button {
+                    isEditingPicture = true
+                } label: {
+                    avatar.overlay(alignment: .bottomTrailing) {
+                        Image(systemName: "pencil")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundStyle(.primary)
+                            .frame(width: 20, height: 20)
+                            .glassEffect(.regular, in: Circle())
+                            .offset(x: 4, y: 4)
+                    }
                 }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Change Profile Picture")
+            } else {
+                avatar
             }
-            .frame(width: 48, height: 48)
-            .clipShape(Circle())
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(account.isLoggedIn ? account.accountName : "Not Signed In")

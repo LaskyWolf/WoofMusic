@@ -287,13 +287,17 @@ struct HomeScreenView: View {
 
     private func mixedSection(_ section: HomeSection) -> some View {
         let queue = section.items.compactMap { if case .song(let s) = $0 { return s } else { return nil } }
-        return HorizontalSection(title: section.displayTitle) {
+        let hasPodcasts = section.items.contains { if case .podcast = $0 { return true } else { return false } }
+        // Podcast tiles glow below the row, so it must not clip them.
+        return HorizontalSection(title: section.displayTitle, clipsContent: !hasPodcasts) {
             // Top-aligned, so captions line up when titles wrap to two lines.
             LazyHStack(alignment: .top, spacing: DesignTokens.cardSpacing) {
                 ForEach(section.items.indices, id: \.self) { i in
                     let item = section.items[i]
                     if case .song(let s) = item, !queue.isEmpty {
                         YouTubeGridItemView(item: item, onTap: { handleSongTap(s, in: queue) })
+                    } else if case .podcast(let podcast) = item {
+                        RadioDialTile(podcast: podcast) { handleItemTap(item) }
                     } else {
                         YouTubeGridItemView(item: item, onTap: { handleItemTap(item) })
                     }

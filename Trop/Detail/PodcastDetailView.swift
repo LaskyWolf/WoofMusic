@@ -418,8 +418,6 @@ struct PodcastDetailView: View {
     @State private var viewModel: PodcastDetailViewModel
     @State private var showMoreSheet = false
 
-    @Environment(\.dismiss) private var dismiss
-
     init(browseId: String) {
         self.browseId = browseId
         _viewModel = State(initialValue: PodcastDetailViewModel(browseId: browseId))
@@ -463,6 +461,8 @@ struct PodcastDetailView: View {
             header(for: podcast)
                 .padding(.bottom, 8)
 
+            ContinueEpisodeCard(episodes: podcast.episodes) { playEpisode($0, in: podcast) }
+
             if podcast.episodes.isEmpty {
                 VStack(spacing: 8) {
                     Spacer().frame(height: 40)
@@ -471,6 +471,7 @@ struct PodcastDetailView: View {
                         .foregroundColor(.secondary)
                 }
             } else {
+                NavigationTitleView(title: "Episodes")
                 episodeList(for: podcast)
             }
         }
@@ -478,79 +479,88 @@ struct PodcastDetailView: View {
 
     @ViewBuilder
     private func header(for podcast: PodcastDetailInfo) -> some View {
-        // YouTube Music-style podcast header: artwork on top, show details
-        // stacked underneath, then a Subscribe pill + playlist-style ⋮
-        // overflow button. No big play button — playback starts per-episode.
         VStack(spacing: 10) {
-            HeroArtworkView(url: podcast.thumbnailUrl)
+            DetailHeaderCard(meta: kindLine(for: podcast), title: podcast.title) {
+                AsyncImageView(url: podcast.thumbnailUrl)
+                    .clipShape(RoundedRectangle(cornerRadius: DesignTokens.cardRadius, style: .continuous))
+            } secondary: {
+                if let author = podcast.author, !author.isEmpty {
+                    authorChip(author)
+                        .padding(.top, 4)
+                }
+            } buttons: {
+                Button(action: { showMoreSheet = true }, label: {
+                    HeaderRoundIcon(systemImage: "ellipsis")
+                })
+                .accessibilityLabel("More options")
 
-            Text(podcast.title)
-                .font(.title2)
-                .fontWeight(.bold)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 24)
-
-            if let author = podcast.author, !author.isEmpty {
-                Text(author)
-                    .font(.subheadline)
-                    .fontWeight(.medium)
-                    .foregroundColor(.secondary)
-            }
-
-            if !podcast.episodes.isEmpty {
-                Text("\(podcast.episodes.count) episode\(podcast.episodes.count != 1 ? "s" : "")")
-                    .font(.subheadline)
-                    .foregroundStyle(.tertiary)
-            }
-
-            if let desc = podcast.descriptionText, !desc.isEmpty {
-                ExpandableDescriptionText(text: desc, collapsedLimit: 160, alignment: .center)
-                    .padding(.horizontal, 32)
-                    .padding(.top, 2)
-            }
-
-            // Subscribe + overflow, matching the playlist header controls.
-            HStack(spacing: 16) {
                 Button(action: {
                     Task { await viewModel.toggleSubscribe() }
                 }, label: {
-                    Label(
-                        viewModel.isSubscribed ? "Subscribed" : "Subscribe",
-                        systemImage: viewModel.isSubscribed ? "bookmark.fill" : "bookmark"
-                    )
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(viewModel.isSubscribed ? Color.accentColor : Color.primary)
-                    .padding(.horizontal, 20)
-                    .frame(height: 44)
-                    .background(
-                        Capsule()
-                            .fill(Color(.secondarySystemGroupedBackground))
+                    HeaderRoundIcon(
+                        systemImage: viewModel.isSubscribed ? "bookmark.fill" : "bookmark",
+                        tint: viewModel.isSubscribed ? .accentColor : .primary
                     )
                 })
-                .buttonStyle(.plain)
                 .accessibilityLabel(viewModel.isSubscribed ? "Unsubscribe from podcast" : "Subscribe to podcast")
 
-                Button(action: { showMoreSheet = true }, label: {
-                    Text("⋮")
-                        .font(.title3)
-                        .foregroundStyle(.primary)
-                        .frame(width: 48, height: 48)
-                        .background(Circle().fill(Color(.secondarySystemGroupedBackground)))
-                })
-                .buttonStyle(.plain)
-                .accessibilityLabel("More options")
+                if !podcast.episodes.isEmpty {
+                    Button(action: { playOrResume(podcast) }, label: {
+                        HeaderRoundIcon(systemImage: "play.fill", primary: .accentColor)
+                    })
+                    .accessibilityLabel("Play")
+                }
             }
-            .padding(.top, 4)
+
+            if let desc = podcast.descriptionText, !desc.isEmpty {
+                ExpandableDescriptionText(text: desc, collapsedLimit: 110)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, DesignTokens.screenHPadding + 4)
+            }
         }
         .padding(.vertical, 16)
+        .frame(maxWidth: .infinity)
+        // Same backdrop as the playlist and album headers.
+        .background(alignment: .top) {
+            BlurredArtworkBackdrop(url: podcast.thumbnailUrl)
+        }
+    }
+
+    private func kindLine(for podcast: PodcastDetailInfo) -> String {
+        let count = podcast.episodes.count
+        guard count > 0 else { return "Podcast" }
+        return "Podcast · \(count) episode\(count == 1 ? "" : "s")"
+    }
+
+    /// The show's author in a glass capsule, styled like the playlist people chip.
+    /// Podcasts carry no author picture, so the initial stands in for the avatar.
+    private func authorChip(_ author: String) -> some View {
+        HStack(spacing: 6) {
+            Text(author.prefix(1).uppercased())
+                .font(.system(size: 10, weight: .bold))
+                .foregroundStyle(.white)
+                .frame(width: 20, height: 20)
+                .background(Circle().fill(Color.accentColor))
+                .accessibilityHidden(true)
+            Text(author)
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+        }
+        .padding(.leading, 4)
+        .padding(.trailing, 10)
+        .padding(.vertical, 4)
+        .glassEffect(.regular, in: Capsule())
     }
 
     @ViewBuilder
     private func episodeList(for podcast: PodcastDetailInfo) -> some View {
         // No VStack wrapper: the ForEach must sit directly in the parent LazyVStack to stay lazy.
-        ForEach(Array(podcast.episodes.enumerated()), id: \.offset) { _, episode in
+        ForEach(Array(podcast.episodes.enumerated()), id: \.offset) { index, episode in
             EpisodeRowView(
                 episode: episode,
+                // Episodes come newest first.
+                isNew: index == 0 && episode.publishedThisWeek,
                 onTap: { playEpisode(episode, in: podcast) },
                 onNavigate: { AppRouter.shared.open($0) }
             )
@@ -561,6 +571,17 @@ struct PodcastDetailView: View {
 
     private func playAll(_ podcast: PodcastDetailInfo) {
         PlaybackQueue.play(podcast.episodes.map { $0.toSongItem() }, log: Log.podcastDetail, context: "playAll")
+    }
+
+    /// Resumes the episode the Continue card shows, else plays the show from the top.
+    private func playOrResume(_ podcast: PodcastDetailInfo) {
+        Task {
+            if let resume = await ContinueEpisodeCard.latest(in: podcast.episodes) {
+                playEpisode(resume.episode, in: podcast)
+            } else {
+                playAll(podcast)
+            }
+        }
     }
 
     private func playEpisode(_ episode: EpisodeItem, in podcast: PodcastDetailInfo) {
@@ -670,6 +691,99 @@ struct PodcastMoreSheet: View {
     }
 }
 
+// MARK: - Continue card
+
+/// The show's most recently listened unfinished episode, with its time left
+/// and a play button that resumes it. Hidden when no episode is in progress.
+private struct ContinueEpisodeCard: View {
+    let episodes: [EpisodeItem]
+    var onResume: (EpisodeItem) -> Void
+
+    @State private var resume: (episode: EpisodeItem, saved: EpisodePosition)?
+
+    /// Most recently updated saved position past 10 s and not finished: the
+    /// same threshold `playEpisode` uses to resume.
+    static func latest(in episodes: [EpisodeItem]) async -> (episode: EpisodeItem, saved: EpisodePosition)? {
+        var latest: (episode: EpisodeItem, saved: EpisodePosition)?
+        for episode in episodes {
+            guard let saved = await EpisodePlaybackStore.shared.position(for: episode.videoId),
+                  saved.position > 10, !saved.isFinished,
+                  saved.updatedAt > (latest?.saved.updatedAt ?? .distantPast) else { continue }
+            latest = (episode: episode, saved: saved)
+        }
+        return latest
+    }
+
+    var body: some View {
+        let np = NowPlaying.shared
+        // A VStack rather than a Group: an empty Group never runs its task.
+        VStack(spacing: 0) {
+            if let resume {
+                card(resume.episode, saved: resume.saved)
+            }
+        }
+        // Pausing or changing episode saves a position: reload it then.
+        .task(id: "\(episodes.count)|\(np.videoId ?? "")|\(np.isPlaying)") {
+            resume = await Self.latest(in: episodes)
+        }
+    }
+
+    private func card(_ episode: EpisodeItem, saved: EpisodePosition) -> some View {
+        let minutesLeft = max(1, Int((saved.remaining / 60).rounded()))
+        return HStack(alignment: .bottom, spacing: 12) {
+            VStack(alignment: .leading, spacing: 6) {
+                EpisodeTag(text: "CONTINUE")
+                Text(episode.title)
+                    .font(.subheadline.weight(.semibold))
+                    .lineLimit(2)
+                Text("\(minutesLeft) min left")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                TuningScale(progress: saved.progress, tickColor: .primary.opacity(0.3))
+            }
+            Button(action: { onResume(episode) }, label: {
+                NewReleaseCard.roundIcon("play.fill", fill: .accentColor, foreground: .white, isBusy: false)
+            })
+            .buttonStyle(ZoomPressStyle(scale: 0.92))
+            .accessibilityLabel("Resume \(episode.title)")
+        }
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: DesignTokens.tileRadius, style: .continuous)
+                .fill(Color(.secondarySystemBackground))
+        )
+        .padding(.horizontal, DesignTokens.screenHPadding)
+        .padding(.bottom, 8)
+    }
+}
+
+/// Small accent capsule label ("CONTINUE", "NEW"), sized like `OnAirBadge`.
+private struct EpisodeTag: View {
+    let text: String
+
+    var body: some View {
+        Text(text)
+            .font(.system(size: 9, weight: .heavy))
+            .tracking(0.8)
+            .foregroundStyle(Color.accentColor)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 3)
+            .background(Capsule().fill(Color.accentColor.opacity(0.15)))
+    }
+}
+
+private extension EpisodeItem {
+    /// True for relative dates under a week ("4 hr ago", "3 days ago").
+    /// Absolute or non-English dates read as not new.
+    var publishedThisWeek: Bool {
+        guard let date = publishDate?.lowercased(), date.hasSuffix("ago") else { return false }
+        if date.contains("day") {
+            return (Int(date.prefix { $0.isNumber }) ?? 1) <= 7
+        }
+        return ["sec", "min", "hr", "hour"].contains { date.contains($0) }
+    }
+}
+
 // MARK: - Inline expandable description ("… More" right after the text)
 
 /// Shows a truncated prefix with an inline tappable More suffix, expanding
@@ -678,7 +792,6 @@ struct PodcastMoreSheet: View {
 private struct ExpandableDescriptionText: View {
     let text: String
     var collapsedLimit: Int = 140
-    var alignment: TextAlignment = .leading
     /// Tapping non-truncated text falls through here (e.g. play the episode).
     var onInactiveTap: (() -> Void)?
 
@@ -690,7 +803,6 @@ private struct ExpandableDescriptionText: View {
         Text(styledText)
             .font(.caption)
             .foregroundStyle(.secondary)
-            .multilineTextAlignment(alignment)
             .onTapGesture {
                 if isTruncated {
                     expanded.toggle()
@@ -727,93 +839,96 @@ private struct ExpandableDescriptionText: View {
 
 private struct EpisodeRowView: View {
     let episode: EpisodeItem
+    /// Shows the NEW tag.
+    var isNew = false
     var onTap: () -> Void
     var onNavigate: ((DetailRoute) -> Void)?
 
     /// Only this episode's downloaded flag: observing the whole manager would
     /// redraw every visible row at each progress step of any download.
     @State private var isDownloaded = false
-    @State private var progress: Double = 0
-    @State private var hasResume = false
+    /// Saved listening progress; nil when the episode has nothing to resume.
+    @State private var savedProgress: Double?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(alignment: .top, spacing: 12) {
-                AsyncImageView(url: episode.thumbnailUrl)
-                    .frame(width: DesignTokens.artSmall, height: DesignTokens.artSmall)
-                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                    .onTapGesture(perform: onTap)
+        let np = NowPlaying.shared
+        // This episode is the player's current item, playing or paused.
+        let isCurrent = np.videoId == episode.videoId
+        let isOnAir = isCurrent && np.isPlaying
 
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(episode.title)
-                        .font(.subheadline)
-                        .fontWeight(.semibold)
-                        .foregroundColor(.primary)
-                        .lineLimit(2)
-                        .onTapGesture(perform: onTap)
+        HStack(alignment: .top, spacing: 12) {
+            AsyncImageView(url: episode.thumbnailUrl)
+                .frame(width: DesignTokens.artSmall, height: DesignTokens.artSmall)
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .onTapGesture(perform: onTap)
 
-                    if let desc = episode.descriptionText, !desc.isEmpty {
-                        // Own tap handling (expand/collapse) so toggling More
-                        // never starts playback; short text still plays.
-                        ExpandableDescriptionText(
-                            text: desc,
-                            collapsedLimit: 110,
-                            alignment: .leading,
-                            onInactiveTap: onTap
-                        )
+            VStack(alignment: .leading, spacing: 4) {
+                if isNew || isOnAir {
+                    HStack(spacing: 6) {
+                        if isOnAir { OnAirBadge() }
+                        if isNew { EpisodeTag(text: "NEW") }
                     }
-
-                    HStack(spacing: 4) {
-                        if isDownloaded {
-                            Image(systemName: "arrow.down.circle.fill")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .accessibilityLabel("Downloaded")
-                        }
-                        Text(episode.metaLine)
-                            .font(.caption)
-                            .foregroundStyle(.tertiary)
-                            .lineLimit(1)
-                    }
-                    .onTapGesture(perform: onTap)
                 }
 
-                Spacer(minLength: 0)
+                Text(episode.title)
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                    .foregroundColor(.primary)
+                    .lineLimit(2)
+                    .onTapGesture(perform: onTap)
 
-                SongActionsMenu(song: episode.toSongItem(), onNavigate: { onNavigate?($0) }) {
-                    MoreGlyph()
+                if let desc = episode.descriptionText, !desc.isEmpty {
+                    // Own tap handling (expand/collapse) so toggling More
+                    // never starts playback; short text still plays.
+                    ExpandableDescriptionText(
+                        text: desc,
+                        collapsedLimit: 110,
+                        onInactiveTap: onTap
+                    )
+                }
+
+                HStack(spacing: 4) {
+                    if isDownloaded {
+                        Image(systemName: "arrow.down.circle.fill")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .accessibilityLabel("Downloaded")
+                    }
+                    Text(episode.metaLine)
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
+                }
+                .onTapGesture(perform: onTap)
+
+                if isCurrent || savedProgress != nil {
+                    // nil follows the player live while this episode is current.
+                    TuningScale(progress: isCurrent ? nil : savedProgress, tickColor: .primary.opacity(0.3))
+                        .padding(.top, 2)
                 }
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 8)
 
-            if hasResume {
-                GeometryReader { geo in
-                    ZStack(alignment: .leading) {
-                        Capsule().fill(Color(.systemGray5))
-                        Capsule().fill(Color.accentColor)
-                            .frame(width: max(4, geo.size.width * progress))
-                    }
-                }
-                .frame(height: 3)
-                .padding(.leading, 100)
-                .padding(.trailing, 16)
-                .padding(.bottom, 6)
+            Spacer(minLength: 0)
+
+            SongActionsMenu(song: episode.toSongItem(), onNavigate: { onNavigate?($0) }) {
+                MoreGlyph()
             }
         }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
         .onReceive(DownloadManager.shared.$tracks.map { [videoId = episode.videoId] in
             $0.contains { $0.id == videoId }
         }.removeDuplicates()) {
             isDownloaded = $0
         }
-        .task(id: episode.videoId) {
-            // Tracked progress drives the bar and auto-resume on tap.
+        // Reloads when the episode stops being current, so the needle keeps the position it reached.
+        .task(id: isCurrent ? nil : episode.videoId) {
+            guard !isCurrent else { return }
             if let saved = await EpisodePlaybackStore.shared.position(for: episode.videoId),
                !saved.isFinished, saved.position > 10 {
-                progress = saved.progress
-                hasResume = true
+                savedProgress = saved.progress
             } else {
-                hasResume = false
+                savedProgress = nil
             }
         }
     }

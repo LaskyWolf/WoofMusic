@@ -15,6 +15,8 @@ struct HorizontalSection<Content: View>: View {
     /// Snaps to the children of the content's `scrollTargetLayout()`. The
     /// children bring their own side insets, so the edge padding is dropped.
     var snapsToItems = false
+    /// Off for cards whose glow reaches past the row, like Explore's new releases.
+    var clipsContent = true
     @ViewBuilder let content: () -> Content
 
     var body: some View {
@@ -24,6 +26,7 @@ struct HorizontalSection<Content: View>: View {
                 content()
                     .padding(.horizontal, snapsToItems ? 0 : DesignTokens.screenHPadding)
             }
+            .scrollClipDisabled(!clipsContent)
             if snapsToItems {
                 scroll.scrollTargetBehavior(.viewAligned)
             } else {

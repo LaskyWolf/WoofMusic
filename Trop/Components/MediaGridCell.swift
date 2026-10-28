@@ -100,17 +100,3 @@ struct ArtistCircleCell: View {
         .frame(width: size)
     }
 }
-
-/// Large centered artwork for detail headers (album/playlist/podcast),
-/// replacing the copy-pasted 200pt framed/clipped/shadowed blocks.
-struct HeroArtworkView: View {
-    var url: String?
-    var size: CGFloat = DesignTokens.heroArtwork
-
-    var body: some View {
-        AsyncImageView(url: url)
-            .frame(width: size, height: size)
-            .clipShape(RoundedRectangle(cornerRadius: DesignTokens.tileRadius))
-            .shadow(color: .black.opacity(0.2), radius: 12, y: 4)
-    }
-}

@@ -52,7 +52,7 @@ final class AccountState {
 
     /// Google can answer `account_menu` with a guest-shaped menu while the
     /// session still works (stale rotating tokens). Retry, then renew once.
-    private func fetchAccountInfo() async {
+    func fetchAccountInfo() async {
         guard isLoggedIn, !isFetchingAccountInfo else { return }
         isFetchingAccountInfo = true
         defer { isFetchingAccountInfo = false }

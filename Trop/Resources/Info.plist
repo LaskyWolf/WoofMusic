@@ -89,5 +89,7 @@
 			<string>Woof</string>
 		</dict>
 	</array>
+	<key>NSCameraUsageDescription</key>
+	<string>Take a new profile picture in YouTube Studio.</string>
 </dict>
 </plist>

@@ -45,6 +45,12 @@ struct FullPlayerView: View {
     @State private var syncedLyrics: [LyricLine] = []
     /// How far the player is pulled down by the dismiss gesture.
     @State private var pullDistance: CGFloat = 0
+    /// The hidden full-screen cover, opened by pinching the cover out.
+    @State private var showsFullscreenCover = false
+    /// Where the current cover sits on screen, for the full-screen cover to
+    /// grow from. A plain box, not state: the swipe and pull move the cover
+    /// every frame and must not redraw the player.
+    @State private var coverFrame = CoverFrameBox()
     private var playerBackgroundColors: [Color] { np.dominantColors }
 
     var body: some View {
@@ -180,6 +186,18 @@ struct FullPlayerView: View {
             .animation(.easeInOut(duration: reduceMotion ? 0.15 : 0.25), value: showsKaraoke)
             .offset(y: pullDistance)
             .gesture(pullToDismiss(height: geometry.size.height))
+            // Outside the pull offset; it is torn down with the player.
+            .overlay {
+                if showsFullscreenCover {
+                    FullscreenCoverOverlay(
+                        source: coverFrame.rect,
+                        sourceCornerRadius: settings.playerStyle == .card ? Self.cardCoverRadius : 0,
+                        fadesBottom: settings.playerStyle == .immersive,
+                        onClosed: { showsFullscreenCover = false },
+                        cover: { cover(for: $0) }
+                    )
+                }
+            }
             .onChange(of: np.videoId) { oldValue, newValue in
                 if oldValue != nil, newValue != nil {
                     titleChangeDirection = np.queueIndex < lastTitleQueueIndex ? -1 : 1
@@ -213,7 +231,7 @@ struct FullPlayerView: View {
             } message: {
                 Text("The artist page could not be found. Try again when connected.")
             }
-            .interactiveDismissDisabled(showQueue || showLyrics)
+            .interactiveDismissDisabled(showQueue || showLyrics || showsFullscreenCover)
             .background(
                 // Artist and album links from the player open over it, as a sheet.
                 Color.clear
@@ -271,7 +289,7 @@ struct FullPlayerView: View {
     // MARK: - Gestures
 
     private func pullToDismiss(height: CGFloat) -> PlayerDismissGesture {
-        PlayerDismissGesture(isEnabled: !showQueue && !showLyrics) { distance in
+        PlayerDismissGesture(isEnabled: !showQueue && !showLyrics && !showsFullscreenCover) { distance in
             pullDistance = max(0, distance)
         } onEnded: { distance, velocity in
             // Far enough (a fifth of the screen) or a quick flick closes it.
@@ -304,6 +322,16 @@ struct FullPlayerView: View {
                 withAnimation(TrackSwipe.springBack) { artworkDragOffset = 0 }
             }
         }
+    }
+
+    /// Two fingers spreading on the cover open it full screen. Simultaneous,
+    /// so the one-finger track swipe and pull-down are untouched.
+    private var fullscreenCoverPinch: some Gesture {
+        MagnifyGesture()
+            .onChanged { value in
+                guard value.magnification > 1.25, !showsFullscreenCover, !showQueue, !showLyrics else { return }
+                showsFullscreenCover = true
+            }
     }
 
     // MARK: - Player Content
@@ -410,6 +438,7 @@ struct FullPlayerView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .contentShape(Rectangle())
         .gesture(playerSwipe(pageWidth: pageWidth))
+        .simultaneousGesture(fullscreenCoverPinch)
     }
 
     /// The current cover with the previous and next ones a page to each side,
@@ -422,22 +451,39 @@ struct FullPlayerView: View {
             }
             if let current = np.currentSong {
                 artworkPage(for: current, size: pageSize)
+                    // The full-screen copy lifts off from here; Reduce Motion fades it in over this one.
+                    .opacity(showsFullscreenCover && !reduceMotion ? 0 : 1)
             }
             if let next = np.nextSong {
                 artworkPage(for: next, size: pageSize)
                     .offset(x: pageSize.width)
             }
         }
+        .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { page in
+            if settings.playerStyle == .card {
+                let side = Self.cardCoverSide(in: page.size)
+                coverFrame.rect = CGRect(x: page.midX - side / 2, y: page.midY - side / 2, width: side, height: side)
+            } else {
+                coverFrame.rect = page
+            }
+        }
         .offset(x: artworkDragOffset)
+    }
+
+    private static let cardCoverRadius: CGFloat = 16
+
+    /// The Card cover is a square inset from the page's sides.
+    private static func cardCoverSide(in size: CGSize) -> CGFloat {
+        max(0, min(size.width - 64, size.height))
     }
 
     @ViewBuilder
     private func artworkPage(for song: SongItem, size: CGSize) -> some View {
         if settings.playerStyle == .card {
-            let side = max(0, min(size.width - 64, size.height))
+            let side = Self.cardCoverSide(in: size)
             cover(for: song)
                 .frame(width: side, height: side)
-                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .clipShape(RoundedRectangle(cornerRadius: Self.cardCoverRadius, style: .continuous))
                 .shadow(color: .black.opacity(0.35), radius: 24, y: 12)
                 .frame(width: size.width, height: size.height)
         } else {
@@ -460,6 +506,10 @@ struct FullPlayerView: View {
                 .id(song.videoId)
         }
     }
+}
+
+private final class CoverFrameBox {
+    var rect: CGRect = .zero
 }
 
 /// The current lyric line under the title. Its own view so only this line,
