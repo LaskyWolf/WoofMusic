@@ -93,6 +93,7 @@ import UIKit
     var isLoadingTrack = false
     var dominantColors: [Color] = [.purple, .black]
     var accentColor: Color? = .purple
+    var musicVideoType: String?
     func playNext() {}
     func playPrevious() {}
 }
