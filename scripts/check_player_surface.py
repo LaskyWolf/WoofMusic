@@ -93,6 +93,8 @@ import UIKit
     var isLoadingTrack = false
     var dominantColors: [Color] = [.purple, .black]
     var accentColor: Color? = .purple
+    func playNext() {}
+    func playPrevious() {}
 }
 @MainActor final class AppRouter: ObservableObject {
     static let shared = AppRouter()
