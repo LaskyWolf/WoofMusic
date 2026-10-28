@@ -596,20 +596,9 @@ struct PlaylistDetailView: View {
             DetailHeaderCard(meta: kindLine(for: playlist), title: playlist.title) {
                 cover(for: playlist)
             } secondary: {
-                // Author: avatar + name, clickable → artist detail. A shared
-                // playlist shows its people here instead, like YouTube Music's page.
-                if !playlist.collaboratorAvatarUrls.isEmpty {
-                    CollaboratorBadge(avatarUrls: playlist.collaboratorAvatarUrls, panelParams: playlist.collaboratorsPanelParams)
+                if !playlist.collaboratorAvatarUrls.isEmpty || playlist.authorName != nil {
+                    PlaylistPeopleChip(playlist: playlist)
                         .padding(.top, 4)
-                } else if let authorName = playlist.authorName {
-                    if let authorId = playlist.authorBrowseId {
-                        NavigationLink(value: DetailRoute.artist(browseId: authorId)) {
-                            authorRow(name: authorName, avatarUrl: playlist.authorAvatarUrl)
-                        }
-                        .buttonStyle(.plain)
-                    } else {
-                        authorRow(name: authorName, avatarUrl: playlist.authorAvatarUrl)
-                    }
                 }
             } buttons: {
                 PlaylistActionsMenu(
@@ -668,26 +657,6 @@ struct PlaylistDetailView: View {
                         .font(.system(size: 40))
                         .foregroundColor(.white.opacity(0.8))
                 )
-        }
-    }
-
-    @ViewBuilder
-    private func authorRow(name: String, avatarUrl: String?) -> some View {
-        HStack(spacing: 6) {
-            if let avatarUrl {
-                AsyncImageView(url: avatarUrl)
-                    .frame(width: 18, height: 18)
-                    .clipShape(Circle())
-            } else {
-                Image(systemName: "person.circle.fill")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            }
-            Text(name)
-                .font(.subheadline)
-                .fontWeight(.medium)
-                .foregroundColor(.secondary)
-                .lineLimit(1)
         }
     }
 
@@ -918,75 +887,124 @@ struct AddSongToPlaylistView: View {
     }
 }
 
-// MARK: - Shared playlist badge
+// MARK: - People chip
 
-/// Overlapping avatars of a shared playlist. Tapping opens a native pop-up
-/// listing the people by name. The "••" circle only shows with more than 3 people.
-/// The owner, always first, wears a tilted crown.
-private struct CollaboratorBadge: View {
-    let avatarUrls: [String]
-    let panelParams: String?
+/// Who made the playlist, in one glass capsule: overlapping avatars (owner
+/// first, at most 3) and a name. A solo playlist links to its author's page;
+/// a shared one opens a sheet listing everyone with their role.
+private struct PlaylistPeopleChip: View {
+    let playlist: PlaylistDetailInfo
 
     @State private var people: [PlaylistCollaborator] = []
-    @State private var icons: [String: UIImage] = [:]
+    @State private var hasLoadedPeople = false
+    @State private var showPeople = false
 
-    private var total: Int { max(people.count, avatarUrls.count) }
+    private var isShared: Bool { !playlist.collaboratorAvatarUrls.isEmpty }
+
+    private var avatarUrls: [String?] {
+        if isShared { return playlist.collaboratorAvatarUrls.map { Optional($0) } }
+        return [playlist.authorAvatarUrl]
+    }
+
+    /// The facepile can hold fewer avatars than people; the fetched list is exact.
+    private var total: Int { max(people.count, playlist.collaboratorAvatarUrls.count) }
+
+    private var label: String {
+        let owner = people.first?.name ?? playlist.authorName ?? "Shared playlist"
+        return isShared && total > 1 ? "\(owner) + \(total - 1)" : owner
+    }
 
     var body: some View {
-        Menu {
-            Section("Collaborators") {
+        if isShared, let params = playlist.collaboratorsPanelParams {
+            Button { showPeople = true } label: { chip(tappable: true) }
+                .buttonStyle(.plain)
+                .accessibilityLabel("\(label), shared playlist")
+                .sheet(isPresented: $showPeople) { peopleSheet }
+                .task(id: params) {
+                    people = await PlaylistCollaborators.fetch(params: params)
+                    hasLoadedPeople = true
+                }
+        } else if !isShared, let authorId = playlist.authorBrowseId {
+            NavigationLink(value: DetailRoute.artist(browseId: authorId)) { chip(tappable: false) }
+                .buttonStyle(.plain)
+        } else {
+            chip(tappable: false)
+        }
+    }
+
+    private func chip(tappable: Bool) -> some View {
+        HStack(spacing: 6) {
+            HStack(spacing: -6) {
+                ForEach(Array(avatarUrls.prefix(3).enumerated()), id: \.offset) { _, url in
+                    avatar(url, size: 20)
+                        .overlay(Circle().stroke(Color(.systemBackground), lineWidth: 1.5))
+                }
+            }
+            Text(label)
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+            if tappable {
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
+            }
+        }
+        .padding(.leading, 4)
+        .padding(.trailing, 10)
+        .padding(.vertical, 4)
+        .glassEffect(.regular, in: Capsule())
+    }
+
+    private var peopleSheet: some View {
+        NavigationStack {
+            List {
                 ForEach(people, id: \.self) { person in
-                    Button {} label: {
-                        Label {
-                            Text(person.name)
-                            if person.isOwner { Text("Playlist owner") }
-                        } icon: {
-                            Image(uiImage: icons[person.name] ?? CollaboratorIcon.make(avatar: nil, crowned: person.isOwner))
-                                .renderingMode(.original)
+                    HStack(spacing: 12) {
+                        avatar(person.avatarUrl, size: 36)
+                        Text(person.name)
+                            .lineLimit(1)
+                        if person.name == AccountState.shared.accountName {
+                            Text("(you)")
+                                .foregroundStyle(.secondary)
                         }
-                        .labelStyle(.titleAndIcon)
+                        Spacer(minLength: 8)
+                        Text(person.isOwner ? "Owner" : "Editor")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
                     }
                 }
             }
-        } label: {
-            HStack(spacing: -8) {
-                ForEach(Array(avatarUrls.prefix(3).enumerated()), id: \.offset) { index, url in
-                    AsyncImageView(url: url)
-                        .frame(width: 28, height: 28)
-                        .clipShape(Circle())
-                        .overlay(Circle().stroke(Color(.systemBackground), lineWidth: 2))
-                        .overlay(alignment: .topLeading) {
-                            if index == 0 {
-                                Image(systemName: "crown.fill")
-                                    .font(.system(size: 12))
-                                    .foregroundStyle(.yellow)
-                                    .rotationEffect(.degrees(-28))
-                                    .offset(x: -5, y: -9)
-                            }
-                        }
-                }
-                if total > 3 {
-                    Image(systemName: "ellipsis")
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundStyle(.white)
-                        .frame(width: 28, height: 28)
-                        .background(Circle().fill(Color(.systemGray3)))
-                        .overlay(Circle().stroke(Color(.systemBackground), lineWidth: 2))
+            .overlay {
+                if people.isEmpty {
+                    if hasLoadedPeople {
+                        Text("Couldn't load the people on this playlist.")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ProgressView()
+                    }
                 }
             }
-            .padding(.top, 8)
+            .navigationTitle("Collaborators")
+            .navigationBarTitleDisplayMode(.inline)
         }
-        .accessibilityLabel("Shared playlist, \(total) people")
-        .task(id: panelParams) {
-            guard let panelParams else { return }
-            people = await PlaylistCollaborators.fetch(params: panelParams)
-            for person in people {
-                var avatar: UIImage?
-                if let url = person.avatarUrl.flatMap(URL.init) {
-                    avatar = try? await ArtworkLoader.image(for: url)
-                }
-                icons[person.name] = CollaboratorIcon.make(avatar: avatar, crowned: person.isOwner)
-            }
+        .presentationDetents([.medium])
+        .presentationDragIndicator(.visible)
+    }
+
+    @ViewBuilder
+    private func avatar(_ url: String?, size: CGFloat) -> some View {
+        if let url {
+            AsyncImageView(url: url)
+                .frame(width: size, height: size)
+                .clipShape(Circle())
+        } else {
+            Image(systemName: "person.circle.fill")
+                .resizable()
+                .foregroundStyle(.secondary)
+                .frame(width: size, height: size)
         }
     }
 }

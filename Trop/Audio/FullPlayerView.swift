@@ -34,7 +34,9 @@ struct FullPlayerView: View {
     @State private var showQueue = false
     @State private var isOpeningArtist = false
     @State private var artistUnavailable = false
-    @State private var artworkEntryOffset: CGFloat = 0
+    /// How far the cover pages are dragged sideways by the track swipe.
+    @State private var artworkDragOffset: CGFloat = 0
+    @State private var isCommittingSwipe = false
     private static let sleepOverlayBleed: CGFloat = 8
     @State private var titleChangeTrigger = 0
     @State private var titleChangeDirection: CGFloat = 1
@@ -51,6 +53,12 @@ struct FullPlayerView: View {
                 if settings.playerBackgroundStyle == .solid {
                     Color.black
                         .ignoresSafeArea()
+                } else if settings.playerStyle == .card {
+                    // One flat colour from the cover, dark enough for white text.
+                    (playerBackgroundColors.first ?? .black)
+                        .mix(with: .black, by: 0.6)
+                        .ignoresSafeArea()
+                        .animation(.easeInOut(duration: 0.8), value: playerBackgroundColors)
                 } else {
                     LinearGradient(
                         colors: [
@@ -72,31 +80,36 @@ struct FullPlayerView: View {
                         .ignoresSafeArea()
                 }
 
-                artwork
-                    .frame(maxWidth: .infinity)
-                    .frame(height: (geometry.size.height + artworkTopInset) * 0.58)
-                    .compositingGroup()
-                    .clipped()
-                    .mask {
-                        LinearGradient(
-                            stops: [
-                                .init(color: .white, location: 0),
-                                .init(color: .white, location: 0.62),
-                                .init(color: .clear, location: 1)
-                            ],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-                    }
-                    .offset(y: -artworkTopInset)
-                    .frame(maxHeight: .infinity, alignment: .top)
-                    .opacity(showsKaraoke ? 0 : 1)
+                if settings.playerStyle == .immersive {
+                    let artworkHeight = (geometry.size.height + artworkTopInset) * 0.58
+                    // Clipped to the screen width, so a neighbour shows only the
+                    // part dragged in from the edge.
+                    artworkPager(pageSize: CGSize(width: geometry.size.width, height: artworkHeight))
+                        .frame(maxWidth: .infinity)
+                        .frame(height: artworkHeight)
+                        .compositingGroup()
+                        .clipped()
+                        .mask {
+                            LinearGradient(
+                                stops: [
+                                    .init(color: .white, location: 0),
+                                    .init(color: .white, location: 0.62),
+                                    .init(color: .clear, location: 1)
+                                ],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        }
+                        .offset(y: -artworkTopInset)
+                        .frame(maxHeight: .infinity, alignment: .top)
+                        .opacity(showsKaraoke ? 0 : 1)
+                }
 
                 VStack(spacing: 0) {
                     playerHandle
 
                     VStack(spacing: 0) {
-                        Spacer(minLength: 0)
+                        artworkArea(pageWidth: geometry.size.width)
 
                         titleAndActionsRow
                             .padding(.horizontal, 32)
@@ -109,8 +122,6 @@ struct FullPlayerView: View {
                             .opacity(showQueue || showLyrics ? 0 : 1)
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .contentShape(Rectangle())
-                    .gesture(playerSwipe())
                     // No bottom padding: the panel covers the lyric line and the
                     // progress bar's touch area leaves the gap above its track.
                     .overlay {
@@ -183,6 +194,7 @@ struct FullPlayerView: View {
                 preloadLyrics()
             }
             .onChange(of: np.queueIndex) { _, _ in
+                artworkDragOffset = 0
                 np.preloadNeighborArtwork()
             }
             .onChange(of: showQueue) { _, newValue in
@@ -271,24 +283,26 @@ struct FullPlayerView: View {
         }
     }
 
-    private func playerSwipe() -> PlayerTrackSwipeGesture {
+    /// The cover follows the finger, like the mini player's pages, and the
+    /// neighbour's cover slides in from the edge.
+    private func playerSwipe(pageWidth: CGFloat) -> PlayerTrackSwipeGesture {
         PlayerTrackSwipeGesture(
             isEnabled: !showQueue && !showLyrics && settings.artworkSwipeNavigation
-        ) { distance in
-            if distance < -60, np.hasNext {
-                np.playNext()
-                slideInArtwork(fromLeft: false)
-            } else if distance > 60, np.hasPrevious {
-                np.playPrevious()
-                slideInArtwork(fromLeft: true)
+        ) { translation in
+            guard !isCommittingSwipe else { return }
+            // No song on that side: the cover stretches a little and springs back.
+            let hasNeighbour = translation < 0 ? np.hasNext : np.hasPrevious
+            artworkDragOffset = hasNeighbour ? translation : translation / 4
+        } onEnded: { predictedEnd in
+            guard !isCommittingSwipe else { return }
+            // Held past the threshold, or flicked hard enough to coast past it.
+            if predictedEnd <= -pageWidth * TrackSwipe.commitFraction, np.hasNext {
+                TrackSwipe.commit(.next, pageWidth: pageWidth, offset: $artworkDragOffset, isCommitting: $isCommittingSwipe)
+            } else if predictedEnd >= pageWidth * TrackSwipe.commitFraction, np.hasPrevious {
+                TrackSwipe.commit(.previous, pageWidth: pageWidth, offset: $artworkDragOffset, isCommitting: $isCommittingSwipe)
+            } else {
+                withAnimation(TrackSwipe.springBack) { artworkDragOffset = 0 }
             }
-        }
-    }
-
-    private func slideInArtwork(fromLeft: Bool) {
-        artworkEntryOffset = fromLeft ? -600 : 600
-        withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
-            artworkEntryOffset = 0
         }
     }
 
@@ -379,30 +393,71 @@ struct FullPlayerView: View {
         }
     }
 
-    private var artwork: some View {
-        artworkImage
-            .offset(x: artworkEntryOffset)
+    /// The space above the title, where the track swipe starts. The Card
+    /// style's cover sits here; the Immersive cover is behind it.
+    private func artworkArea(pageWidth: CGFloat) -> some View {
+        Group {
+            if settings.playerStyle == .card {
+                GeometryReader { area in
+                    artworkPager(pageSize: area.size)
+                }
+                .padding(.vertical, 12)
+                .opacity(showsKaraoke ? 0 : 1)
+            } else {
+                Color.clear
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .contentShape(Rectangle())
+        .gesture(playerSwipe(pageWidth: pageWidth))
     }
 
-    /// Song artwork (or placeholder), filling its container.
-    private var artworkImage: some View {
+    /// The current cover with the previous and next ones a page to each side,
+    /// moved together by the track swipe.
+    private func artworkPager(pageSize: CGSize) -> some View {
         ZStack {
-            if let uiImage = np.thumbnailUIImage {
-                GeometryReader { geo in
-                    Image(uiImage: uiImage)
-                        .resizable()
-                        .scaledToFill()
-                        .frame(width: geo.size.width, height: geo.size.height)
-                        .clipped()
-                }
-            } else {
-                ZStack {
-                    Color.white.opacity(0.1)
-                    Image(systemName: "music.note")
-                        .font(.system(size: 64))
-                        .foregroundStyle(.white.opacity(0.4))
-                }
+            if let previous = np.previousSong {
+                artworkPage(for: previous, size: pageSize)
+                    .offset(x: -pageSize.width)
             }
+            if let current = np.currentSong {
+                artworkPage(for: current, size: pageSize)
+            }
+            if let next = np.nextSong {
+                artworkPage(for: next, size: pageSize)
+                    .offset(x: pageSize.width)
+            }
+        }
+        .offset(x: artworkDragOffset)
+    }
+
+    @ViewBuilder
+    private func artworkPage(for song: SongItem, size: CGSize) -> some View {
+        if settings.playerStyle == .card {
+            let side = max(0, min(size.width - 64, size.height))
+            cover(for: song)
+                .frame(width: side, height: side)
+                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .shadow(color: .black.opacity(0.35), radius: 24, y: 12)
+                .frame(width: size.width, height: size.height)
+        } else {
+            cover(for: song)
+                .frame(width: size.width, height: size.height)
+                .clipped()
+        }
+    }
+
+    /// The player's own artwork once it belongs to this song; until then,
+    /// and for the neighbours, the cached cover the mini player shows.
+    @ViewBuilder
+    private func cover(for song: SongItem) -> some View {
+        if song.videoId == np.thumbnailVideoId, let uiImage = np.thumbnailUIImage {
+            Image(uiImage: uiImage)
+                .resizable()
+                .scaledToFill()
+        } else {
+            MiniArtworkView(song: song, placeholderIconSize: 64)
+                .id(song.videoId)
         }
     }
 }

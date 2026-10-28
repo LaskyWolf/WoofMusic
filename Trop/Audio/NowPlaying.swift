@@ -73,6 +73,19 @@ final class NowPlaying {
         queueIndex > 0
     }
 
+    /// The current song and its queue neighbours, the pages the track swipe slides between.
+    var currentSong: SongItem? {
+        queueSongs.indices.contains(queueIndex) ? queueSongs[queueIndex] : nil
+    }
+
+    var previousSong: SongItem? {
+        queueSongs.indices.contains(queueIndex - 1) ? queueSongs[queueIndex - 1] : nil
+    }
+
+    var nextSong: SongItem? {
+        queueSongs.indices.contains(queueIndex + 1) ? queueSongs[queueIndex + 1] : nil
+    }
+
     var isBarPresented: Bool {
         videoId != nil
     }
@@ -357,7 +370,7 @@ final class NowPlaying {
     }
 
     /// Pre-warms artwork for the previous and upcoming songs so swiping the
-    /// mini player bar shows their art instantly.
+    /// mini player bar or the full player's cover shows their art instantly.
     func preloadNeighborArtwork() {
         var urls = upcomingSongs(prefixLimit: 3)
             .compactMap(\.thumbnailUrl)

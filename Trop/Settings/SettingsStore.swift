@@ -41,6 +41,22 @@ enum PlayerBackgroundStyle: String, CaseIterable, Identifiable, SettingsOption {
     }
 }
 
+/// How the full player shows the cover: full-bleed behind the controls, or
+/// as a rounded card on one flat colour taken from it.
+enum PlayerStyle: String, CaseIterable, Identifiable, SettingsOption {
+    case immersive
+    case card
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .immersive: return "Immersive"
+        case .card: return "Card"
+        }
+    }
+}
+
 enum LyricsAlignment: String, CaseIterable, Identifiable, SettingsOption {
     case left
     case center
@@ -168,6 +184,10 @@ final class SettingsStore {
 
     var playerBackgroundStyle: PlayerBackgroundStyle {
         didSet { Self.defaults.set(playerBackgroundStyle.rawValue, forKey: Keys.playerBackgroundStyle) }
+    }
+
+    var playerStyle: PlayerStyle {
+        didSet { Self.defaults.set(playerStyle.rawValue, forKey: Keys.playerStyle) }
     }
 
     var preferredColorScheme: ColorScheme? {
@@ -380,6 +400,7 @@ final class SettingsStore {
         static let themeMode = "settings.themeMode"
         static let accentName = "settings.accentName"
         static let playerBackgroundStyle = "settings.playerBackgroundStyle"
+        static let playerStyle = "settings.playerStyle"
         static let defaultTab = "settings.defaultTab"
         static let lyricsFontSize = "settings.lyricsFontSize"
         static let lyricsAlignment = "settings.lyricsAlignment"
@@ -445,6 +466,7 @@ final class SettingsStore {
             .color ?? AccentPreset.all[0].color
         accentName = d.string(forKey: Keys.accentName) ?? AccentPreset.all[0].name
         playerBackgroundStyle = Self.loadEnum(Keys.playerBackgroundStyle, default: .dynamic)
+        playerStyle = Self.loadEnum(Keys.playerStyle, default: .immersive)
         defaultTab = Self.load(Keys.defaultTab, default: 0)
         libraryLayout = Self.loadEnum(Keys.libraryLayout, default: .grid)
         lyricsFontSize = Self.load(Keys.lyricsFontSize, default: 17)
