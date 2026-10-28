@@ -11,8 +11,18 @@ struct LyricLine: Identifiable, Equatable, Sendable {
     let id = UUID()
     let text: String
     let startTime: TimeInterval?
+    /// Word-level timing for karaoke; nil when the source has only line timing.
+    var words: [LyricWord]? = nil
 
     static let placeholder = LyricLine(text: "♪", startTime: nil)
+}
+
+/// One timed piece of a line (a word or a syllable), in song seconds.
+struct LyricWord: Equatable, Sendable {
+    var text: String
+    let startTime: TimeInterval
+    /// Nil when the source gives no end (a last Enhanced LRC word without a closing tag).
+    var endTime: TimeInterval?
 }
 
 @MainActor
@@ -24,6 +34,11 @@ final class LyricsState {
     var availableVideoIds: Set<String> = []
     var providerName: String?
     var refreshToken: Int = 0
+    /// The lyrics on screen have word-level timing, so karaoke can run.
+    var hasWordTiming = false
+
+    /// UserDefaults key of the karaoke toggle in the lyrics menu.
+    static let karaokeEnabledKey = "settings.lyricsKaraoke"
 
     private init() {}
 }
@@ -51,6 +66,9 @@ actor LyricsService {
     }
 
     func fetchLyrics(videoId: String) async throws -> [LyricLine] {
+        #if DEBUG
+        LyricsParsing.selfCheck()
+        #endif
         if let custom = customEntry(for: videoId) {
             await updateAvailability(videoId: videoId, available: true, providerName: custom.providerName)
             return custom.lines

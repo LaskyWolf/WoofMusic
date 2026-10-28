@@ -13,6 +13,7 @@ struct LyricsOptionsMenu<MenuLabel: View>: View {
     @ViewBuilder var label: () -> MenuLabel
 
     @Environment(\.settingsStore) private var settings
+    @AppStorage(LyricsState.karaokeEnabledKey) private var karaokeEnabled = false
     private let np = NowPlaying.shared
 
     private enum Sheet: Identifiable {
@@ -45,6 +46,13 @@ struct LyricsOptionsMenu<MenuLabel: View>: View {
                 Toggle(isOn: $settings.romanizeCurrentTrack) {
                     Label("Romanize Current Track", systemImage: "globe")
                 }
+                Toggle(isOn: $karaokeEnabled) {
+                    Label("Karaoke", systemImage: "music.mic")
+                    if !LyricsState.shared.hasWordTiming {
+                        Text("Needs word-timed lyrics")
+                    }
+                }
+                .disabled(!LyricsState.shared.hasWordTiming)
             }
         } label: {
             label()

@@ -90,7 +90,15 @@ struct NeteaseProvider: LyricsProvider {
 
         let json = try await LyricsHTTP.getJSON(URLRequest(url: url))
 
-        // Synced lyrics (LRC) take priority
+        // Word-timed karaoke lyrics, when the song has them
+        if let klyric = json["klyric"] as? [String: Any],
+           let lyric = klyric["lyric"] as? String,
+           !lyric.isEmpty {
+            let lines = LyricsParsing.parseKlyric(lyric)
+            if !lines.isEmpty { return lines }
+        }
+
+        // Synced lyrics (LRC)
         if let lrc = json["lrc"] as? [String: Any],
            let lyric = lrc["lyric"] as? String,
            !lyric.isEmpty {

@@ -88,6 +88,15 @@ struct PlayPauseGlyph: View {
         color.map { AnyShapeStyle($0) } ?? AnyShapeStyle(.tint)
     }
 
+    /// Every caller shows the now-playing item, so a podcast episode swaps
+    /// play/pause for a microphone: on while playing, crossed out while paused.
+    private func symbol(playing: Bool) -> String {
+        if NowPlaying.shared.musicVideoType == "MUSIC_VIDEO_TYPE_PODCAST_EPISODE" {
+            return playing ? "mic.fill" : "mic.slash.fill"
+        }
+        return playing ? "pause.fill" : "play.fill"
+    }
+
     var body: some View {
         let isLoading = NowPlaying.shared.isLoadingTrack
         ZStack {
@@ -100,7 +109,7 @@ struct PlayPauseGlyph: View {
                     .transition(.opacity)
             } else {
                 // A moon replaces the button while the sleep timer animation plays.
-                Image(systemName: SleepTimer.shared.isCelebrating ? "moon.fill" : ((playingBeforeLoad ?? isPlaying) ? "pause.fill" : "play.fill"))
+                Image(systemName: SleepTimer.shared.isCelebrating ? "moon.fill" : symbol(playing: playingBeforeLoad ?? isPlaying))
                     .font(.system(size: size))
                     .foregroundStyle(style)
                     .contentTransition(.symbolEffect(.replace))

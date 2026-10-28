@@ -27,6 +27,10 @@ struct FullPlayerView: View {
         return LikeFlavor.guess(videoId: song.videoId, title: song.title, artists: song.artists.map(\.name), album: song.album)
     }
     @State private var showLyrics = false
+    @AppStorage(LyricsState.karaokeEnabledKey) private var karaokeEnabled = false
+    /// Karaoke lyrics drop their glass panel; the artwork and title step aside
+    /// so only the lyrics sit over the player background.
+    private var showsKaraoke: Bool { showLyrics && karaokeEnabled && LyricsState.shared.hasWordTiming }
     @State private var showQueue = false
     @State private var isOpeningArtist = false
     @State private var artistUnavailable = false
@@ -86,6 +90,7 @@ struct FullPlayerView: View {
                     }
                     .offset(y: -artworkTopInset)
                     .frame(maxHeight: .infinity, alignment: .top)
+                    .opacity(showsKaraoke ? 0 : 1)
 
                 VStack(spacing: 0) {
                     playerHandle
@@ -97,6 +102,7 @@ struct FullPlayerView: View {
                             .padding(.horizontal, 32)
                             .padding(.top, 20)
                             .padding(.bottom, 16)
+                            .opacity(showsKaraoke ? 0 : 1)
 
                         // Hidden under an open panel: the glass is see-through.
                         PlayerLyricPreview(lines: syncedLyrics)
@@ -160,6 +166,7 @@ struct FullPlayerView: View {
             }
             .animation(.easeInOut(duration: reduceMotion ? 0.15 : 0.25), value: showQueue)
             .animation(.easeInOut(duration: reduceMotion ? 0.15 : 0.25), value: showLyrics)
+            .animation(.easeInOut(duration: reduceMotion ? 0.15 : 0.25), value: showsKaraoke)
             .offset(y: pullDistance)
             .gesture(pullToDismiss(height: geometry.size.height))
             .onChange(of: np.videoId) { oldValue, newValue in
@@ -242,7 +249,7 @@ struct FullPlayerView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .clipShape(RoundedRectangle(cornerRadius: 24))
-            .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 24))
+            .glassEffect(showsKaraoke ? .identity : .regular, in: RoundedRectangle(cornerRadius: 24))
             .environment(\.colorScheme, .dark)
             .transition(reduceMotion ? .opacity : .scale(scale: 0.95).combined(with: .opacity))
             .accessibilityAction(.escape) { closePanelOrPlayer() }

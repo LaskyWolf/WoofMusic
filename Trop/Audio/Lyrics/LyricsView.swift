@@ -13,6 +13,7 @@ struct LyricsView: View {
     @Environment(SettingsStore.self) private var settings
 
     @Binding var showLyrics: Bool
+    @AppStorage(LyricsState.karaokeEnabledKey) private var karaokeEnabled = false
 
     @State private var lines: [LyricLine] = []
     @State private var isLoading = true
@@ -33,6 +34,10 @@ struct LyricsView: View {
     @State private var hasPositionedInitialLyrics = false
     @State private var scrollProxy: ScrollViewProxy?
     @State private var loadGeneration = 0
+
+    /// Karaoke runs only on lyrics with word timing; then the panel's own
+    /// chrome (title, provider caption) steps aside.
+    private var isKaraoke: Bool { karaokeEnabled && LyricsState.shared.hasWordTiming }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -56,8 +61,10 @@ struct LyricsView: View {
 
     private var headerBar: some View {
         HStack {
-            Text("Lyrics")
-                .font(.title2.bold())
+            if !isKaraoke {
+                Text("Lyrics")
+                    .font(.title2.bold())
+            }
             Spacer()
             LyricsOptionsMenu {
                 Image(systemName: "ellipsis")
@@ -107,7 +114,7 @@ struct LyricsView: View {
                         VStack(alignment: settings.lyricsAlignment.textAlignment.horizontal, spacing: 18) {
                             Spacer().frame(height: 20)
 
-                            if let provider = LyricsState.shared.providerName {
+                            if !isKaraoke, let provider = LyricsState.shared.providerName {
                                 Text("Lyrics from \(provider)")
                                     .font(.caption.weight(.medium))
                                     .foregroundStyle(.white.opacity(0.6))
@@ -247,6 +254,8 @@ struct LyricsView: View {
                 lineOpacity: index == activeIndex ? 1 : opacityForDistance(abs(index - activeIndex)),
                 lineScale: index == activeIndex ? 1 : scaleForDistance(abs(index - activeIndex)),
                 romanizedText: romanized,
+                karaokeWords: isKaraoke && index == activeIndex ? line.words : nil,
+                lyricsOffset: settings.lyricsOffsetSeconds,
                 onTap: {
                     if let t = line.startTime {
                         player.seek(to: t)
@@ -356,6 +365,7 @@ struct LyricsView: View {
         defer { if generation == loadGeneration { isLoading = false } }
         guard let videoId = np.videoId else {
             lines = []
+            LyricsState.shared.hasWordTiming = false
             return
         }
         lines = []
@@ -370,13 +380,16 @@ struct LyricsView: View {
         guard !Task.isCancelled else { return }
         do {
             let result = try await LyricsService.shared.fetchLyrics(videoId: videoId)
-            guard generation == loadGeneration, !result.isEmpty else { return }
+            guard generation == loadGeneration else { return }
+            LyricsState.shared.hasWordTiming = result.contains { $0.words != nil }
+            guard !result.isEmpty else { return }
             let withoutMarkers = result.filter { !Self.isInstrumentalMarker($0) }
             lines = withoutMarkers.isEmpty ? result : withoutMarkers
             instrumentalGaps = detectGaps(in: result)
             updateActiveLine()
             await rebuildRomanization()
         } catch {
+            if generation == loadGeneration { LyricsState.shared.hasWordTiming = false }
         }
     }
 
@@ -516,6 +529,9 @@ private struct LyricsLineView: View {
     var lineScale: CGFloat = 1
     /// Romanized variant rendered under the main line, Metrolist-style.
     var romanizedText: String?
+    /// Set only on the active line in karaoke mode.
+    var karaokeWords: [LyricWord]?
+    var lyricsOffset: Double = 0
     let onTap: () -> Void
 
     var body: some View {
@@ -523,10 +539,16 @@ private struct LyricsLineView: View {
 
         Button(action: onTap) {
             VStack(alignment: alignment.textAlignment.horizontal, spacing: 4) {
-                Text(textToDisplay)
-                    .font(.system(size: fontSize, weight: isActive ? .bold : .semibold))
-                    .foregroundStyle(.white)
-                    .multilineTextAlignment(alignment.multilineTextAlignment)
+                Group {
+                    if let karaokeWords {
+                        KaraokeLineText(words: karaokeWords, offset: lyricsOffset)
+                    } else {
+                        Text(textToDisplay)
+                    }
+                }
+                .font(.system(size: fontSize, weight: isActive ? .bold : .semibold))
+                .foregroundStyle(.white)
+                .multilineTextAlignment(alignment.multilineTextAlignment)
 
                 if let romanizedText, !romanizedText.isEmpty {
                     Text(romanizedText)
@@ -543,5 +565,75 @@ private struct LyricsLineView: View {
         .opacity(lineOpacity)
         .scaleEffect(lineScale, anchor: alignment.textAlignment == .leading ? .leading : alignment.textAlignment == .trailing ? .trailing : .center)
         .animation(.easeInOut(duration: 0.3), value: isActive)
+    }
+}
+
+// MARK: - Karaoke
+
+/// The active line in karaoke mode: sung words lit, the current word filling
+/// left to right, upcoming words dimmed. Only this view follows the clock
+/// frame by frame; the lyrics list redraws only when the active line changes.
+private struct KaraokeLineText: View {
+    let words: [LyricWord]
+    let offset: Double
+
+    private let np = NowPlaying.shared
+    private let player = PlayerController.shared
+
+    var body: some View {
+        let text = Self.text(for: words)
+        TimelineView(.animation(minimumInterval: 1 / 60, paused: !np.isPlaying)) { _ in
+            // While playing, mpv's own position: `np.currentTime` only moves
+            // every 0.25 s. While paused it holds the latest seek target.
+            let now = (np.isPlaying ? player.currentTime : np.currentTime) + offset
+            text.textRenderer(KaraokeRenderer(time: now))
+        }
+    }
+
+    /// One text, so lines wrap normally; each word carries its timing.
+    private static func text(for words: [LyricWord]) -> Text {
+        words.reduce(Text(verbatim: "")) { line, word in
+            // ponytail: a last word with no end tag fills over a fixed 0.5 s.
+            let timing = KaraokeWordTiming(start: word.startTime, end: word.endTime ?? word.startTime + 0.5)
+            return Text("\(line)\(Text(verbatim: word.text).customAttribute(timing))")
+        }
+    }
+}
+
+private struct KaraokeWordTiming: TextAttribute {
+    let start: TimeInterval
+    let end: TimeInterval
+}
+
+/// Draws each word dimmed, then its sung part at full strength, clipped from
+/// the left. Only drawing changes per frame; the text layout is reused.
+/// ponytail: fills left to right, so right-to-left scripts fill backwards.
+private struct KaraokeRenderer: TextRenderer {
+    var time: TimeInterval
+
+    func draw(layout: Text.Layout, in context: inout GraphicsContext) {
+        for line in layout {
+            for run in line {
+                guard let timing = run[KaraokeWordTiming.self] else {
+                    context.draw(run)
+                    continue
+                }
+                let progress = min(1, max(0, (time - timing.start) / max(timing.end - timing.start, 0.01)))
+                if progress >= 1 {
+                    context.draw(run)
+                    continue
+                }
+                var upcoming = context
+                upcoming.opacity = 0.35
+                upcoming.draw(run)
+                guard progress > 0 else { continue }
+                let rect = run.typographicBounds.rect
+                var sung = context
+                // Tall clip so only the horizontal edge cuts glyphs.
+                sung.clip(to: Path(CGRect(x: rect.minX, y: rect.minY - rect.height,
+                                          width: rect.width * progress, height: rect.height * 3)))
+                sung.draw(run)
+            }
+        }
     }
 }
