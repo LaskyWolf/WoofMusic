@@ -158,7 +158,7 @@ struct FullPlayerView: View {
                 .ignoresSafeArea()
         }
         .foregroundStyle(.white)
-        .gesture(PlayerTrackSwipeGesture(isEnabled: true, onEnded: { _ in }))
+        .gesture(PlayerTrackSwipeGesture(isEnabled: true, onChanged: { _ in }, onEnded: { _ in }))
         .onAppear { SurfaceProbe.playerVisible = true }
         .onDisappear { SurfaceProbe.playerVisible = false }
     }
