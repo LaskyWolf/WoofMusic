@@ -176,7 +176,8 @@ struct PlaybackControlsRow: View {
             .accessibilityLabel("Previous")
 
             PlayerPlayPauseButton(isPlaying: isPlaying, action: onPlayPause)
-                .scaleEffect(hidesPlayPause ? 0.3 : 1)
+                // Turns edge-on, like a coin, while the stand-in turns face-up in its place.
+                .rotation3DEffect(.degrees(hidesPlayPause ? -90 : 0), axis: (x: 0, y: 1, z: 0), perspective: 0.5)
                 .opacity(hidesPlayPause ? 0 : 1)
                 .allowsHitTesting(!hidesPlayPause)
 

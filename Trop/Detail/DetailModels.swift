@@ -35,8 +35,17 @@ struct ArtistDetailInfo {
     var playlists: [PlaylistItem] = []
     var relatedArtists: [ArtistItem] = []
 
-    /// False for a listener's channel: no songs, albums or singles under its name.
-    var hasMusic: Bool { !songs.isEmpty || !albums.isEmpty || !singles.isEmpty }
+    /// False for a listener's channel: no albums or singles, and the songs
+    /// shelf (a profile lists songs it uploaded or played) has none credited to it.
+    var hasMusic: Bool {
+        !albums.isEmpty || !singles.isEmpty
+            || songs.contains { song in song.artists.contains { $0.id == browseId || $0.name == name } }
+    }
+
+    /// "@handle" from a profile's description ("Profile • @handle").
+    var handle: String? {
+        descriptionText?.split(separator: " ").first { $0.hasPrefix("@") && $0.count > 1 }.map(String.init)
+    }
 }
 
 /// Parsed detail data for a playlist page.

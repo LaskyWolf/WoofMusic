@@ -6,6 +6,7 @@
 import AppIntents
 import Foundation
 import Security
+import UIKit
 
 /// A song as the widgets show it.
 struct WidgetSong: Codable, Hashable, Identifiable {
@@ -89,13 +90,37 @@ enum WidgetLink {
     static let recap = URL(string: "woofmusic://recap")
 }
 
+/// A "still here" note each side leaves for the other, so a widget can tell
+/// "the app never wrote anything" from "the app's data can't reach me", and the
+/// app's diagnostics can tell when a widget last read the store.
+struct WidgetPing: Codable, Hashable {
+    var date: Date
+    var build: String
+}
+
 /// JSON files in the App Group container, written by the app and read by the
 /// widgets. Signing tools that use a shared certificate usually drop the App
-/// Group; then the files go to a Keychain group the team shares instead.
+/// Group; then the files go to a Keychain group the team shares, or failing
+/// that to named pasteboards, which need no entitlement at all.
 enum WidgetStore {
     static let nowPlayingFile = "nowplaying.json"
     static let quickPicksFile = "quickpicks.json"
     static let statsFile = "stats.json"
+    static let appPingFile = "app-ping.json"
+    static let widgetPingFile = "widget-ping.json"
+
+    enum Backend: String {
+        case appGroup = "App Group"
+        case keychain = "Keychain"
+        case pasteboard = "Pasteboard"
+    }
+
+    /// The first place this signature allows; both sides pick the same one when signed alike.
+    static var backend: Backend {
+        if fileURL("") != nil { return .appGroup }
+        if SharedKeychain.group != nil { return .keychain }
+        return .pasteboard
+    }
 
     private static let extensionSuffix = ".WoofWidgets"
 
@@ -109,24 +134,57 @@ enum WidgetStore {
             .appendingPathComponent(name)
     }
 
-    /// False when the app and the widgets have nowhere to share data:
-    /// the widgets then say the signing tool is the cause.
-    static var canShare: Bool {
-        fileURL("") != nil || SharedKeychain.group != nil
-    }
-
     static func read<Value: Decodable>(_ type: Value.Type, from name: String) -> Value? {
-        let data = if let url = fileURL(name) { try? Data(contentsOf: url) } else { SharedKeychain.read(name) }
+        let data: Data? = switch backend {
+        case .appGroup: fileURL(name).flatMap { try? Data(contentsOf: $0) }
+        case .keychain: SharedKeychain.read(name)
+        case .pasteboard: SharedPasteboard.read(name)
+        }
         guard let data else { return nil }
         return try? JSONDecoder().decode(type, from: data)
     }
 
-    /// Returns false when there is nowhere to write to.
+    /// Returns false when the write failed.
     @discardableResult
     static func write<Value: Encodable>(_ value: Value, to name: String) -> Bool {
         guard let data = try? JSONEncoder().encode(value) else { return false }
-        if let url = fileURL(name) { return (try? data.write(to: url, options: .atomic)) != nil }
-        return SharedKeychain.write(data, for: name)
+        switch backend {
+        case .appGroup:
+            guard let url = fileURL(name) else { return false }
+            return (try? data.write(to: url, options: .atomic)) != nil
+        case .keychain:
+            return SharedKeychain.write(data, for: name)
+        case .pasteboard:
+            return SharedPasteboard.write(data, for: name)
+        }
+    }
+
+    /// The running build, for the pings.
+    static var build: String {
+        let info = Bundle.main.infoDictionary
+        let version = info?["CFBundleShortVersionString"] as? String ?? "?"
+        return "\(version) (\(info?["CFBundleVersion"] as? String ?? "?"))"
+    }
+}
+
+/// Named pasteboards are shared by the apps and extensions of one team and
+/// need no entitlement, so they survive any re-signing. Not documented as a
+/// way to feed widgets: the last resort.
+enum SharedPasteboard {
+    private static let type = "public.data"
+
+    static func read(_ name: String) -> Data? {
+        pasteboard(name)?.data(forPasteboardType: type)
+    }
+
+    static func write(_ data: Data, for name: String) -> Bool {
+        guard let board = pasteboard(name) else { return false }
+        board.setData(data, forPasteboardType: type)
+        return true
+    }
+
+    private static func pasteboard(_ name: String) -> UIPasteboard? {
+        UIPasteboard(name: UIPasteboard.Name("com.laskywolf.woofmusic.widgets." + name), create: true)
     }
 }
 
@@ -136,13 +194,20 @@ enum WidgetStore {
 enum SharedKeychain {
     private static let service = "WoofWidgets"
 
-    /// Nil when the entitlements don't cover the group (an App Group build, or a profile without "TEAMID.*").
-    static let group: String? = {
-        guard let team = teamId() else { return nil }
-        let group = team + ".woofmusic.widgets"
-        // Writing a probe is the only way to learn whether the group is allowed.
-        return upsert(Data(), account: "probe", group: group) ? group : nil
+    /// The team id from the default Keychain group, or nil.
+    static let teamId: String? = findTeamId()
+
+    /// The shared group and the probe write's status. Writing a probe is the
+    /// only way to learn whether the entitlements allow the group.
+    static let probe: (group: String?, status: OSStatus) = {
+        guard let teamId else { return (nil, errSecMissingEntitlement) }
+        let group = teamId + ".woofmusic.widgets"
+        let status = upsert(Data(), account: "probe", group: group)
+        return (status == errSecSuccess ? group : nil, status)
     }()
+
+    /// Nil when the entitlements don't cover the group (an App Group build, or a profile without "TEAMID.*").
+    static var group: String? { probe.group }
 
     static func read(_ account: String) -> Data? {
         guard let group else { return nil }
@@ -160,10 +225,10 @@ enum SharedKeychain {
 
     static func write(_ data: Data, for account: String) -> Bool {
         guard let group else { return false }
-        return upsert(data, account: account, group: group)
+        return upsert(data, account: account, group: group) == errSecSuccess
     }
 
-    private static func upsert(_ data: Data, account: String, group: String) -> Bool {
+    private static func upsert(_ data: Data, account: String, group: String) -> OSStatus {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -171,16 +236,16 @@ enum SharedKeychain {
             kSecAttrAccessGroup as String: group
         ]
         let status = SecItemUpdate(query as CFDictionary, [kSecValueData as String: data] as CFDictionary)
-        guard status == errSecItemNotFound else { return status == errSecSuccess }
+        guard status == errSecItemNotFound else { return status }
         var item = query
         item[kSecValueData as String] = data
         // Widgets refresh while the phone is locked.
         item[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
-        return SecItemAdd(item as CFDictionary, nil) == errSecSuccess
+        return SecItemAdd(item as CFDictionary, nil)
     }
 
     /// The team id, read off the access group of an item saved in the default group ("TEAMID.<bundle id>").
-    private static func teamId() -> String? {
+    private static func findTeamId() -> String? {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,

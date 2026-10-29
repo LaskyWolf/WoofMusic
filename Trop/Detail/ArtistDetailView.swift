@@ -362,7 +362,14 @@ struct ArtistDetailView: View {
                 relatedArtistsSection(artists: artist.relatedArtists)
             }
 
-            if let description = artist.descriptionText, !description.isEmpty {
+            // A profile's description is only "Profile • @handle": the handle alone, centred.
+            if !artist.hasMusic, let handle = artist.handle {
+                Text(handle)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 24)
+            } else if let description = artist.descriptionText, !description.isEmpty {
                 aboutSection(description: description)
             }
 

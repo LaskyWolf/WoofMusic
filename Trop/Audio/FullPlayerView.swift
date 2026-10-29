@@ -34,6 +34,8 @@ struct FullPlayerView: View {
     @State private var showQueue = false
     /// The speed dial under the progress bar, opened from its chip.
     @State private var showsSpeedDial = false
+    /// True while an open dial shrinks back into its chip, before the layout closes its room.
+    @State private var isSpeedDialFolding = false
     @State private var isOpeningArtist = false
     @State private var artistUnavailable = false
     /// How far the cover pages are dragged sideways by the track swipe.
@@ -156,17 +158,25 @@ struct FullPlayerView: View {
 
                     // No top padding: the bar's touch area already leaves a gap
                     // above the track, and the lyric line belongs with it.
-                    PlayerProgressSection(showsSpeedDial: $showsSpeedDial)
-                        .padding(.bottom, 16)
+                    PlayerProgressSection(
+                        hidesChip: showsSpeedDial && !isSpeedDialFolding,
+                        onChipTap: {
+                            isSpeedDialFolding = false
+                            showsSpeedDial = true
+                        }
+                    )
+                    .padding(.bottom, 16)
 
                     // Takes its room from the cover area above, and grows out of
                     // the speed chip: its top centre sits right under the chip.
                     if showsSpeedDial {
-                        PlaybackSpeedDial(onClose: { showsSpeedDial = false })
+                        PlaybackSpeedDial(onClose: closeSpeedDial)
+                            .scaleEffect(isSpeedDialFolding ? 0.08 : 1, anchor: .top)
+                            .opacity(isSpeedDialFolding ? 0 : 1)
                             .padding(.horizontal, 22)
                             .padding(.bottom, 12)
                             .transition(reduceMotion ? .opacity : .scale(scale: 0.08, anchor: .top).combined(with: .opacity))
-                            .accessibilityAction(.escape) { showsSpeedDial = false }
+                            .accessibilityAction(.escape, closeSpeedDial)
                     }
 
                     Color.clear.frame(height: 8)
@@ -233,6 +243,7 @@ struct FullPlayerView: View {
                         return CGRect(x: row.maxX - row.width / 3, y: row.minY, width: row.width / 3, height: row.height)
                     },
                     coverCornerRadius: settings.playerStyle == .card ? Self.cardCoverRadius : 0,
+                    isImmersive: settings.playerStyle == .immersive,
                     replacesPlayButton: $radioReplacesPlay
                 )
             }
@@ -497,8 +508,21 @@ struct FullPlayerView: View {
         .simultaneousGesture(fullscreenCoverPinch)
         // A tap on the background closes the speed dial.
         .simultaneousGesture(TapGesture().onEnded {
-            if showsSpeedDial { showsSpeedDial = false }
+            closeSpeedDial()
         })
+    }
+
+    /// Folds the dial into its chip first, with the layout still, then gives
+    /// its room back: removed at once, it shrank where it was while the chip slid away.
+    private func closeSpeedDial() {
+        guard showsSpeedDial, !isSpeedDialFolding else { return }
+        withAnimation(.easeIn(duration: reduceMotion ? 0.1 : 0.18)) { isSpeedDialFolding = true }
+        Task {
+            try? await Task.sleep(for: .seconds(reduceMotion ? 0.1 : 0.18))
+            // The player's animation for `showsSpeedDial` moves the layout; the folded dial is already invisible.
+            // Folding stays on, so the removed dial never springs back; opening resets it.
+            showsSpeedDial = false
+        }
     }
 
     /// The current cover with the previous and next ones a page to each side,
@@ -615,7 +639,9 @@ private struct PlayerLyricPreview: View {
 /// Progress bar and time labels. Its own view so only this part, not the
 /// whole player, redraws as `currentTime` ticks.
 private struct PlayerProgressSection: View {
-    @Binding var showsSpeedDial: Bool
+    /// The open dial stands in for the chip.
+    let hidesChip: Bool
+    let onChipTap: () -> Void
 
     private let player = PlayerController.shared
     private let np = NowPlaying.shared
@@ -659,9 +685,9 @@ private struct PlayerProgressSection: View {
             // The dial takes the chip's place while open; its header closes it.
             .overlay {
                 speedChip(rate: rate)
-                    .scaleEffect(showsSpeedDial ? 0.6 : 1)
-                    .opacity(showsSpeedDial ? 0 : 1)
-                    .allowsHitTesting(!showsSpeedDial)
+                    .scaleEffect(hidesChip ? 0.6 : 1)
+                    .opacity(hidesChip ? 0 : 1)
+                    .allowsHitTesting(!hidesChip)
             }
         }
         .padding(.horizontal, 32)
@@ -671,7 +697,7 @@ private struct PlayerProgressSection: View {
     private func speedChip(rate: Double) -> some View {
         let isChanged = rate != 1
         return Button {
-            showsSpeedDial.toggle()
+            onChipTap()
         } label: {
             Text(PlaybackSpeed.label(rate))
                 .font(.system(size: 11, weight: .bold).monospacedDigit())
@@ -686,7 +712,7 @@ private struct PlayerProgressSection: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Playback speed, \(PlaybackSpeed.label(rate))")
-        .accessibilityHint(showsSpeedDial ? "Closes the speed dial" : "Opens the speed dial")
+        .accessibilityHint("Opens the speed dial")
     }
 }
 

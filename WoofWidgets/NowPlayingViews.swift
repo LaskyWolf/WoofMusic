@@ -50,6 +50,8 @@ struct SnapshotProvider<Value: Decodable>: TimelineProvider {
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<SnapshotEntry<Value>>) -> Void) {
+        // Tells the app's diagnostics that a widget could read and write the store.
+        WidgetStore.write(WidgetPing(date: .now, build: WidgetStore.build), to: WidgetStore.widgetPingFile)
         let entry = SnapshotEntry(date: Date.now, value: WidgetStore.read(Value.self, from: file))
         completion(Timeline(entries: [entry], policy: .never))
     }
@@ -97,24 +99,24 @@ struct IntentCircleButton<Intent: AppIntent>: View {
     }
 }
 
-/// Shown when the app hasn't written anything yet, or can't share anything at all.
+/// Shown when the app hasn't written anything yet, or its data can't reach the widget.
 struct WidgetPlaceholder: View {
     let symbol: String
     let text: String
 
-    /// Neither an App Group nor the team's Keychain group came through signing.
-    private static let noStorage = "Your signing tool removed the shared storage widgets need. Re-sign with App Groups kept."
-
     var body: some View {
-        let canShare = WidgetStore.canShare
+        // The app leaves a ping at launch: none means its writes don't reach here.
+        // An App Group never fails that way, so there it means the app wasn't opened yet.
+        let backend = WidgetStore.backend
+        let isCutOff = backend != .appGroup && WidgetStore.read(WidgetPing.self, from: WidgetStore.appPingFile) == nil
         VStack(alignment: .leading, spacing: 6) {
-            Image(systemName: canShare ? symbol : "exclamationmark.triangle")
+            Image(systemName: isCutOff ? "exclamationmark.triangle" : symbol)
                 .font(.title2)
             Spacer(minLength: 0)
-            Text(canShare ? text : Self.noStorage)
+            Text(isCutOff ? "Can't reach Woof Music through the \(backend.rawValue). Open the app, or long-press Settings › Integrations for diagnostics." : text)
                 .font(.subheadline.weight(.medium))
                 .lineLimit(4)
-                .minimumScaleFactor(0.8)
+                .minimumScaleFactor(0.75)
         }
         .foregroundStyle(.white)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)

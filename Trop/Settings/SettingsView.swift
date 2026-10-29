@@ -9,6 +9,7 @@ import SwiftUI
 
 struct SettingsView: View {
     private let account = AccountState.shared
+    @State private var showsDiagnostics = false
 
     var body: some View {
         List {
@@ -47,12 +48,16 @@ struct SettingsView: View {
                 SettingsNavigationRow("Integrations", icon: "puzzlepiece.extension") {
                     IntegrationsSettingsView()
                 }
+                // Hidden: a long press opens Diagnostics.
+                .simultaneousGesture(LongPressGesture(minimumDuration: 0.8).onEnded { _ in showsDiagnostics = true })
+                .sensoryFeedback(.impact(weight: .medium), trigger: showsDiagnostics) { _, isShown in isShown }
             } header: {
                 Text("Integrations")
             }
         }
         .listSectionSpacing(.compact)
         .scrollBounceBehavior(.basedOnSize)
+        .navigationDestination(isPresented: $showsDiagnostics) { DiagnosticsView() }
         .navigationTitle("Settings")
         .navigationBarTitleDisplayMode(.inline)
         .miniPlayerTracksScroll()

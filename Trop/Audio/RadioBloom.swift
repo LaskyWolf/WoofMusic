@@ -19,9 +19,11 @@ struct RadioBloomEvent: Equatable {
 }
 
 /// The Radio Bloom, laid over the whole full player. While the radio loads,
-/// teal rings ripple out of the cover and an antenna takes the play button's
-/// place. When the songs arrive, their covers burst out around the cover and
+/// teal rings ripple out of the cover and the play button turns over into an
+/// antenna. When the songs arrive, their covers burst out around the cover and
 /// fly into the queue button, which shows how many were added.
+/// The Immersive player's cover fills the top of the screen, so there the
+/// rings are round signal waves broadcast from the middle of the artwork.
 /// Overlay only: it never touches the cover, the queue or playback.
 struct RadioBloomOverlay: View {
     let event: RadioBloomEvent
@@ -30,6 +32,7 @@ struct RadioBloomOverlay: View {
     let playButton: () -> CGRect
     let queueButton: () -> CGRect
     let coverCornerRadius: CGFloat
+    let isImmersive: Bool
     /// True while the antenna stands in for the play button.
     @Binding var replacesPlayButton: Bool
 
@@ -77,18 +80,30 @@ struct RadioBloomOverlay: View {
 
     // MARK: - Pieces
 
-    /// Three rings a third of a period apart, each growing out of the cover and fading.
-    private func rings(since start: Date) -> some View {
+    /// Where the bloom grows from: the Card cover, or a square in the middle
+    /// of the Immersive artwork (above its faded bottom).
+    private var seed: CGRect {
         let rect = local(cover())
+        guard isImmersive else { return rect }
+        let side = min(rect.width * 0.62, rect.height * 0.7)
+        return CGRect(x: rect.midX - side / 2, y: rect.minY + rect.height * 0.42 - side / 2, width: side, height: side)
+    }
+
+    /// Three rings a third of a period apart, each growing out of the seed and
+    /// fading: the cover's shape on Card, wider circles on Immersive.
+    private func rings(since start: Date) -> some View {
+        let rect = seed
+        let radius = isImmersive ? rect.width / 2 : coverCornerRadius
+        let growth: CGFloat = isImmersive ? 1.3 : 0.5
         return TimelineView(.animation) { context in
             let elapsed = context.date.timeIntervalSince(start)
             ZStack {
                 ForEach(0..<3, id: \.self) { ring in
                     let time = elapsed - Double(ring) * 0.3
                     let progress = time < 0 ? 0 : time.truncatingRemainder(dividingBy: 1.2) / 1.2
-                    RoundedRectangle(cornerRadius: coverCornerRadius + 20 * progress, style: .continuous)
-                        .strokeBorder(Self.teal, lineWidth: 2)
-                        .scaleEffect(1 + 0.5 * progress)
+                    RoundedRectangle(cornerRadius: isImmersive ? radius : radius + 20 * progress, style: .continuous)
+                        .strokeBorder(Self.teal, lineWidth: isImmersive ? 3 : 2)
+                        .scaleEffect(1 + growth * progress)
                         .opacity(time < 0 ? 0 : 0.85 * (1 - progress))
                 }
             }
@@ -99,7 +114,7 @@ struct RadioBloomOverlay: View {
     }
 
     private func orb(_ url: String?, index: Int) -> some View {
-        let rect = local(cover())
+        let rect = seed
         let side = min(rect.width, rect.height)
         let spot = Self.orbSpots[index % Self.orbSpots.count]
         let target = local(queueButton())
@@ -127,7 +142,8 @@ struct RadioBloomOverlay: View {
             .foregroundStyle(Self.teal)
             .symbolEffect(.variableColor.iterative.reversing, isActive: !reduceMotion)
             .position(x: rect.midX, y: rect.midY)
-            .transition(.scale(scale: 0.4).combined(with: .opacity))
+            // Turns over with the play button, like a coin: in place, never shrinking away.
+            .transition(.modifier(active: CoinFlip(angle: 90), identity: CoinFlip(angle: 0)))
     }
 
     private func badgeView(_ text: String) -> some View {
@@ -138,8 +154,12 @@ struct RadioBloomOverlay: View {
             .padding(.horizontal, 6)
             .padding(.vertical, 2)
             .background(Capsule().fill(Self.teal))
-            .position(x: rect.midX + 16, y: rect.minY)
-            .transition(.scale(scale: 0.4).combined(with: .opacity))
+            // On the icon's top-right corner, like an app badge.
+            .position(x: rect.midX + 13, y: rect.midY - 13)
+            .transition(.asymmetric(
+                insertion: .scale(scale: 0.4).combined(with: .opacity),
+                removal: .modifier(active: Dissolve(isGone: true), identity: Dissolve(isGone: false))
+            ))
     }
 
     // MARK: - Script
@@ -195,7 +215,29 @@ struct RadioBloomOverlay: View {
 
     private func showBadge(_ count: Int) async throws {
         withAnimation(.spring(duration: 0.35, bounce: 0.5)) { badge = "+\(count)" }
-        defer { withAnimation(.easeOut(duration: 0.3)) { badge = nil } }
+        defer { withAnimation(.easeOut(duration: 0.6)) { badge = nil } }
         try await Task.sleep(for: .seconds(1.6))
+    }
+}
+
+/// Turned edge-on at 90°, so the view is invisible halfway through.
+struct CoinFlip: ViewModifier {
+    let angle: Double
+
+    func body(content: Content) -> some View {
+        content
+            .rotation3DEffect(.degrees(angle), axis: (x: 0, y: 1, z: 0), perspective: 0.5)
+            .opacity(abs(angle) < 89 ? 1 : 0)
+    }
+}
+
+/// Fades out through a blur, without moving or shrinking.
+private struct Dissolve: ViewModifier {
+    let isGone: Bool
+
+    func body(content: Content) -> some View {
+        content
+            .blur(radius: isGone ? 6 : 0)
+            .opacity(isGone ? 0 : 1)
     }
 }

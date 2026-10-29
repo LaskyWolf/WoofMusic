@@ -110,6 +110,7 @@ final class WidgetSync {
     /// Recomputes this month's numbers. Called at launch and when the app
     /// goes to the background, so the widget follows the listening.
     func refreshStats() {
+        WidgetStore.write(WidgetPing(date: .now, build: WidgetStore.build), to: WidgetStore.appPingFile)
         Task {
             let settings = SettingsStore.shared
             let interval = RecapService.monthToDate()
