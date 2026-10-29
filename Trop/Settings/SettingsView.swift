@@ -8,9 +8,7 @@
 import SwiftUI
 
 struct SettingsView: View {
-    @Environment(SettingsStore.self) private var settings
     private let account = AccountState.shared
-    @State private var isEditingPicture = false
 
     var body: some View {
         List {
@@ -58,20 +56,6 @@ struct SettingsView: View {
         .navigationTitle("Settings")
         .navigationBarTitleDisplayMode(.inline)
         .miniPlayerTracksScroll()
-        .loginSheet()
-        .sheet(isPresented: $isEditingPicture, onDismiss: { Task { await account.fetchAccountInfo() } }) {
-            NavigationStack {
-                ProfilePictureWebView()
-                    .ignoresSafeArea(edges: .bottom)
-                    .navigationTitle("YouTube Studio")
-                    .navigationBarTitleDisplayMode(.inline)
-                    .toolbar {
-                        ToolbarItem(placement: .confirmationAction) {
-                            Button("Done") { isEditingPicture = false }
-                        }
-                    }
-            }
-        }
     }
 
     private var avatar: some View {
@@ -88,48 +72,25 @@ struct SettingsView: View {
         .clipShape(Circle())
     }
 
+    /// Opens the profile: sign in or out, the picture, Woof Recap and badges.
     private var accountRow: some View {
-        HStack(spacing: 14) {
-            if account.isLoggedIn {
-                Button {
-                    isEditingPicture = true
-                } label: {
-                    avatar.overlay(alignment: .bottomTrailing) {
-                        Image(systemName: "pencil")
-                            .font(.system(size: 9, weight: .bold))
-                            .foregroundStyle(.primary)
-                            .frame(width: 20, height: 20)
-                            .glassEffect(.regular, in: Circle())
-                            .offset(x: 4, y: 4)
-                    }
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Change Profile Picture")
-            } else {
+        NavigationLink {
+            ProfileView()
+        } label: {
+            HStack(spacing: 14) {
                 avatar
-            }
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text(account.isLoggedIn ? account.accountName : "Not Signed In")
-                    .font(.headline)
-                    .lineLimit(1)
-                Text(account.isLoggedIn ? "YouTube Music" : "Sign in to sync your library")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(account.isLoggedIn ? account.accountName : "Not Signed In")
+                        .font(.headline)
+                        .lineLimit(1)
+                    Text(account.isLoggedIn ? "YouTube Music" : "Sign in to sync your library")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
             }
-
-            Spacer(minLength: 8)
-
-            if account.isLoggedIn {
-                Button("Sign Out", role: .destructive) { account.signOut() }
-                    .buttonStyle(.bordered)
-            } else {
-                Button("Sign In") { account.isLoginSheetPresented = true }
-                    .buttonStyle(.borderedProminent)
-                    .tint(settings.accentColor)
-            }
+            .padding(.vertical, 4)
         }
-        .padding(.vertical, 4)
     }
 }

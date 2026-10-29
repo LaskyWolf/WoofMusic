@@ -27,7 +27,7 @@ final class PlaybackSpeed {
     @ObservationIgnored private var videoId: String?
     @ObservationIgnored private var podcastId: String?
 
-    private static let showRatesKey = "playback.podcastSpeeds"
+    nonisolated static let showRatesKey = "playback.podcastSpeeds"
     /// Speed per podcast id.
     @ObservationIgnored private var showRates =
         UserDefaults.standard.dictionary(forKey: PlaybackSpeed.showRatesKey) as? [String: Double] ?? [:]

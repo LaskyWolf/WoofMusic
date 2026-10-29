@@ -87,6 +87,8 @@ struct HomeScreenView: View {
     private var homescreenContent: some View {
         ScrollView {
             LazyVStack(spacing: 0) {
+                RecapHomeCard()
+
                 if let chips = viewModel.homePage?.chips, !chips.isEmpty {
                     ChipsRowView(
                         chips: chips,
