@@ -37,6 +37,9 @@ final class PlayerController {
     nonisolated(unsafe) var currentVideoId: String?
     nonisolated(unsafe) var pendingVideoId: String?
     var currentLoudnessDb: Double?
+    /// False once mpv rejects the AutoMix bass filter; see `applyPlaybackSettings`.
+    private(set) var hasBassFilter = true
+    private var hasLoggedChainFailure = false
     var pendingURL: String?
     nonisolated(unsafe) var desiredPlaying = false
     private var wasPlayingBeforeInterruption = false
@@ -234,13 +237,29 @@ extension PlayerController {
         updateNowPlayingProgress()
     }
 
+    /// Sets the filter chain. mpv rejects the whole chain (error -9, "property
+    /// format") when its FFmpeg build lacks the `bass` filter, which would take
+    /// the equalizer and loudness filters down with it on every song: then the
+    /// chain is set again without it, and mixes skip their bass dip.
     func applyPlaybackSettings() {
-        let chain = filterChain(loudness: currentLoudnessDb)
+        let withBass = filterChain(loudness: currentLoudnessDb)
+        let withoutBass = filterChain(loudness: currentLoudnessDb, includesBass: false)
+        let tryBass = hasBassFilter
         let gapless = SettingsStore.shared.gaplessPlayback
-        withMpv { mpv in
+        let result = withMpv { mpv -> (bassAccepted: Bool, error: Int32) in
             mpv_set_property_string(mpv, "gapless-audio", gapless ? "yes" : "no")
-            let result = mpv_set_property_string(mpv, "af", chain.isEmpty ? "" : chain)
-            if result < 0 { Log.player.error("Failed to set af chain '\(chain)': mpv error \(result)") }
+            if tryBass, mpv_set_property_string(mpv, "af", withBass) >= 0 { return (true, 0) }
+            return (false, mpv_set_property_string(mpv, "af", withoutBass))
+        }
+        guard let result else { return }
+        if hasBassFilter, !result.bassAccepted {
+            hasBassFilter = false
+            Log.player.notice("mpv has no bass filter; AutoMix mixes without the bass dip")
+        }
+        // Logged once: the same settings fail the same way on every song.
+        if result.error < 0, !hasLoggedChainFailure {
+            hasLoggedChainFailure = true
+            Log.player.error("Failed to set af chain '\(withoutBass)': mpv error \(result.error)")
         }
     }
 
@@ -250,7 +269,7 @@ extension PlayerController {
     /// Equalizer and loudness-normalization filters for a song with
     /// `loudness`, after a bass filter that a mix changes live with
     /// `af-command` (flat unless `bassGain` is set).
-    func filterChain(loudness: Double?, bassGain: Double? = nil) -> String {
+    func filterChain(loudness: Double?, bassGain: Double? = nil, includesBass: Bool? = nil) -> String {
         let settings = SettingsStore.shared
         let eqEnabled = settings.equalizerEnabled
         let eqGains = settings.equalizerGains
@@ -260,7 +279,10 @@ extension PlayerController {
         let bass = bassGain ?? 0
 
         return {
-            var filters = ["@\(Self.bassFilterLabel):bass=f=180:g=\(Self.fmt(bass))"]
+            var filters: [String] = []
+            if includesBass ?? hasBassFilter {
+                filters.append("@\(Self.bassFilterLabel):bass=f=180:g=\(Self.fmt(bass))")
+            }
             if eqEnabled {
                 let entries = zip(equalizerFrequencies, eqGains)
                     .map { "entry(\(Self.fmt($0.0)),\(Self.fmt($0.1)))" }

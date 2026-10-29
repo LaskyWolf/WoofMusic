@@ -44,7 +44,13 @@ struct SearchView: View {
             .onChange(of: router.focusSearchField) { _, requested in
                 if requested { consumeFocusRequest() }
             }
-            .onAppear { consumeFocusRequest() }
+            .onChange(of: router.pendingSearchQuery) { _, query in
+                if query != nil { consumeSearchRequest() }
+            }
+            .onAppear {
+                consumeFocusRequest()
+                consumeSearchRequest()
+            }
         }
         .searchable(text: $searchModel.fieldText, isPresented: $isSearching, prompt: SearchViewModel.placeholder)
         .searchFocused($fieldFocused)
@@ -69,6 +75,18 @@ struct SearchView: View {
             // presented with the keyboard down, only the focus change raises it.
             isSearching = true
             fieldFocused = true
+        }
+    }
+
+    /// Siri's search: show the results with the keyboard down.
+    private func consumeSearchRequest() {
+        guard let query = router.pendingSearchQuery else { return }
+        router.pendingSearchQuery = nil
+        Task {
+            // The tab switch must land before search can activate.
+            try? await Task.sleep(for: .milliseconds(150))
+            isSearching = true
+            searchModel.submit(query)
         }
     }
 }

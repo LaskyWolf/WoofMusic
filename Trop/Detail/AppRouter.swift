@@ -22,6 +22,8 @@ final class AppRouter: ObservableObject {
     @Published var selectedTabIndex = 0
     /// Set by the "Search" quick action; SearchView opens its field and clears it.
     @Published var focusSearchField = false
+    /// Set by Siri's search; SearchView submits it and clears it.
+    @Published var pendingSearchQuery: String?
 
     /// Last route opened from an overlay; ContentView listens to collapse the player.
     @Published private(set) var activeRoute: DetailRoute?

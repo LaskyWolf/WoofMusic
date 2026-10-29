@@ -4,6 +4,7 @@
 //
 
 import AppIntents
+import SwiftUI
 
 // Siri and Shortcuts actions. Phrases must contain the app's name; the
 // Info.plist adds "Woof Music" and "Woof" as alternative names so they don't
@@ -79,6 +80,24 @@ struct PlayMusicIntent: AudioPlaybackIntent {
     }
 }
 
+/// "Search in Woof Music", or "Search Woof Music for …": opens the Search tab
+/// with the results. The system search schema lets Siri and Spotlight pass
+/// the words spoken after "for" as the search term.
+@AppIntent(schema: .system.search)
+struct SearchMusicIntent: ShowInAppSearchResultsIntent {
+    static var searchScopes: [StringSearchScope] = [.general]
+    var criteria: StringSearchCriteria
+
+    @MainActor
+    func perform() async throws -> some IntentResult {
+        let router = AppRouter.shared
+        router.selectedTabIndex = 3
+        router.searchPath = NavigationPath()
+        router.pendingSearchQuery = criteria.term
+        return .result()
+    }
+}
+
 // PlayPauseIntent and NextSongIntent live in Shared/NowPlayingShared.swift:
 // the widget extension compiles them too.
 
@@ -110,6 +129,15 @@ struct WoofMusicShortcuts: AppShortcutsProvider {
                 "Search and play in \(.applicationName)"
             ],
             shortTitle: "Play a Song or Artist",
+            systemImageName: "magnifyingglass"
+        )
+        AppShortcut(
+            intent: SearchMusicIntent(),
+            phrases: [
+                "Search in \(.applicationName)",
+                "Search \(.applicationName)"
+            ],
+            shortTitle: "Search",
             systemImageName: "magnifyingglass"
         )
         AppShortcut(
