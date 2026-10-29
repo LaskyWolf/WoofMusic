@@ -178,6 +178,7 @@ struct LibraryView: View {
                         url: playlist.thumbnailUrl,
                         title: playlist.name,
                         subtitle: playlistSongCounts[playlist.id].map { "\($0) songs" },
+                        isPlaylist: true,
                         zoomRoute: route
                     )
                 }
@@ -393,12 +394,13 @@ struct LibraryView: View {
         title: String,
         subtitle: String?,
         detail: String? = nil,
+        isPlaylist: Bool = false,
         zoomRoute: DetailRoute? = nil
     ) -> some View {
         if isList {
             listRow(url: url, title: title, subtitle: subtitle, detail: detail, isCircular: false, zoomRoute: zoomRoute)
         } else {
-            MediaGridCell(thumbnailUrl: url, title: title, subtitle: subtitle, size: nil, opensPage: false, zoomRoute: zoomRoute)
+            MediaGridCell(thumbnailUrl: url, title: title, subtitle: subtitle, size: nil, opensPage: false, isPlaylist: isPlaylist, zoomRoute: zoomRoute)
         }
     }
 

@@ -27,7 +27,7 @@ struct SongActionsMenu<MenuLabel: View>: View {
     @ViewBuilder var label: () -> MenuLabel
 
     private enum Sheet: Identifiable {
-        case playlist, radio, details, similar, artists, sleepTimer, shareCard
+        case playlist, radio, details, similar, artists, sleepTimer, shareCard, shareSong
         var id: Self { self }
     }
 
@@ -45,11 +45,7 @@ struct SongActionsMenu<MenuLabel: View>: View {
             ControlGroup {
                 LikeMenuButton(song: song)
                 Button("Add to Playlist", systemImage: "text.badge.plus") { sheet = .playlist }
-                if let url = URL(string: song.webUrl) {
-                    ShareLink(item: url) {
-                        Label("Share", systemImage: "square.and.arrow.up")
-                    }
-                }
+                Button("Share", systemImage: "square.and.arrow.up") { sheet = .shareSong }
             }
             .controlGroupStyle(.compactMenu)
 
@@ -157,6 +153,8 @@ struct SongActionsMenu<MenuLabel: View>: View {
                 SleepTimerSheet()
             case .shareCard:
                 LyricShareComposer(videoId: song.videoId)
+            case .shareSong:
+                SongShareSheet(song: song)
             }
         }
     }

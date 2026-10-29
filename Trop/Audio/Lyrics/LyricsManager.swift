@@ -110,6 +110,11 @@ actor LyricsManager {
         let order: Int
         let lines: [LyricLine]
         let providerName: String
+
+        /// Lower wins. Line-timed lyrics beat plain text from any provider:
+        /// the player's lyric line and the synced view need timestamps.
+        var rank: Int { lines.contains { $0.startTime != nil } ? order : order + Self.plainTextPenalty }
+        static let plainTextPenalty = 1_000
     }
 
     func fetchLyricsReturningProvider(query: LyricsQuery) async throws -> ([LyricLine], providerName: String?) {
@@ -161,8 +166,9 @@ actor LyricsManager {
             while let item = await group.next() {
                 let (index, hit) = item
                 pending.remove(index)
-                if let hit, hit.order < (winner?.order ?? .max) { winner = hit }
-                if let found = winner, !pending.contains(where: { $0 < found.order }) {
+                if let hit, hit.rank < (winner?.rank ?? .max) { winner = hit }
+                // A pending provider's best possible rank is its order.
+                if let found = winner, !pending.contains(where: { $0 < found.rank }) {
                     group.cancelAll()
                     break
                 }

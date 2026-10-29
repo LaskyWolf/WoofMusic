@@ -3,31 +3,19 @@
 //  Compiled into both targets: the app (Trop) and the widget extension (WoofWidgets).
 //
 
-import ActivityKit
 import AppIntents
 import Foundation
 
-/// What the Live Activity and the Home Screen widget show about the current song.
+/// What the Home Screen widget shows about the current song.
 struct NowPlayingState: Codable, Hashable {
     var title: String
     var artist: String
     var isPlaying: Bool
     var isPodcast: Bool
-    /// Position when the state was made; a paused bar shows it.
-    var elapsed: Double
-    var duration: Double
-    /// When position 0 was (or would have been): a playing bar counts from here.
-    var startedAt: Date
     /// Dominant artwork color as 0xRRGGBB.
     var tint: UInt32?
-    /// JPEG cover. The Live Activity gets a tiny one: its whole payload must stay under 4 KB.
+    /// JPEG cover.
     var artwork: Data?
-
-    var endsAt: Date { startedAt.addingTimeInterval(duration) }
-}
-
-struct NowPlayingAttributes: ActivityAttributes {
-    typealias ContentState = NowPlayingState
 }
 
 /// The last song for the Home Screen widget, a JSON file in the App Group container.
@@ -59,7 +47,7 @@ enum WidgetSnapshot {
     }
 }
 
-// The widget and the Live Activity buttons use these intents, so both targets
+// The widget buttons use these intents, so both targets
 // compile them. iOS runs an AudioPlaybackIntent's perform() in the app process
 // (launching the app in the background when needed), so only the app's copy acts.
 

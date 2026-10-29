@@ -87,8 +87,6 @@ struct HomeScreenView: View {
     private var homescreenContent: some View {
         ScrollView {
             LazyVStack(spacing: 0) {
-                RecapHomeCard()
-
                 if let chips = viewModel.homePage?.chips, !chips.isEmpty {
                     ChipsRowView(
                         chips: chips,
@@ -297,6 +295,7 @@ struct HomeScreenView: View {
     private func mixedSection(_ section: HomeSection) -> some View {
         let queue = section.items.compactMap { if case .song(let s) = $0 { return s } else { return nil } }
         let hasPodcasts = section.items.contains { if case .podcast = $0 { return true } else { return false } }
+        let hasPlaylists = section.items.contains { if case .playlist = $0 { return true } else { return false } }
         // Podcast tiles glow below the row, so it must not clip them.
         return HorizontalSection(title: section.displayTitle, clipsContent: !hasPodcasts) {
             // Top-aligned, so captions line up when titles wrap to two lines.
@@ -304,11 +303,11 @@ struct HomeScreenView: View {
                 ForEach(section.items.indices, id: \.self) { i in
                     let item = section.items[i]
                     if case .song(let s) = item, !queue.isEmpty {
-                        YouTubeGridItemView(item: item, onTap: { handleSongTap(s, in: queue) })
+                        YouTubeGridItemView(item: item, onTap: { handleSongTap(s, in: queue) }, reservesPlaylistLift: hasPlaylists)
                     } else if case .podcast(let podcast) = item {
                         RadioDialTile(podcast: podcast) { handleItemTap(item) }
                     } else {
-                        YouTubeGridItemView(item: item, onTap: { handleItemTap(item) })
+                        YouTubeGridItemView(item: item, onTap: { handleItemTap(item) }, reservesPlaylistLift: hasPlaylists)
                     }
                 }
             }
@@ -318,11 +317,14 @@ struct HomeScreenView: View {
     /// Same taps as `mixedSection`: songs play within the section's songs, the rest route.
     private func keepListeningSection(_ section: HomeSection) -> some View {
         let queue = section.items.compactMap { if case .song(let s) = $0 { return s } else { return nil } }
-        return KeepListeningStrip(title: section.displayTitle, items: section.items) { item in
-            if case .song(let s) = item, !queue.isEmpty {
-                handleSongTap(s, in: queue)
-            } else {
-                handleItemTap(item)
+        // In a month's first week, last month's recap card takes this place.
+        return RecapHomeCard {
+            KeepListeningStrip(title: section.displayTitle, items: section.items) { item in
+                if case .song(let s) = item, !queue.isEmpty {
+                    handleSongTap(s, in: queue)
+                } else {
+                    handleItemTap(item)
+                }
             }
         }
         // Same gap under the chips as Library's shortcut tiles.

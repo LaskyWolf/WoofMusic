@@ -8,6 +8,8 @@
 import SwiftUI
 
 struct LyricsView: View {
+    /// Point size of a lyric line.
+    static let lineFontSize: Double = 18
     private let np = NowPlaying.shared
     private let player = PlayerController.shared
     @Environment(SettingsStore.self) private var settings
@@ -40,8 +42,6 @@ struct LyricsView: View {
     /// chrome (title, provider caption) steps aside.
     private var isKaraoke: Bool { karaokeEnabled && LyricsState.shared.hasWordTiming }
 
-    /// Bumped on each karaoke start or stop; plays the mascot greeting.
-    @State private var countdownTrigger = 0
     /// Bumped on each karaoke start; the lines cascade in from below.
     @State private var cascadeTrigger = 0
     /// Karaoke started before the lines loaded: they cascade when they arrive.
@@ -57,7 +57,6 @@ struct LyricsView: View {
                 .layoutPriority(1)
         }
         .background { LyricsTimeTracker(onTimeChange: updateActiveLine) }
-        .overlay { KaraokeCountdownOverlay(trigger: countdownTrigger, isOn: isKaraoke) }
         .onAppear { if isKaraoke { karaokeDidChange() } }
         .onChange(of: isKaraoke) { _, _ in karaokeDidChange() }
         .onChange(of: lines.isEmpty) { _, isEmpty in
@@ -83,7 +82,8 @@ struct LyricsView: View {
     /// so closing from karaoke shows no goodbye.
     private func karaokeDidChange() {
         guard !reduceMotion else { return }
-        countdownTrigger += 1
+        LyricsState.shared.karaokeGreetingIsOn = isKaraoke
+        LyricsState.shared.karaokeGreeting += 1
         if !isKaraoke {
             cascadePending = false
         } else if lines.isEmpty {
@@ -143,9 +143,7 @@ struct LyricsView: View {
     // MARK: - Lyrics Content
 
     private var lyricsContentView: some View {
-        // Read here, not only inside the ForEach rows, so a new size from
-        // Appearance always redraws the lines.
-        let fontSize = settings.lyricsFontSize
+        let fontSize = Self.lineFontSize
         return ZStack(alignment: .bottom) {
             GeometryReader { geo in
                 ScrollViewReader { proxy in

@@ -374,7 +374,8 @@ final class HomeViewModel {
                 return nil
             }
             let f = applyFilters(section)
-            if case .quickPicks = f { return f }
+            // Kept while empty: pinned songs fill it. Off hides pinned songs too.
+            if case .quickPicks = f { return SettingsStore.shared.showQuickPicks ? f : nil }
             return f.items.isEmpty ? nil : f
         }
 

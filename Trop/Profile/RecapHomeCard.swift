@@ -5,16 +5,20 @@
 
 import SwiftUI
 
-/// Card at the top of Home during the first week of a month, opening last
-/// month's Woof Recap. Hidden when last month has no history; ✕ hides it for that month.
-struct RecapHomeCard: View {
+/// Takes Keep Listening's place on Home during the first week of a month,
+/// opening last month's Woof Recap. `fallback` (Keep Listening) shows instead
+/// when last month has no history, play history is off, or ✕ hid the card for that month.
+struct RecapHomeCard<Fallback: View>: View {
+    @ViewBuilder let fallback: Fallback
+
+    @Environment(SettingsStore.self) private var settings
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage("recap.dismissedMonth") private var dismissedMonth = ""
     @State private var hasHistory = false
     @State private var showsRecap = false
 
     /// Days at the start of a month that the card shows.
-    static let visibleDays = 7
+    static var visibleDays: Int { 7 }
 
     private let interval = RecapService.lastMonth()
 
@@ -28,17 +32,20 @@ struct RecapHomeCard: View {
         Calendar.current.component(.day, from: Date()) <= Self.visibleDays
     }
 
+    private var showsCard: Bool {
+        isInWindow && hasHistory && dismissedMonth != monthKey && settings.trackPlayHistory
+    }
+
     var body: some View {
         VStack(spacing: 0) {
-            if isInWindow, hasHistory, dismissedMonth != monthKey {
+            if showsCard {
                 card
                     .padding(.horizontal, DesignTokens.screenHPadding)
-                    .padding(.top, 4)
                     .padding(.bottom, DesignTokens.sectionGap)
                     .transition(.opacity)
             } else {
-                // Keeps a view in place so `.task` runs while the card is hidden.
-                Color.clear.frame(height: 0)
+                fallback
+                    .transition(.opacity)
             }
         }
         .task {

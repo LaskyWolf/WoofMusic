@@ -36,6 +36,10 @@ final class LyricsState {
     var refreshToken: Int = 0
     /// The lyrics on screen have word-level timing, so karaoke can run.
     var hasWordTiming = false
+    /// Bumped on each karaoke start or stop; the player's play button greets it.
+    var karaokeGreeting = 0
+    /// Karaoke after the last change: on plays the countdown, off the goodbye.
+    var karaokeGreetingIsOn = false
 
     /// UserDefaults key of the karaoke toggle in the lyrics menu.
     nonisolated static let karaokeEnabledKey = "settings.lyricsKaraoke"

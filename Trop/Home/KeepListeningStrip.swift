@@ -167,28 +167,16 @@ struct KeepListeningStrip: View {
                 .clipShape(Circle())
                 .overlay(Circle().strokeBorder(Self.cardColor, lineWidth: 2))
         case .playlist:
-            ZStack(alignment: .bottom) {
-                Self.playlistEdge(inset: 12, color: Color(.systemGray4))
-                    .offset(y: -2 * Self.playlistEdgeStep)
-                Self.playlistEdge(inset: 6, color: Color(.systemGray2))
-                    .offset(y: -Self.playlistEdgeStep)
-                image
-                    .clipShape(shape)
-                    .overlay(shape.strokeBorder(Self.cardColor, lineWidth: 2))
-            }
-            .frame(height: Self.coverSize + Self.playlistLift, alignment: .bottom)
+            image
+                .clipShape(shape)
+                .overlay(shape.strokeBorder(Self.cardColor, lineWidth: 2))
+                .playlistEdges(step: Self.playlistEdgeStep, inset: 6, cornerRadius: Self.coverRadius - 2)
+                .frame(height: Self.coverSize + Self.playlistLift, alignment: .bottom)
         default:
             image
                 .clipShape(shape)
                 .overlay(shape.strokeBorder(Self.cardColor, lineWidth: 2))
         }
-    }
-
-    /// A card behind a playlist cover, `inset` narrower on each side.
-    private static func playlistEdge(inset: CGFloat, color: Color) -> some View {
-        RoundedRectangle(cornerRadius: coverRadius - 2, style: .continuous)
-            .fill(color)
-            .frame(width: coverSize - inset * 2, height: coverSize)
     }
 
     private func toggle() {

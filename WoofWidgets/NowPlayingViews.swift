@@ -23,12 +23,6 @@ extension NowPlayingState {
         if isPodcast { return isPlaying ? "mic.fill" : "mic.slash.fill" }
         return isPlaying ? "pause.fill" : "play.fill"
     }
-
-    /// What the compact Dynamic Island shows next to the cover.
-    var stateSymbol: String {
-        if isPodcast { return isPlaying ? "mic.fill" : "mic.slash.fill" }
-        return isPlaying ? "waveform" : "pause.fill"
-    }
 }
 
 struct ArtworkView: View {
@@ -93,40 +87,5 @@ struct PlaybackButtons: View {
         .buttonStyle(.plain)
         .font(.title2)
         .foregroundStyle(.white)
-    }
-}
-
-/// A bar that the system animates on its own while playing; static when paused.
-struct SongProgress: View {
-    let state: NowPlayingState
-
-    var body: some View {
-        if state.duration > 0 {
-            HStack(spacing: 8) {
-                Group {
-                    if state.isPlaying {
-                        ProgressView(timerInterval: state.startedAt...state.endsAt, countsDown: false) {
-                            EmptyView()
-                        } currentValueLabel: {
-                            EmptyView()
-                        }
-                    } else {
-                        ProgressView(value: min(state.elapsed, state.duration), total: state.duration)
-                    }
-                }
-                .progressViewStyle(.linear)
-                .tint(state.tintColor)
-
-                Text(
-                    timerInterval: state.startedAt...state.endsAt,
-                    pauseTime: state.isPlaying ? nil : state.startedAt.addingTimeInterval(state.elapsed),
-                    countsDown: true
-                )
-                .font(.caption2.monospacedDigit())
-                .foregroundStyle(.white.opacity(0.7))
-                .multilineTextAlignment(.trailing)
-                .frame(width: 52, alignment: .trailing)
-            }
-        }
     }
 }

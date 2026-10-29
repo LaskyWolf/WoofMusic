@@ -97,7 +97,8 @@ final class HistoryViewModel {
 
     // MARK: - Remote history parse
 
-    private static func parseRemoteHistory(from json: [String: Any]) -> [(title: String, songs: [SongItem])] {
+    /// Also read by the Woof Recap, so it is not tied to the main actor.
+    nonisolated static func parseRemoteHistory(from json: [String: Any]) -> [(title: String, songs: [SongItem])] {
         guard let contents = json["contents"] as? [String: Any] else {
             Log.historyView.debug("No 'contents' in response, keys: \(json.keys.sorted())")
             return []
@@ -135,7 +136,7 @@ final class HistoryViewModel {
         return sections
     }
 
-    private static func extractShelfTitle(_ shelf: [String: Any]) -> String? {
+    private nonisolated static func extractShelfTitle(_ shelf: [String: Any]) -> String? {
         guard let titleDict = shelf["title"] as? [String: Any],
               let runs = titleDict["runs"] as? [[String: Any]],
               let first = runs.first,

@@ -514,6 +514,7 @@ struct ArtistDetailView: View {
                         thumbnailUrl: playlist.thumbnailUrl,
                         title: playlist.title,
                         subtitle: playlistSubtitle(playlist.author),
+                        isPlaylist: true,
                         zoomRoute: route
                     )
                 }

@@ -208,10 +208,6 @@ final class SettingsStore {
 
     // MARK: - Lyrics appearance
 
-    var lyricsFontSize: Double {
-        didSet { Self.defaults.set(lyricsFontSize, forKey: Keys.lyricsFontSize) }
-    }
-
     var lyricsAlignment: LyricsAlignment {
         didSet { Self.defaults.set(lyricsAlignment.rawValue, forKey: Keys.lyricsAlignment) }
     }
@@ -402,7 +398,6 @@ final class SettingsStore {
         static let playerBackgroundStyle = "settings.playerBackgroundStyle"
         static let playerStyle = "settings.playerStyle"
         static let defaultTab = "settings.defaultTab"
-        static let lyricsFontSize = "settings.lyricsFontSize"
         static let lyricsAlignment = "settings.lyricsAlignment"
         static let lyricsOffsetSeconds = "settings.lyricsOffsetSeconds"
         static let showIntervalIndicator = "settings.showIntervalIndicator"
@@ -469,7 +464,6 @@ final class SettingsStore {
         playerStyle = Self.loadEnum(Keys.playerStyle, default: .immersive)
         defaultTab = Self.load(Keys.defaultTab, default: 0)
         libraryLayout = Self.loadEnum(Keys.libraryLayout, default: .grid)
-        lyricsFontSize = Self.load(Keys.lyricsFontSize, default: 17)
         lyricsAlignment = Self.loadEnum(Keys.lyricsAlignment, default: .center)
         lyricsOffsetSeconds = Self.load(Keys.lyricsOffsetSeconds, default: 0)
         showIntervalIndicator = Self.load(Keys.showIntervalIndicator, default: true)

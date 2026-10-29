@@ -351,3 +351,88 @@ struct LyricStickerCard: View {
             .background(Self.paper.opacity(0.9), in: Capsule())
     }
 }
+
+// MARK: - Song share
+
+/// The song menu's Share: the Sticker card without lines, shared as an image
+/// with the song link as its message, or the link on its own.
+struct SongShareSheet: View {
+    let song: SongItem
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var rendered: UIImage?
+    @State private var didFail = false
+
+    private var link: URL? { URL(string: song.webUrl) }
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 12) {
+                if let rendered {
+                    let image = Image(uiImage: rendered)
+                    image
+                        .resizable()
+                        .scaledToFit()
+                        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                        .shadow(color: .black.opacity(0.3), radius: 16, y: 8)
+                        .frame(maxHeight: .infinity)
+                        .accessibilityLabel("Share card: \(song.title) by \(song.artistNamesDisplay)")
+                        .padding(.bottom, 8)
+
+                    ShareLink(
+                        item: image,
+                        message: link.map { Text(verbatim: $0.absoluteString) },
+                        preview: SharePreview(song.title, image: image)
+                    ) {
+                        Label("Share Card", systemImage: "square.and.arrow.up")
+                            .font(.headline)
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
+                } else if didFail {
+                    ContentUnavailableView("Card unavailable", systemImage: "photo", description: Text("The cover couldn't be loaded."))
+                } else {
+                    ProgressView()
+                        .frame(maxHeight: .infinity)
+                }
+
+                if let link {
+                    ShareLink(item: link) {
+                        Label("Share Link Only", systemImage: "link")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.large)
+                }
+            }
+            .padding(.horizontal, 24)
+            .padding(.vertical, 16)
+            .navigationTitle("Share Song")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+            }
+        }
+        .task { await render() }
+    }
+
+    /// ImageRenderer can't wait for async images, so the cover is loaded first.
+    private func render() async {
+        let address = song.thumbnailUrl.map { ArtworkURLs.highRes($0) ?? $0 }
+        guard let url = address.flatMap(URL.init(string:)),
+              let cover = try? await ArtworkLoader.image(for: url) else {
+            didFail = true
+            return
+        }
+        let colors = await Task.detached(priority: .userInitiated) { cover.extractDominantColors() }.value
+        let renderer = ImageRenderer(content: LyricStickerCard(
+            lines: [], title: SongTitle.display(song.title), artist: song.artistNamesDisplay, cover: cover, colors: colors
+        ))
+        renderer.scale = 1080 / LyricStickerCard.size.width
+        rendered = renderer.uiImage
+        didFail = rendered == nil
+    }
+}

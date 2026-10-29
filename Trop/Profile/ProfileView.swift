@@ -53,7 +53,13 @@ struct ProfileView: View {
                 }
             } header: {
                 Text("Woof Recap")
+            } footer: {
+                if !settings.trackPlayHistory {
+                    Text("Turn on Track Play History in Settings to build your recap.")
+                }
             }
+            // The recap is built from play history.
+            .disabled(!settings.trackPlayHistory)
 
             Section {
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 3), spacing: 16) {

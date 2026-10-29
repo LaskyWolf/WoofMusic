@@ -108,14 +108,17 @@ enum RecapService {
     static let streakDays = 7
     static let explorerArtists = 50
     static let podcastSageHours = 10
+    /// Length counted for a YouTube history song that came without one.
+    static let unknownSongSeconds = 180
 
     /// Stats for `interval`; nil when the database can't be read.
     static func compute(for interval: DateInterval) async -> RecapStats? {
         let calendar = Calendar.current
+        let remote = await remoteHistory(in: interval, calendar: calendar)
         do {
             return try await DatabaseService.shared.read { db in
                 let plays = try fetchPlays(before: interval.end, calendar: calendar, db: db)
-                return try stats(plays: plays, interval: interval, calendar: calendar, db: db)
+                return try stats(plays: plays, remote: remote, interval: interval, calendar: calendar, db: db)
             }
         } catch {
             Log.db.error("Recap failed: \(error)")
@@ -136,7 +139,8 @@ enum RecapService {
         }
     }
 
-    /// Whether anything was played in `interval`.
+    /// Whether anything was played in `interval`, on this iPhone or in the
+    /// account's YouTube Music history.
     static func hasHistory(in interval: DateInterval) async -> Bool {
         let found = try? await DatabaseService.shared.read { db in
             try Bool.fetchOne(
@@ -145,7 +149,60 @@ enum RecapService {
                 arguments: [interval.start, interval.end]
             ) ?? false
         }
-        return found ?? false
+        if found == true { return true }
+        return await !remoteHistory(in: interval, calendar: .current).isEmpty
+    }
+
+    // MARK: - YouTube Music history
+
+    /// A song from the account's YouTube Music history, dated by its shelf.
+    struct RemotePlay: Sendable {
+        let song: SongItem
+        let date: Date
+    }
+
+    /// The account's YouTube Music history inside `interval`; empty when signed
+    /// out or offline. It covers plays on other devices too.
+    static func remoteHistory(in interval: DateInterval, calendar: Calendar, now: Date = Date()) async -> [RemotePlay] {
+        guard let json = try? await InnerTubeClient.tropShared.browse(browseId: "FEmusic_history") else { return [] }
+        return HistoryViewModel.parseRemoteHistory(from: json).flatMap { shelf -> [RemotePlay] in
+            guard let date = shelfDate(shelf.title, now: now, calendar: calendar), interval.contains(date) else { return [] }
+            return shelf.songs.map { RemotePlay(song: $0, date: date) }
+        }
+    }
+
+    // ponytail: YouTube dates its history only by shelf ("Today", "Last week",
+    // "September"), so each song gets one day inside its shelf's period and
+    // counts as one play; a recap near a month's edge can be off by a few days.
+    /// A day inside the period a history shelf covers. Requests use `hl=en`,
+    /// so the titles are English. nil for a title it can't place.
+    static func shelfDate(_ title: String, now: Date, calendar: Calendar) -> Date? {
+        let today = calendar.startOfDay(for: now)
+        func daysAgo(_ days: Int) -> Date? { calendar.date(byAdding: .day, value: -days, to: today) }
+        switch title.lowercased() {
+        case "today": return today
+        case "yesterday": return daysAgo(1)
+        case "this week": return daysAgo(2)
+        case "last week": return daysAgo(7)
+        case "this month": return daysAgo(14)
+        case "last month": return calendar.date(byAdding: .month, value: -1, to: today)
+        default:
+            let formatter = DateFormatter()
+            formatter.locale = Locale(identifier: "en_US_POSIX")
+            for format in ["MMMM yyyy", "MMMM"] {
+                formatter.dateFormat = format
+                guard let parsed = formatter.date(from: title) else { continue }
+                var parts = calendar.dateComponents([.year, .month], from: parsed)
+                if format == "MMMM" {
+                    // "September" alone is the most recent September.
+                    let thisYear = calendar.component(.year, from: now)
+                    parts.year = (parts.month ?? 0) > calendar.component(.month, from: now) ? thisYear - 1 : thisYear
+                }
+                parts.day = 15
+                return calendar.date(from: parts)
+            }
+            return nil
+        }
     }
 
     // MARK: - Periods
@@ -207,8 +264,27 @@ enum RecapService {
             }
     }
 
-    private static func stats(plays: [Play], interval: DateInterval, calendar: Calendar, db: Database) throws -> RecapStats {
-        let inPeriod = plays.filter { $0.date >= interval.start }
+    private static func stats(
+        plays: [Play], remote: [RemotePlay], interval: DateInterval, calendar: Calendar, db: Database
+    ) throws -> RecapStats {
+        let local = plays.filter { $0.date >= interval.start }
+        // A song this iPhone played in the period is already counted: YouTube
+        // history lists the app's own plays too.
+        let localIds = Set(local.map(\.songId))
+        let remoteSongs = Dictionary(remote.map { ($0.song.videoId, $0.song) }, uniquingKeysWith: { first, _ in first })
+        // Badges read local plays only (`plays`): a history song's hour is unknown.
+        let remotePlays = remote.filter { !localIds.contains($0.song.videoId) }.map { entry in
+            Play(
+                songId: entry.song.videoId,
+                date: entry.date,
+                day: calendar.startOfDay(for: entry.date),
+                hour: 12,
+                ms: Int64(entry.song.duration > 0 ? entry.song.duration : Self.unknownSongSeconds) * 1000,
+                artist: entry.song.artists.first?.name,
+                isEpisode: entry.song.musicVideoType == "MUSIC_VIDEO_TYPE_PODCAST_EPISODE"
+            )
+        }
+        let inPeriod = local + remotePlays
         let totalMs = inPeriod.reduce(Int64(0)) { $0 + $1.ms }
 
         let dayCount = max(1, calendar.dateComponents([.day], from: interval.start, to: interval.end).day ?? 1)
@@ -244,6 +320,8 @@ enum RecapService {
         let topSong = topSongId.flatMap { id in
             songs[id].map {
                 RecapStats.Song(id: id, title: $0.title, artist: $0.artistName, thumbnailUrl: $0.thumbnailUrl, plays: songPlays[id] ?? 0)
+            } ?? remoteSongs[id].map {
+                RecapStats.Song(id: id, title: $0.title, artist: $0.artists.first?.name, thumbnailUrl: $0.thumbnailUrl, plays: songPlays[id] ?? 0)
             }
         }
         let topArtists = try topArtistNames.map { name in
@@ -252,7 +330,7 @@ enum RecapService {
                 sql: "SELECT thumbnail_url FROM artist WHERE name = ? AND thumbnail_url IS NOT NULL LIMIT 1",
                 arguments: [name]
             )
-            let songCover = artistTopSong[name].flatMap { songs[$0]?.thumbnailUrl }
+            let songCover = artistTopSong[name].flatMap { songs[$0]?.thumbnailUrl ?? remoteSongs[$0]?.thumbnailUrl }
             return RecapStats.Artist(
                 name: name,
                 minutes: Int((artistMs[name] ?? 0) / 60_000),

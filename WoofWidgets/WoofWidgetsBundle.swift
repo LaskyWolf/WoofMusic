@@ -10,7 +10,6 @@ import WidgetKit
 struct WoofWidgetsBundle: WidgetBundle {
     var body: some Widget {
         NowPlayingWidget()
-        NowPlayingLiveActivity()
     }
 }
 

@@ -154,12 +154,13 @@ struct FullPlayerView: View {
                     PlayerProgressSection(showsSpeedDial: $showsSpeedDial)
                         .padding(.bottom, 16)
 
-                    // Takes its room from the cover area above.
+                    // Takes its room from the cover area above, and grows out of
+                    // the speed chip: its top centre sits right under the chip.
                     if showsSpeedDial {
                         PlaybackSpeedDial()
                             .padding(.horizontal, 22)
                             .padding(.bottom, 12)
-                            .transition(reduceMotion ? .opacity : .move(edge: .top).combined(with: .opacity))
+                            .transition(reduceMotion ? .opacity : .scale(scale: 0.08, anchor: .top).combined(with: .opacity))
                             .accessibilityAction(.escape) { showsSpeedDial = false }
                     }
 
@@ -173,6 +174,13 @@ struct FullPlayerView: View {
                         onPlayPause: { player.togglePlayPause() },
                         onNext: { np.playNext() }
                     )
+                    // The karaoke mascot pops out of the play button.
+                    .overlay {
+                        KaraokeCountdownOverlay(
+                            trigger: LyricsState.shared.karaokeGreeting,
+                            isOn: LyricsState.shared.karaokeGreetingIsOn
+                        )
+                    }
                     .padding(.bottom, 8)
 
                     PlayerVolumeSlider()
@@ -207,7 +215,7 @@ struct FullPlayerView: View {
             .animation(.easeInOut(duration: reduceMotion ? 0.15 : 0.25), value: showQueue)
             .animation(.easeInOut(duration: reduceMotion ? 0.15 : 0.25), value: showLyrics)
             .animation(.easeInOut(duration: reduceMotion ? 0.15 : 0.25), value: showsKaraoke)
-            .animation(.easeInOut(duration: reduceMotion ? 0.15 : 0.3), value: showsSpeedDial)
+            .animation(reduceMotion ? .easeInOut(duration: 0.15) : .spring(duration: 0.42, bounce: 0.22), value: showsSpeedDial)
             .offset(y: pullDistance)
             .gesture(pullToDismiss(height: geometry.size.height))
             // Outside the pull offset; it is torn down with the player.
