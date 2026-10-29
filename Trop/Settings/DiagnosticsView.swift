@@ -141,10 +141,10 @@ struct DiagnosticsSection: Identifiable {
 
     /// What the signing tool's provisioning profile allows, read from the app.
     private static func signing() -> DiagnosticsSection {
-        guard let profile = provisioningProfile() else {
+        guard let profile = ProvisioningProfile.contents else {
             return DiagnosticsSection(title: "Signing", rows: [Row(label: "Profile", value: "None (ad-hoc or unsigned)")])
         }
-        let entitlements = profile["Entitlements"] as? [String: Any] ?? [:]
+        let entitlements = ProvisioningProfile.entitlements
         func list(_ key: String) -> String {
             let values = entitlements[key] as? [String] ?? []
             return values.isEmpty ? "None" : values.joined(separator: ", ")
@@ -167,7 +167,6 @@ struct DiagnosticsSection: Identifiable {
         let keychainStatus = keychain.status == errSecSuccess
             ? "OK"
             : "\(keychain.status) \(SecCopyErrorMessageString(keychain.status, nil) as String? ?? "")"
-        let appGroup = WidgetStore.fileURL("") != nil
         func ping(_ file: String) -> String {
             guard let ping = WidgetStore.read(WidgetPing.self, from: file) else { return "Never" }
             return "\(ping.date.formatted(.relative(presentation: .named))), build \(ping.build)"
@@ -177,7 +176,7 @@ struct DiagnosticsSection: Identifiable {
         }
         return DiagnosticsSection(title: "Widgets", rows: [
             Row(label: "Storage", value: WidgetStore.backend.rawValue),
-            Row(label: "App Group Container", value: appGroup ? "Available" : "Missing"),
+            Row(label: "App Group Container", value: WidgetStore.groupId ?? "Missing"),
             Row(label: "Keychain Team", value: SharedKeychain.teamId ?? "Unknown"),
             Row(label: "Keychain Group", value: keychainStatus),
             Row(label: "Pasteboard", value: pasteboardRoundTrip() ? "OK" : "Failed"),
@@ -204,16 +203,6 @@ struct DiagnosticsSection: Identifiable {
     private static var widgetBundleId: String? {
         guard let plugins = Bundle.main.builtInPlugInsURL else { return nil }
         return Bundle(url: plugins.appendingPathComponent("WoofWidgets.appex"))?.bundleIdentifier
-    }
-
-    /// The plist inside embedded.mobileprovision, a signed CMS wrapper around it.
-    private static func provisioningProfile() -> [String: Any]? {
-        guard let url = Bundle.main.url(forResource: "embedded", withExtension: "mobileprovision"),
-              let data = try? Data(contentsOf: url),
-              let start = data.range(of: Data("<?xml".utf8)),
-              let end = data.range(of: Data("</plist>".utf8), in: start.lowerBound..<data.endIndex) else { return nil }
-        let plist = data.subdata(in: start.lowerBound..<end.upperBound)
-        return try? PropertyListSerialization.propertyList(from: plist, format: nil) as? [String: Any]
     }
 
     private static func pasteboardRoundTrip() -> Bool {

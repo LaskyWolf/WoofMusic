@@ -570,7 +570,7 @@ struct LibraryView: View {
 
 // MARK: - New Playlist Sheet
 
-/// System-style form for creating a playlist, local or synced.
+/// Creating a playlist, local or synced: the Edit Playlist sheet's header and switch.
 struct NewPlaylistSheet: View {
     let onCreated: () async -> Void
 
@@ -583,44 +583,46 @@ struct NewPlaylistSheet: View {
     /// Set once the playlist exists, so a failed cover upload retries only
     /// the cover instead of creating a second playlist.
     @State private var createdId: String?
-    @FocusState private var isFocused: Bool
 
     private var trimmedName: String { name.trimmingCharacters(in: .whitespaces) }
 
     var body: some View {
         NavigationStack {
-            Form {
-                Section {
-                    PlaylistCoverPicker(image: $coverImage, onRemove: coverImage == nil ? nil : { coverImage = nil })
-                }
-                .listRowBackground(Color.clear)
-
-                Section {
-                    TextField("Playlist Name", text: $name)
-                        .focused($isFocused)
-                        .submitLabel(.done)
-                        .onSubmit(create)
-                }
-
-                Section {
-                    Toggle("Sync with YouTube Music", isOn: $syncWithYouTube)
-                        .disabled(createdId != nil)
-                } footer: {
-                    Text("Synced playlists live in your YouTube Music account. This can't be changed later.")
-                }
-
-                if let error {
+            VStack(spacing: 0) {
+                PlaylistEditHeader(
+                    name: $name,
+                    coverImage: $coverImage,
+                    currentUrl: nil,
+                    canRemoveCover: coverImage != nil,
+                    onRemoveCover: { coverImage = nil },
+                    startsEditing: true
+                )
+                .fixedSize(horizontal: false, vertical: true)
+                Form {
                     Section {
-                        Label(error.localizedDescription, systemImage: "exclamationmark.circle")
-                            .foregroundStyle(.red)
+                        Toggle("Sync with YouTube Music", isOn: $syncWithYouTube)
+                            .disabled(createdId != nil)
+                    } footer: {
+                        Text("Synced playlists live in your YouTube Music account. This can't be changed later.")
+                    }
+
+                    if let error {
+                        Section {
+                            Label(error.localizedDescription, systemImage: "exclamationmark.circle")
+                                .foregroundStyle(.red)
+                        }
                     }
                 }
+                .scrollContentBackground(.hidden)
             }
+            .background(alignment: .top) { PlaylistEditBackdrop(coverImage: coverImage, currentUrl: nil) }
+            .background(Color(.systemGroupedBackground))
             .navigationTitle("New Playlist")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
+                        .disabled(isCreating)
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     if isCreating {
@@ -632,9 +634,9 @@ struct NewPlaylistSheet: View {
                 }
             }
         }
-        .presentationDetents([.large])
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
         .interactiveDismissDisabled(isCreating)
-        .onAppear { isFocused = true }
     }
 
     private func create() {

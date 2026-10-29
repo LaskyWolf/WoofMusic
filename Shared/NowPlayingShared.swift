@@ -117,20 +117,35 @@ enum WidgetStore {
 
     /// The first place this signature allows; both sides pick the same one when signed alike.
     static var backend: Backend {
-        if fileURL("") != nil { return .appGroup }
+        if groupId != nil { return .appGroup }
         if SharedKeychain.group != nil { return .keychain }
         return .pasteboard
     }
 
     private static let extensionSuffix = ".WoofWidgets"
 
-    /// "group." + the app's bundle id, read at runtime so it follows a bundle id
-    /// that a sideloading tool renamed.
+    /// The App Group in use: "group." + the app's bundle id (read at runtime, so it
+    /// follows a renamed bundle id), else the first of the provisioning profile's
+    /// own groups, which some signing services hand out in place of the app's.
+    /// Each candidate is tried with a write, so a container the signature doesn't cover is skipped.
+    static let groupId: String? = {
+        var candidates: [String] = []
+        if var id = Bundle.main.bundleIdentifier {
+            if id.hasSuffix(extensionSuffix) { id.removeLast(extensionSuffix.count) }
+            candidates.append("group." + id)
+        }
+        // Sorted, so the app and the widgets settle on the same one.
+        candidates += ProvisioningProfile.appGroups.sorted()
+        return candidates.first { group in
+            guard let url = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: group) else { return false }
+            return (try? Data().write(to: url.appendingPathComponent(".probe"))) != nil
+        }
+    }()
+
     static func fileURL(_ name: String) -> URL? {
-        guard var id = Bundle.main.bundleIdentifier else { return nil }
-        if id.hasSuffix(extensionSuffix) { id.removeLast(extensionSuffix.count) }
+        guard let groupId else { return nil }
         return FileManager.default
-            .containerURL(forSecurityApplicationGroupIdentifier: "group." + id)?
+            .containerURL(forSecurityApplicationGroupIdentifier: groupId)?
             .appendingPathComponent(name)
     }
 
@@ -164,6 +179,30 @@ enum WidgetStore {
         let info = Bundle.main.infoDictionary
         let version = info?["CFBundleShortVersionString"] as? String ?? "?"
         return "\(version) (\(info?["CFBundleVersion"] as? String ?? "?"))"
+    }
+}
+
+/// The plist inside the app's embedded.mobileprovision (a signed CMS wrapper
+/// around it): what the signing tool's profile allows.
+enum ProvisioningProfile {
+    static let contents: [String: Any]? = {
+        // A widget reads the copy in the app around it: PlugIns/<widget>.appex sits two levels down.
+        let appURL = Bundle.main.bundleURL.pathExtension == "appex"
+            ? Bundle.main.bundleURL.deletingLastPathComponent().deletingLastPathComponent()
+            : Bundle.main.bundleURL
+        guard let data = try? Data(contentsOf: appURL.appendingPathComponent("embedded.mobileprovision")),
+              let start = data.range(of: Data("<?xml".utf8)),
+              let end = data.range(of: Data("</plist>".utf8), in: start.lowerBound..<data.endIndex) else { return nil }
+        let plist = data.subdata(in: start.lowerBound..<end.upperBound)
+        return try? PropertyListSerialization.propertyList(from: plist, format: nil) as? [String: Any]
+    }()
+
+    static var entitlements: [String: Any] {
+        contents?["Entitlements"] as? [String: Any] ?? [:]
+    }
+
+    static var appGroups: [String] {
+        entitlements["com.apple.security.application-groups"] as? [String] ?? []
     }
 }
 
