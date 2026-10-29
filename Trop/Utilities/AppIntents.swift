@@ -95,6 +95,7 @@ struct SearchMusicIntent: ShowInAppSearchResultsIntent {
     @MainActor
     func perform() async throws -> some IntentResult {
         let router = AppRouter.shared
+        router.collapsePlayer()
         router.selectedTabIndex = 3
         router.searchPath = NavigationPath()
         router.pendingSearchQuery = criteria.term

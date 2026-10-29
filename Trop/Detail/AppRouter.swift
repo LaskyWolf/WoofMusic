@@ -27,9 +27,9 @@ final class AppRouter {
     /// Set by Siri's search; SearchView submits it and clears it.
     var pendingSearchQuery: String?
 
-    /// Bumped on every `open(_:)`; ContentView collapses the player so the
-    /// pushed page is visible. A counter, so opening the same route twice still fires.
-    private(set) var routeOpenToken = 0
+    /// Bumped by `collapsePlayer()`; ContentView closes the full player. A
+    /// counter, so opening the same route twice still fires.
+    private(set) var playerCollapseToken = 0
 
     private(set) var playerExpandToken = 0
 
@@ -80,6 +80,12 @@ final class AppRouter {
         playerExpandToken += 1
     }
 
+    /// Closes the full player, so a page or tab opened from outside it
+    /// (quick action, Siri, widget link) is visible.
+    func collapsePlayer() {
+        playerCollapseToken += 1
+    }
+
     func open(_ route: DetailRoute) {
         switch selectedTabIndex {
         case 1: libraryPath.append(route)
@@ -87,11 +93,11 @@ final class AppRouter {
         case 3: searchPath.append(route)
         default: homePath.append(route)
         }
-        routeOpenToken += 1
+        collapsePlayer()
     }
 
     /// Opens `route` in a sheet over the Big Player instead of pushing it.
-    /// Doesn't bump `routeOpenToken`, so the player isn't collapsed.
+    /// Doesn't call `collapsePlayer()`, so the player stays open.
     func presentSheet(_ route: DetailRoute) {
         sheetRoute = route
     }

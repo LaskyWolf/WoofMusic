@@ -65,11 +65,7 @@ struct ContentView: View {
                 .accessibilityAction(.escape, collapsePlayer)
             }
         .onAppear { QuickAction.performPending() }
-        .onChange(of: router.routeOpenToken) {
-            // A detail page was opened from an overlay: collapse the player so
-            // the pushed page is visible underneath.
-            collapsePlayer()
-        }
+        .onChange(of: router.playerCollapseToken) { collapsePlayer() }
         .onChange(of: router.playerExpandToken) { expandPlayer() }
         .onChange(of: nowPlaying.isBarPresented) { _, presented in
             if !presented { collapsePlayer() }

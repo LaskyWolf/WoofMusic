@@ -99,7 +99,7 @@ import UIKit
 }
 @Observable @MainActor final class AppRouter {
     static let shared = AppRouter()
-    var routeOpenToken = 0
+    var playerCollapseToken = 0
     var playerExpandToken = 0
     var selectedTabIndex = 0
     var activePathDepth = 0
@@ -188,7 +188,7 @@ struct CheckRoot: View {
                     SurfaceProbe.trace("Expansion requested")
                     for _ in 0..<3 {
                         try? await Task.sleep(for: .milliseconds(120))
-                        AppRouter.shared.routeOpenToken += 1
+                        AppRouter.shared.playerCollapseToken += 1
                         try? await Task.sleep(for: .milliseconds(120))
                         AppRouter.shared.playerExpandToken += 1
                     }
@@ -198,12 +198,12 @@ struct CheckRoot: View {
                     await SurfaceProbe.report(mode + "-expanded")
                     try? await Task.sleep(for: .seconds(2))
                     SurfaceProbe.trace("Request collapse")
-                    AppRouter.shared.routeOpenToken += 1
+                    AppRouter.shared.playerCollapseToken += 1
                     SurfaceProbe.trace("Collapse requested")
                     try? await Task.sleep(for: .milliseconds(120))
                     AppRouter.shared.playerExpandToken += 1
                     try? await Task.sleep(for: .milliseconds(120))
-                    AppRouter.shared.routeOpenToken += 1
+                    AppRouter.shared.playerCollapseToken += 1
                     try? await Task.sleep(for: .seconds(3))
                     precondition(!SurfaceProbe.playerVisible, "Interrupted closing must settle collapsed")
                     SurfaceProbe.trace("PASS: interrupted closing settled collapsed")

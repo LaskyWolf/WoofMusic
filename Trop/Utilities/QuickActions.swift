@@ -23,10 +23,12 @@ enum QuickAction: String {
         switch action {
         case .search:
             // SearchView opens its field at the root of the Search tab.
+            router.collapsePlayer()
             router.selectedTabIndex = 3
             router.searchPath = NavigationPath()
             router.focusSearchField = true
         case .downloads:
+            router.collapsePlayer()
             router.selectedTabIndex = 1
             router.libraryPath = NavigationPath([DetailRoute.downloads])
         case .shuffleLiked:

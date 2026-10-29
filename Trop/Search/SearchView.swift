@@ -64,13 +64,17 @@ struct SearchView: View {
         .coverZoomNamespace(coverZoom)
     }
 
+    /// The full player's cover takes about 0.4 s to close.
+    private static let activationDelay: Duration = .milliseconds(450)
+
     /// Home Screen "Search" quick action: open the field with the keyboard up.
     private func consumeFocusRequest() {
         guard router.focusSearchField else { return }
         router.focusSearchField = false
         Task {
-            // The tab switch must land before search can activate.
-            try? await Task.sleep(for: .milliseconds(150))
+            // The tab switch, and the full player closing over it, must land
+            // before search can activate and raise the keyboard.
+            try? await Task.sleep(for: Self.activationDelay)
             // Presenting search focuses the field; if search is already
             // presented with the keyboard down, only the focus change raises it.
             isSearching = true
@@ -83,8 +87,9 @@ struct SearchView: View {
         guard let query = router.pendingSearchQuery else { return }
         router.pendingSearchQuery = nil
         Task {
-            // The tab switch must land before search can activate.
-            try? await Task.sleep(for: .milliseconds(150))
+            // The tab switch, and the full player closing over it, must land
+            // before search can activate and raise the keyboard.
+            try? await Task.sleep(for: Self.activationDelay)
             isSearching = true
             searchModel.submit(query)
         }
