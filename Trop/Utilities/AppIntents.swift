@@ -79,27 +79,8 @@ struct PlayMusicIntent: AudioPlaybackIntent {
     }
 }
 
-struct PlayPauseIntent: AudioPlaybackIntent {
-    static var title: LocalizedStringResource = "Play or Pause"
-    static var description = IntentDescription("Pauses the song that's playing, or resumes the last one.")
-
-    @MainActor
-    func perform() async throws -> some IntentResult {
-        PlayerController.shared.setPaused(NowPlaying.shared.isPlaying)
-        return .result()
-    }
-}
-
-struct NextSongIntent: AudioPlaybackIntent {
-    static var title: LocalizedStringResource = "Next Song"
-    static var description = IntentDescription("Skips to the next song in the queue.")
-
-    @MainActor
-    func perform() async throws -> some IntentResult {
-        NowPlaying.shared.playNext()
-        return .result()
-    }
-}
+// PlayPauseIntent and NextSongIntent live in Shared/NowPlayingShared.swift:
+// the widget extension compiles them too.
 
 struct WoofMusicShortcuts: AppShortcutsProvider {
     static var appShortcuts: [AppShortcut] {

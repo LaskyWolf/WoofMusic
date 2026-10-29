@@ -23,6 +23,8 @@ struct TropApp: App {
         Task { await InnerTubeClient.tropShared.syncTropLocale() }
         Task { @MainActor in DiscordIntegration.shared.start() }
         Task { @MainActor in LastFMIntegration.shared.start() }
+        // Updates or ends a Live Activity left over from an earlier run.
+        Task { @MainActor in LiveActivityController.shared.refresh() }
         Self.removeSpotifyLeftovers()
     }
 

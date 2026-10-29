@@ -727,6 +727,7 @@ extension PlayerController {
             "duration=\(duration) rate=\(nowPlayingInfo[MPNowPlayingInfoPropertyPlaybackRate] ?? 0) " +
             "artwork=\(np.thumbnailUIImage != nil) keys=\(nowPlayingInfo.keys.count)"
         )
+        LiveActivityController.shared.refresh()
     }
 
     func updateNowPlayingArtwork() {
@@ -735,12 +736,16 @@ extension PlayerController {
             nowPlayingInfo[MPMediaItemPropertyArtwork] = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
         }
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nowPlayingInfo
+        LiveActivityController.shared.refresh()
     }
 
     /// `onlyIfDrifted`: the 0.25 s progress timer passes true, so the lock
     /// screen is only updated when its own clock is off by a second or more
     /// (seek, stall, song change) or the queue length changed.
     func updateNowPlayingProgress(onlyIfDrifted: Bool = false) {
+        // Pause, seek and the end of the queue land here; the 0.25 s timer
+        // only reaches the Live Activity once the clock drifted (below).
+        if !onlyIfDrifted { LiveActivityController.shared.refresh() }
         let props: (dur: Double, pos: Double)? = withMpv { mpv in
             var dur = Double(0)
             mpv_get_property(mpv, "duration", MPV_FORMAT_DOUBLE, &dur)
@@ -774,6 +779,7 @@ extension PlayerController {
            abs(props.pos - last.position - now.timeIntervalSince(last.at)) < 1 {
             return
         }
+        if onlyIfDrifted { LiveActivityController.shared.refresh() }
         lastProgressPush = (props.pos, now, np.queueSongs.count)
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
         MPNowPlayingInfoCenter.default().playbackState = np.isPlaying ? .playing : .paused
