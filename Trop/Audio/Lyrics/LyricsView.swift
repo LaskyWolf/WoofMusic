@@ -46,6 +46,8 @@ struct LyricsView: View {
     @State private var cascadeTrigger = 0
     /// Karaoke started before the lines loaded: they cascade when they arrive.
     @State private var cascadePending = false
+    /// The long-pressed line the share card composer opens with.
+    @State private var shareCardLine: LyricLine?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -70,6 +72,9 @@ struct LyricsView: View {
         }
         .onChange(of: LyricsState.shared.refreshToken) { _, _ in
             Task { await loadLyrics() }
+        }
+        .sheet(item: $shareCardLine) { line in
+            LyricShareComposer(videoId: np.videoId ?? "", lines: lines, initialLineID: line.id)
         }
     }
 
@@ -301,6 +306,10 @@ struct LyricsView: View {
                     }
                 }
             )
+            .contextMenu {
+                Button("Share Card", systemImage: "quote.bubble") { shareCardLine = line }
+                Button("Copy Line", systemImage: "doc.on.doc") { UIPasteboard.general.string = line.text }
+            }
 
             if let gap {
                 InstrumentalGapRing(

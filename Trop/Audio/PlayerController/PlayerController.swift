@@ -140,6 +140,9 @@ extension PlayerController {
             await PlaybackStateService.shared.startTracking(videoId: videoId)
             guard generation == playGeneration else { return }
         }
+        let podcastId = await PlaybackSpeed.show(ofEpisode: videoId)
+        guard generation == playGeneration else { return }
+        let speedValue = Self.fmt(PlaybackSpeed.shared.select(videoId: videoId, podcastId: podcastId))
 
         let isReady = withMpv { _ in true } ?? false
         guard isReady else {
@@ -162,7 +165,7 @@ extension PlayerController {
             mpv_set_property_string(mpv, "pause", pauseValue)
             // A cancelled crossfade can leave the deck faded or sped up.
             mpv_set_property_string(mpv, "volume", "100")
-            mpv_set_property_string(mpv, "speed", "1")
+            mpv_set_property_string(mpv, "speed", speedValue)
             return loadArguments.withUnsafeCArg { mpv_command(mpv, $0) }
         } ?? -1
         if cmdResult != 0 {
@@ -218,6 +221,17 @@ extension PlayerController {
 
     func togglePlayPause() {
         setPaused(playState.value == .playing)
+    }
+
+    /// mpv keeps the pitch at any speed (its default scaletempo filter).
+    /// Called by `PlaybackSpeed`, which owns the chosen speed.
+    func setSpeed(_ rate: Double) {
+        // A running mix sets the speed itself; end it like a seek does.
+        Crossfade.shared.finishNow()
+        Crossfade.shared.stopSpeedEase()
+        let value = Self.fmt(rate)
+        withMpv { mpv in _ = mpv_set_property_string(mpv, "speed", value) }
+        updateNowPlayingProgress()
     }
 
     func applyPlaybackSettings() {
@@ -286,8 +300,10 @@ extension PlayerController {
                     self.pendingURL = nil
                     Log.player.info("mpv ready: loading deferred stream")
                     let pauseValue = self.desiredPlaying ? "no" : "yes"
+                    let speedValue = Self.fmt(PlaybackSpeed.shared.rate)
                     _ = self.withMpv { mpv in
                         mpv_set_property_string(mpv, "pause", pauseValue)
+                        mpv_set_property_string(mpv, "speed", speedValue)
                         return ["loadfile", url, "replace"].withUnsafeCArg { mpv_command(mpv, $0) }
                     }
                 }
@@ -563,6 +579,8 @@ extension PlayerController {
         currentVideoId = videoId
         pendingVideoId = nil
         currentLoudnessDb = loudness
+        // The mix eases the new deck to 1×.
+        PlaybackSpeed.shared.select(videoId: videoId, podcastId: nil)
         let generation = playGeneration
         Task {
             await PlaybackStateService.shared.stopTracking()
@@ -709,7 +727,7 @@ extension PlayerController {
         nowPlayingInfo[MPMediaItemPropertyTitle] = np.title
         nowPlayingInfo[MPMediaItemPropertyArtist] = np.artist
         nowPlayingInfo[MPMediaItemPropertyAlbumTitle] = np.albumTitle
-        nowPlayingInfo[MPNowPlayingInfoPropertyPlaybackRate] = np.isPlaying ? 1 : 0
+        nowPlayingInfo[MPNowPlayingInfoPropertyPlaybackRate] = np.isPlaying ? PlaybackSpeed.shared.rate : 0
         nowPlayingInfo[MPNowPlayingInfoPropertyMediaType] = MPNowPlayingInfoMediaType.audio.rawValue
         nowPlayingInfo[MPNowPlayingInfoPropertyDefaultPlaybackRate] = 1
         if duration > 0 { nowPlayingInfo[MPMediaItemPropertyPlaybackDuration] = duration }
@@ -770,13 +788,13 @@ extension PlayerController {
         if np.duration != props.dur { np.duration = props.dur }
         info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = props.pos
         np.currentTime = props.pos
-        info[MPNowPlayingInfoPropertyPlaybackRate] = np.isPlaying ? 1 : 0
+        info[MPNowPlayingInfoPropertyPlaybackRate] = np.isPlaying ? PlaybackSpeed.shared.rate : 0
         info[MPNowPlayingInfoPropertyPlaybackQueueIndex] = np.queueIndex
         info[MPNowPlayingInfoPropertyPlaybackQueueCount] = np.queueSongs.count
         nowPlayingInfo = info
         let now = Date()
         if onlyIfDrifted, np.isPlaying, let last = lastProgressPush, last.queueCount == np.queueSongs.count,
-           abs(props.pos - last.position - now.timeIntervalSince(last.at)) < 1 {
+           abs(props.pos - last.position - now.timeIntervalSince(last.at) * PlaybackSpeed.shared.rate) < 1 {
             return
         }
         if onlyIfDrifted { LiveActivityController.shared.refresh() }

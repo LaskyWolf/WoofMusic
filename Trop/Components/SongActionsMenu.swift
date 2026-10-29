@@ -27,7 +27,7 @@ struct SongActionsMenu<MenuLabel: View>: View {
     @ViewBuilder var label: () -> MenuLabel
 
     private enum Sheet: Identifiable {
-        case playlist, radio, details, similar, artists, sleepTimer
+        case playlist, radio, details, similar, artists, sleepTimer, shareCard
         var id: Self { self }
     }
 
@@ -78,6 +78,7 @@ struct SongActionsMenu<MenuLabel: View>: View {
             Menu("More", systemImage: "ellipsis.circle") {
                 Button("Start Radio…", systemImage: "dot.radiowaves.left.and.right") { sheet = .radio }
                 PinMenuButton(song: song, pin: pin)
+                ShareCardMenuButton(videoId: song.videoId) { sheet = .shareCard }
                 if let onSelect {
                     Button("Select", systemImage: "checkmark.circle", action: onSelect)
                 }
@@ -154,6 +155,8 @@ struct SongActionsMenu<MenuLabel: View>: View {
                 }
             case .sleepTimer:
                 SleepTimerSheet()
+            case .shareCard:
+                LyricShareComposer(videoId: song.videoId)
             }
         }
     }
@@ -311,6 +314,19 @@ private struct PinMenuButton: View {
             Task { await pin.toggle(song: song) }
         }
         .task(id: song.videoId) { await pin.load(videoId: song.videoId) }
+    }
+}
+
+/// Only for the song playing now with its lyrics loaded, so the composer
+/// reads them from the lyrics cache.
+private struct ShareCardMenuButton: View {
+    let videoId: String
+    let action: () -> Void
+
+    var body: some View {
+        if NowPlaying.shared.videoId == videoId, LyricsState.shared.availableVideoIds.contains(videoId) {
+            Button("Share Lyrics Card…", systemImage: "quote.bubble", action: action)
+        }
     }
 }
 

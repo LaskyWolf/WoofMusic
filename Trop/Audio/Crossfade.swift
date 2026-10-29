@@ -144,6 +144,11 @@ final class Crossfade {
         clear()
     }
 
+    /// Stops easing the speed back to 1× after a mix: the user picked a speed.
+    func stopSpeedEase() {
+        speedTask?.cancel()
+    }
+
     /// Ends a running transition at once (pause or seek during it).
     func finishNow() {
         guard phase == .fading else { return }

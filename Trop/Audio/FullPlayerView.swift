@@ -32,6 +32,8 @@ struct FullPlayerView: View {
     /// so only the lyrics sit over the player background.
     private var showsKaraoke: Bool { showLyrics && karaokeEnabled && LyricsState.shared.hasWordTiming }
     @State private var showQueue = false
+    /// The speed dial under the progress bar, opened from its chip.
+    @State private var showsSpeedDial = false
     @State private var isOpeningArtist = false
     @State private var artistUnavailable = false
     /// How far the cover pages are dragged sideways by the track swipe.
@@ -98,7 +100,8 @@ struct FullPlayerView: View {
                 }
 
                 if settings.playerStyle == .immersive {
-                    let artworkHeight = (geometry.size.height + artworkTopInset) * 0.58
+                    // Shorter while the speed dial is open, so the title stays on the faded part.
+                    let artworkHeight = (geometry.size.height + artworkTopInset) * (showsSpeedDial ? 0.48 : 0.58)
                     // Clipped to the screen width, so a neighbour shows only the
                     // part dragged in from the edge.
                     artworkPager(pageSize: CGSize(width: geometry.size.width, height: artworkHeight))
@@ -148,8 +151,17 @@ struct FullPlayerView: View {
 
                     // No top padding: the bar's touch area already leaves a gap
                     // above the track, and the lyric line belongs with it.
-                    PlayerProgressSection()
+                    PlayerProgressSection(showsSpeedDial: $showsSpeedDial)
                         .padding(.bottom, 16)
+
+                    // Takes its room from the cover area above.
+                    if showsSpeedDial {
+                        PlaybackSpeedDial()
+                            .padding(.horizontal, 22)
+                            .padding(.bottom, 12)
+                            .transition(reduceMotion ? .opacity : .move(edge: .top).combined(with: .opacity))
+                            .accessibilityAction(.escape) { showsSpeedDial = false }
+                    }
 
                     Color.clear.frame(height: 8)
 
@@ -195,6 +207,7 @@ struct FullPlayerView: View {
             .animation(.easeInOut(duration: reduceMotion ? 0.15 : 0.25), value: showQueue)
             .animation(.easeInOut(duration: reduceMotion ? 0.15 : 0.25), value: showLyrics)
             .animation(.easeInOut(duration: reduceMotion ? 0.15 : 0.25), value: showsKaraoke)
+            .animation(.easeInOut(duration: reduceMotion ? 0.15 : 0.3), value: showsSpeedDial)
             .offset(y: pullDistance)
             .gesture(pullToDismiss(height: geometry.size.height))
             // Outside the pull offset; it is torn down with the player.
@@ -450,6 +463,10 @@ struct FullPlayerView: View {
         .contentShape(Rectangle())
         .gesture(playerSwipe(pageWidth: pageWidth))
         .simultaneousGesture(fullscreenCoverPinch)
+        // A tap on the background closes the speed dial.
+        .simultaneousGesture(TapGesture().onEnded {
+            if showsSpeedDial { showsSpeedDial = false }
+        })
     }
 
     /// The current cover with the previous and next ones a page to each side,
@@ -566,12 +583,17 @@ private struct PlayerLyricPreview: View {
 /// Progress bar and time labels. Its own view so only this part, not the
 /// whole player, redraws as `currentTime` ticks.
 private struct PlayerProgressSection: View {
+    @Binding var showsSpeedDial: Bool
+
     private let player = PlayerController.shared
     private let np = NowPlaying.shared
+    private let speed = PlaybackSpeed.shared
     @State private var editingProgress: Float = 0
     @State private var isEditingSlider = false
 
     var body: some View {
+        let elapsed = isEditingSlider ? TimeInterval(editingProgress) * np.duration : np.currentTime
+        let rate = speed.rate
         VStack(spacing: 6) {
             ProgressBar(
                 progress: Binding(
@@ -589,20 +611,44 @@ private struct PlayerProgressSection: View {
             )
 
             HStack {
-                Text(DurationFormat.playbackTime(isEditingSlider
-                    ? TimeInterval(editingProgress) * np.duration
-                    : np.currentTime))
+                Text(DurationFormat.playbackTime(elapsed))
                     .font(.caption2.monospacedDigit())
                     .foregroundStyle(.white.opacity(0.6))
 
                 Spacer()
 
-                Text(DurationFormat.playbackTime(np.duration))
+                // Away from 1×: the time left at that speed.
+                Text(rate == 1
+                    ? DurationFormat.playbackTime(np.duration)
+                    : "−\(DurationFormat.playbackTime(max(0, np.duration - elapsed) / rate))")
                     .font(.caption2.monospacedDigit())
                     .foregroundStyle(.white.opacity(0.6))
             }
+            .overlay { speedChip(rate: rate) }
         }
         .padding(.horizontal, 32)
+    }
+
+    /// Shows the speed and opens the dial; accent-filled away from 1×.
+    private func speedChip(rate: Double) -> some View {
+        let isChanged = rate != 1
+        return Button {
+            showsSpeedDial.toggle()
+        } label: {
+            Text(PlaybackSpeed.label(rate))
+                .font(.system(size: 11, weight: .bold).monospacedDigit())
+                .foregroundStyle(.white)
+                .padding(.horizontal, 9)
+                .padding(.vertical, 3)
+                .background(Capsule().fill(isChanged ? Color.accentColor.opacity(0.55) : .white.opacity(0.14)))
+                .overlay { Capsule().strokeBorder(isChanged ? Color.accentColor : .white.opacity(0.2), lineWidth: 1) }
+                .padding(.vertical, 4)
+                .padding(.horizontal, 8)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Playback speed, \(PlaybackSpeed.label(rate))")
+        .accessibilityHint(showsSpeedDial ? "Closes the speed dial" : "Opens the speed dial")
     }
 }
 
