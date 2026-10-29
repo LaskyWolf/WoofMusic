@@ -293,8 +293,13 @@ extension RecapBadge.Kind {
         case .podcastSage: (0xFFA98A, 0xB8463A)
         case .timeBender: (0x9FD0FF, 0x2B5FA8)
         }
-        return [pair.0, pair.1].map { hex in
-            Color(red: Double(hex >> 16 & 0xFF) / 255, green: Double(hex >> 8 & 0xFF) / 255, blue: Double(hex & 0xFF) / 255)
-        }
+        return [Self.color(pair.0), Self.color(pair.1)]
+    }
+
+    private static func color(_ hex: UInt32) -> Color {
+        let red = Double((hex >> 16) & 0xFF) / 255
+        let green = Double((hex >> 8) & 0xFF) / 255
+        let blue = Double(hex & 0xFF) / 255
+        return Color(red: red, green: green, blue: blue)
     }
 }
