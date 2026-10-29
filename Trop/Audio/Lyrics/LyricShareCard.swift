@@ -6,7 +6,7 @@
 import SwiftUI
 
 /// Lyric share card composer for the current song: pick up to four lines,
-/// preview the Sticker card, share it as a 1080×1920 image.
+/// then style and share the card in `ShareCardStudio`.
 struct LyricShareComposer: View {
     static let maxLines = 4
 
@@ -15,12 +15,10 @@ struct LyricShareComposer: View {
     private let artist: String
     private let cover: UIImage?
     private let colors: [Color]
-    private let songLink: String?
 
     @State private var lines: [LyricLine]
     @State private var isLoading: Bool
     @State private var selected: Set<LyricLine.ID>
-    @State private var rendered: UIImage?
     @State private var showsPreview = false
     /// Bumped when a tap would pick a fifth line: haptic plus a shake of the counter.
     @State private var shakeTrigger = 0
@@ -39,7 +37,6 @@ struct LyricShareComposer: View {
         artist = np.displayArtist
         cover = np.thumbnailVideoId == videoId ? np.thumbnailUIImage : nil
         colors = np.dominantColors
-        songLink = np.currentSong.flatMap { $0.videoId == videoId ? $0.webUrl : nil }
         _lines = State(initialValue: lines)
         _isLoading = State(initialValue: lines.isEmpty)
         var initial: Set<LyricLine.ID> = []
@@ -60,15 +57,14 @@ struct LyricShareComposer: View {
                         counter
                     }
                     ToolbarItem(placement: .confirmationAction) {
-                        Button("Next") {
-                            rendered = renderCard()
-                            showsPreview = rendered != nil
-                        }
+                        Button("Next") { showsPreview = true }
                         .disabled(selected.isEmpty)
                     }
                 }
                 .navigationDestination(isPresented: $showsPreview) {
-                    previewStep
+                    ShareCardStudio(content: cardContent)
+                        .navigationTitle("Style")
+                        .navigationBarTitleDisplayMode(.inline)
                 }
         }
         .sensoryFeedback(.impact(weight: .light), trigger: shakeTrigger)
@@ -149,54 +145,14 @@ struct LyricShareComposer: View {
         selected.insert(line.id)
     }
 
-    // MARK: - Step 2: preview and share
+    // MARK: - Step 2: style and share
 
-    @ViewBuilder
-    private var previewStep: some View {
-        VStack(spacing: 20) {
-            if let rendered {
-                let image = Image(uiImage: rendered)
-                image
-                    .resizable()
-                    .scaledToFit()
-                    .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-                    .shadow(color: .black.opacity(0.3), radius: 16, y: 8)
-                    .frame(maxHeight: .infinity)
-                    .accessibilityLabel("Share card: \(pickedTexts.joined(separator: ", ")), \(title) by \(artist)")
-
-                // ShareLink needs one item type, so the song link rides along as the message.
-                ShareLink(
-                    item: image,
-                    message: songLink.map { Text(verbatim: $0) },
-                    preview: SharePreview(title, image: image)
-                ) {
-                    Label("Share", systemImage: "square.and.arrow.up")
-                        .font(.headline)
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
-            }
-        }
-        .padding(.horizontal, 24)
-        .padding(.vertical, 16)
-        .navigationTitle("Preview")
-        .navigationBarTitleDisplayMode(.inline)
-    }
-
-    /// Picked lines in lyric order, not tap order, so the card reads like the song.
-    private var pickedTexts: [String] {
-        lines.filter { selected.contains($0.id) }.map(\.text)
-    }
-
-    /// ImageRenderer can't wait for async images; the cover is already a loaded UIImage.
-    private func renderCard() -> UIImage? {
-        let renderer = ImageRenderer(content: LyricStickerCard(
-            lines: pickedTexts, title: title, artist: artist, cover: cover, colors: colors
-        ))
-        // 360×640 pt at 3× is 1080×1920 px.
-        renderer.scale = 1080 / LyricStickerCard.size.width
-        return renderer.uiImage
+    private var cardContent: ShareCardContent {
+        let picked = lines.filter { selected.contains($0.id) }
+        return ShareCardContent(
+            lines: picked.map(\.text), title: title, artist: artist, cover: cover, colors: colors,
+            startTime: picked.first?.startTime, videoId: videoId
+        )
     }
 
     // MARK: - Data
@@ -224,190 +180,25 @@ private struct ShakeMotion {
     var x = 0.0
 }
 
-// MARK: - Sticker card
-
-/// The 9:16 card: cover colours as background, the cover as a taped
-/// polaroid with title and artist written on it, lines as paper labels.
-/// Paper stays light with dark ink on any cover, so text contrast never
-/// depends on the artwork.
-struct LyricStickerCard: View {
-    let lines: [String]
-    let title: String
-    let artist: String
-    let cover: UIImage?
-    let colors: [Color]
-
-    static let size = CGSize(width: 360, height: 640)
-    private static let paper = Color(red: 1, green: 0.98, blue: 0.94)
-    private static let ink = Color(red: 0.11, green: 0.08, blue: 0.13)
-    private static let coverSide: CGFloat = 184
-
-    var body: some View {
-        VStack(spacing: 0) {
-            polaroid
-                .padding(.top, 52)
-            Spacer(minLength: 20)
-            labels
-                .layoutPriority(1)
-            Spacer(minLength: 20)
-            footer
-                .padding(.bottom, 30)
-        }
-        .frame(width: Self.size.width, height: Self.size.height)
-        .background(background)
-        .clipped()
-    }
-
-    private var background: some View {
-        ZStack {
-            LinearGradient(colors: colors.count > 1 ? colors : colors + colors,
-                           startPoint: .top, endPoint: .bottom)
-            // Darker toward the bottom, so the paper labels stand out on light covers too.
-            LinearGradient(colors: [.clear, .black.opacity(0.25)], startPoint: .top, endPoint: .bottom)
-        }
-    }
-
-    private var polaroid: some View {
-        VStack(spacing: 10) {
-            coverImage
-                .frame(width: Self.coverSide, height: Self.coverSide)
-                .clipped()
-            VStack(spacing: 2) {
-                Text(title)
-                    .font(.system(size: 17, weight: .bold, design: .rounded))
-                Text(artist)
-                    .font(.system(size: 13, weight: .semibold, design: .rounded))
-                    .opacity(0.65)
-            }
-            .lineLimit(1)
-            .minimumScaleFactor(0.7)
-            .foregroundStyle(Self.ink)
-            .frame(width: Self.coverSide)
-        }
-        .padding([.horizontal, .top], 11)
-        .padding(.bottom, 14)
-        .background(Color.white)
-        .shadow(color: .black.opacity(0.3), radius: 10, y: 6)
-        .overlay(alignment: .top) {
-            // Translucent tape holding the photo on.
-            Rectangle()
-                .fill(Color.white.opacity(0.55))
-                .frame(width: 92, height: 26)
-                .shadow(color: .black.opacity(0.1), radius: 1, y: 1)
-                .rotationEffect(.degrees(3))
-                .offset(y: -13)
-        }
-        .rotationEffect(.degrees(-5))
-    }
-
-    @ViewBuilder
-    private var coverImage: some View {
-        if let cover {
-            Image(uiImage: cover)
-                .resizable()
-                .scaledToFill()
-        } else {
-            ZStack {
-                LinearGradient(colors: colors.count > 1 ? colors : colors + colors,
-                               startPoint: .topLeading, endPoint: .bottomTrailing)
-                Image(systemName: "music.note")
-                    .font(.system(size: 56, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.8))
-            }
-        }
-    }
-
-    private var labels: some View {
-        // ponytail: fixed sizes for 1–2 vs 3–4 lines; very long lines shrink via minimumScaleFactor.
-        let fontSize: CGFloat = lines.count <= 2 ? 21 : 17
-        return VStack(alignment: .leading, spacing: 12) {
-            ForEach(Array(lines.enumerated()), id: \.offset) { index, line in
-                let isEven = index.isMultiple(of: 2)
-                Text(line)
-                    .font(.system(size: fontSize, weight: .bold, design: .rounded))
-                    .foregroundStyle(Self.ink)
-                    .lineLimit(3)
-                    .minimumScaleFactor(0.6)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .background(Self.paper, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
-                    .shadow(color: .black.opacity(0.18), radius: 0, y: 2)
-                    .rotationEffect(.degrees(isEven ? -1.5 : 1.5))
-                    .padding(.leading, isEven ? 0 : 18)
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 28)
-    }
-
-    private var footer: some View {
-        Text("🐾 Woof Music")
-            .font(.system(size: 12, weight: .heavy, design: .rounded))
-            .tracking(1.2)
-            .textCase(.uppercase)
-            .foregroundStyle(Self.ink)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
-            .background(Self.paper.opacity(0.9), in: Capsule())
-    }
-}
-
 // MARK: - Song share
 
-/// The song menu's Share: the Sticker card without lines, shared as an image
-/// with the song link as its message, or the link on its own.
+/// The song menu's Share: the share card studio without lines.
 struct SongShareSheet: View {
     let song: SongItem
 
     @Environment(\.dismiss) private var dismiss
-    @State private var rendered: UIImage?
-    @State private var didFail = false
-
-    private var link: URL? { URL(string: song.webUrl) }
+    @State private var content: ShareCardContent?
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 12) {
-                if let rendered {
-                    let image = Image(uiImage: rendered)
-                    image
-                        .resizable()
-                        .scaledToFit()
-                        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-                        .shadow(color: .black.opacity(0.3), radius: 16, y: 8)
-                        .frame(maxHeight: .infinity)
-                        .accessibilityLabel("Share card: \(song.title) by \(song.artistNamesDisplay)")
-                        .padding(.bottom, 8)
-
-                    ShareLink(
-                        item: image,
-                        message: link.map { Text(verbatim: $0.absoluteString) },
-                        preview: SharePreview(song.title, image: image)
-                    ) {
-                        Label("Share Card", systemImage: "square.and.arrow.up")
-                            .font(.headline)
-                            .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.large)
-                } else if didFail {
-                    ContentUnavailableView("Card unavailable", systemImage: "photo", description: Text("The cover couldn't be loaded."))
+            Group {
+                if let content {
+                    ShareCardStudio(content: content)
                 } else {
                     ProgressView()
-                        .frame(maxHeight: .infinity)
-                }
-
-                if let link {
-                    ShareLink(item: link) {
-                        Label("Share Link Only", systemImage: "link")
-                            .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.large)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             }
-            .padding(.horizontal, 24)
-            .padding(.vertical, 16)
             .navigationTitle("Share Song")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -416,23 +207,23 @@ struct SongShareSheet: View {
                 }
             }
         }
-        .task { await render() }
+        .appSheetChrome([.large])
+        .task { await load() }
     }
 
     /// ImageRenderer can't wait for async images, so the cover is loaded first.
-    private func render() async {
+    /// Without it the card shows a note on the cover's colours.
+    private func load() async {
         let address = song.thumbnailUrl.map { ArtworkURLs.highRes($0) ?? $0 }
-        guard let url = address.flatMap(URL.init(string:)),
-              let cover = try? await ArtworkLoader.image(for: url) else {
-            didFail = true
-            return
+        var loaded: UIImage?
+        if let url = address.flatMap(URL.init(string:)) {
+            loaded = try? await ArtworkLoader.image(for: url)
         }
-        let colors = await Task.detached(priority: .userInitiated) { cover.extractDominantColors() }.value
-        let renderer = ImageRenderer(content: LyricStickerCard(
-            lines: [], title: SongTitle.display(song.title), artist: song.artistNamesDisplay, cover: cover, colors: colors
-        ))
-        renderer.scale = 1080 / LyricStickerCard.size.width
-        rendered = renderer.uiImage
-        didFail = rendered == nil
+        let cover = loaded
+        let colors = await Task.detached(priority: .userInitiated) { cover?.extractDominantColors() ?? [] }.value
+        content = ShareCardContent(
+            lines: [], title: SongTitle.display(song.title), artist: song.artistNamesDisplay,
+            cover: cover, colors: colors, startTime: nil, videoId: song.videoId
+        )
     }
 }
