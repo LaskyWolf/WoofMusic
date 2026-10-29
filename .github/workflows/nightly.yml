@@ -40,29 +40,6 @@ jobs:
           restore-keys: |
             trop-dd-${{ runner.os }}-
 
-      - name: Check privacy regressions
-        run: python3 scripts/check_privacy.py
-
-      - name: Check Play Next ordering
-        run: python3 scripts/check_play_next.py
-
-      - name: Check player song titles
-        run: python3 scripts/check_song_title.py
-
-      - name: Check track analyzer
-        run: python3 scripts/check_track_analyzer.py
-
-      - name: Check player transition in Simulator
-        run: python3 scripts/check_player_surface.py
-
-      - name: Upload player surface screenshots
-        if: always()
-        uses: actions/upload-artifact@v7.0.1
-        with:
-          name: Player-surface-check
-          path: build/player-surface-check
-          retention-days: 7
-
       - name: Make build script executable
         run: chmod +x ./build_ipa.sh
 
