@@ -290,7 +290,13 @@ struct BadgeHexagon: Shape {
 extension RecapBadge.Kind {
     /// Light to dark gem gradient.
     var colors: [Color] {
-        let pair: (UInt32, UInt32) = switch self {
+        let pair = hexPair
+        return [Self.color(pair.0), Self.color(pair.1)]
+    }
+
+    /// Light and dark gem colours as 0xRRGGBB; the stats widget draws them too.
+    var hexPair: (UInt32, UInt32) {
+        switch self {
         case .nightOwl: (0xB98CFF, 0x4B2A8A)
         case .earlyBird: (0xFFE08A, 0xE07B39)
         case .loyalPup: (0xFFD36E, 0xD9822B)
@@ -299,7 +305,6 @@ extension RecapBadge.Kind {
         case .podcastSage: (0xFFA98A, 0xB8463A)
         case .timeBender: (0x9FD0FF, 0x2B5FA8)
         }
-        return [Self.color(pair.0), Self.color(pair.1)]
     }
 
     private static func color(_ hex: UInt32) -> Color {

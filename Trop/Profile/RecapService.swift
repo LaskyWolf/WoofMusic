@@ -205,6 +205,25 @@ enum RecapService {
         }
     }
 
+    /// Days in a row with a play, ending today, or yesterday when today has none yet.
+    static func currentStreak(now: Date = Date()) async -> Int {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: now)
+        guard let since = calendar.date(byAdding: .day, value: -400, to: today) else { return 0 }
+        let dates = (try? await DatabaseService.shared.read { db in
+            try Date.fetchAll(db, sql: "SELECT timestamp FROM event WHERE timestamp >= ?", arguments: [since])
+        }) ?? []
+        let days = Set(dates.map { calendar.startOfDay(for: $0) })
+        var day = days.contains(today) ? today : calendar.date(byAdding: .day, value: -1, to: today) ?? today
+        var streak = 0
+        while days.contains(day) {
+            streak += 1
+            guard let previous = calendar.date(byAdding: .day, value: -1, to: day) else { break }
+            day = previous
+        }
+        return streak
+    }
+
     // MARK: - Periods
 
     static func month(containing date: Date) -> DateInterval {

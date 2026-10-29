@@ -307,6 +307,23 @@ if [ -f "$PAYLOAD_DIR/$APPLICATION_NAME.app/$APPLICATION_NAME" ]; then
     strip "$PAYLOAD_DIR/$APPLICATION_NAME.app/$APPLICATION_NAME"
 fi
 
+# Ad-hoc sign with the entitlements files, after strip (strip breaks a signature).
+# Sideloading tools read the App Group from this signature and register it,
+# so the widgets can read what the app writes. A failure only loses that.
+sign_with_entitlements() {
+    local app="$PAYLOAD_DIR/$APPLICATION_NAME.app"
+    local widget="$app/PlugIns/WoofWidgets.appex"
+    find "$app/Frameworks" -maxdepth 1 \( -name "*.framework" -o -name "*.dylib" \) \
+        -exec codesign -f -s - {} \; 2>/dev/null || true
+    if [ -d "$widget" ]; then
+        codesign -f -s - --entitlements "$WORKING_LOCATION/WoofWidgets/WoofWidgets.entitlements" "$widget" || return 1
+    fi
+    codesign -f -s - --entitlements "$WORKING_LOCATION/Trop/Trop.entitlements" "$app"
+}
+if ! sign_with_entitlements; then
+    echo "Warning: ad-hoc signing failed; widgets will show their placeholder after sideloading."
+fi
+
 cd "$STAGE_DIR"
 rm -f "$IPA_PATH"
 zip -vr "$IPA_PATH" "Payload"

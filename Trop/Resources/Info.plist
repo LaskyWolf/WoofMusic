@@ -91,6 +91,14 @@
 				<string>tropdiscord</string>
 			</array>
 		</dict>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.laskywolf.Music.widgets</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>woofmusic</string>
+			</array>
+		</dict>
 	</array>
 	<key>INAlternativeAppNames</key>
 	<array>

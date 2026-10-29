@@ -145,7 +145,8 @@ struct HomeScreenView: View {
         .onChange(of: settings.hideExplicit) { _, _ in
             viewModel.syncSettings()
         }
-        .onChange(of: settings.showQuickPicks) { _, _ in
+        .onChange(of: settings.showQuickPicks) { _, isOn in
+            if !isOn { WidgetSync.shared.updateQuickPicks([], isEnabled: false) }
             viewModel.syncSettings()
             Task { await viewModel.refresh() }
         }
@@ -233,6 +234,10 @@ struct HomeScreenView: View {
                 .contentMargins(.horizontal, DesignTokens.screenHPadding, for: .scrollContent)
                 .scrollTargetBehavior(.viewAligned)
                 .scrollPosition(id: $quickPicksPage)
+                // The Quick Picks widget shows the same cards.
+                .task(id: cards.map(\.0.videoId)) {
+                    WidgetSync.shared.updateQuickPicks(cards.map { (song: $0.0, isPinned: $0.1) }, isEnabled: true)
+                }
 
                 if pages.count > 1 {
                     HStack(spacing: 6) {

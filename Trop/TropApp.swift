@@ -14,6 +14,8 @@ struct TropApp: App {
     @UIApplicationDelegateAdaptor(QuickActionAppDelegate.self) private var appDelegate
     @Environment(\.scenePhase) private var scenePhase
     @State private var settings = SettingsStore.shared
+    /// The Woof Stats widget opens this month's recap.
+    @State private var showsRecap = false
 
     init() {
         configureNuke()
@@ -23,6 +25,7 @@ struct TropApp: App {
         Task { await InnerTubeClient.tropShared.syncTropLocale() }
         Task { @MainActor in DiscordIntegration.shared.start() }
         Task { @MainActor in LastFMIntegration.shared.start() }
+        Task { @MainActor in WidgetSync.shared.refreshStats() }
         Self.removeSpotifyLeftovers()
     }
 
@@ -72,9 +75,25 @@ struct TropApp: App {
                 .tint(settings.accentColor)
                 .environment(settings)
                 .environment(\.downloadManager, DownloadManager.shared)
+                .recapStory(isPresented: $showsRecap, interval: RecapService.monthToDate())
+                .onOpenURL(perform: openWidgetLink)
         }
         .onChange(of: scenePhase) { _, phase in
-            if phase == .background { QuickAction.updateResumeItem() }
+            if phase == .background {
+                QuickAction.updateResumeItem()
+                WidgetSync.shared.refreshStats()
+            }
+        }
+    }
+
+    /// Links from the widgets: woofmusic://player, home or recap.
+    private func openWidgetLink(_ url: URL) {
+        guard url.scheme == WidgetLink.scheme else { return }
+        switch url.host() {
+        case "player": AppRouter.shared.expandPlayer()
+        case "home": AppRouter.shared.selectedTabIndex = 0
+        case "recap": showsRecap = true
+        default: break
         }
     }
 
