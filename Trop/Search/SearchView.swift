@@ -12,7 +12,7 @@ import SwiftUI
 /// searches or results underneath.
 struct SearchView: View {
     @State private var searchModel = SearchViewModel()
-    @ObservedObject private var router = AppRouter.shared
+    @Bindable private var router = AppRouter.shared
 
     /// The native search field's presentation: true while search is active,
     /// even with the keyboard down. The system sets it back on Cancel.

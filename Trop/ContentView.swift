@@ -5,13 +5,12 @@
 //  Created by 686udjie on 28/06/2026.
 //
 
-import Combine
 import SwiftUI
 
 struct ContentView: View {
     @Environment(SettingsStore.self) private var settings
     @State private var nowPlaying = NowPlaying.shared
-    @State private var selectedTab = SettingsStore.shared.defaultTab
+    private let router = AppRouter.shared
     @State private var isExpanded = false
     @Namespace private var playerTransition
     @State private var scrollState = MiniPlayerScrollState()
@@ -65,27 +64,13 @@ struct ContentView: View {
                 .environment(scrollState)
                 .accessibilityAction(.escape, collapsePlayer)
             }
-        .onAppear {
-            AppRouter.shared.selectedTabIndex = selectedTab
-            QuickAction.performPending()
-        }
-        .onReceive(AppRouter.shared.$selectedTabIndex.dropFirst()) { index in
-            // Quick actions switch tabs through the router.
-            if selectedTab != index { selectedTab = index }
-        }
-        .onChange(of: selectedTab) { _, newValue in
-            AppRouter.shared.selectedTabIndex = newValue
-        }
-        .onReceive(AppRouter.shared.$activeRoute) { route in
+        .onAppear { QuickAction.performPending() }
+        .onChange(of: router.routeOpenToken) {
             // A detail page was opened from an overlay: collapse the player so
             // the pushed page is visible underneath.
-            if route != nil {
-                collapsePlayer()
-            }
+            collapsePlayer()
         }
-        .onReceive(AppRouter.shared.$playerExpandToken.dropFirst()) { _ in
-            expandPlayer()
-        }
+        .onChange(of: router.playerExpandToken) { expandPlayer() }
         .onChange(of: nowPlaying.isBarPresented) { _, presented in
             if !presented { collapsePlayer() }
         }
@@ -110,13 +95,16 @@ struct ContentView: View {
         }
     }
 
-    /// `selectedTab`, plus a tap on the tab that is already selected reaches the router.
+    /// The router's tab, plus a tap on the tab that is already selected reaches it.
     private var tabSelection: Binding<Int> {
-        Binding(
-            get: { selectedTab },
+        // Read here, in the body, so a tab switch from a quick action or a
+        // widget link redraws the TabView.
+        let selected = router.selectedTabIndex
+        return Binding(
+            get: { selected },
             set: { tab in
-                if tab == selectedTab { AppRouter.shared.reselectTab(tab) }
-                selectedTab = tab
+                if tab == router.selectedTabIndex { router.reselectTab(tab) }
+                router.selectedTabIndex = tab
             }
         )
     }

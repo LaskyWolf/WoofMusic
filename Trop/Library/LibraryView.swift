@@ -24,7 +24,7 @@ struct LibraryView: View {
     @State private var playlistSongCounts: [String: Int] = [:]
     @State private var didStartSync = false
 
-    @ObservedObject private var router = AppRouter.shared
+    @Bindable private var router = AppRouter.shared
     /// Shared by this tab's covers and the pages they open, for the zoom transition.
     @Namespace private var coverZoom
 

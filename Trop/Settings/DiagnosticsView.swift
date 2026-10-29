@@ -14,6 +14,7 @@ struct DiagnosticsView: View {
     @State private var accountCheck: String?
     @State private var isCheckingAccount = false
     @State private var copied = false
+    @State private var problems: [String] = []
 
     var body: some View {
         List {
@@ -61,27 +62,33 @@ struct DiagnosticsView: View {
                 }
             }
 
-            let errors = DiagnosticsSection.recentProblems()
             Section {
-                if errors.isEmpty {
+                if problems.isEmpty {
                     Text("No warnings or errors in the log.")
                         .foregroundStyle(.secondary)
                 } else {
-                    ForEach(Array(errors.enumerated()), id: \.offset) { _, line in
+                    ForEach(Array(problems.enumerated()), id: \.offset) { _, line in
                         Text(line)
                             .font(.caption.monospaced())
                             .textSelection(.enabled)
+                    }
+                    Button("Clear Problems", systemImage: "trash", role: .destructive) {
+                        DiagnosticsSection.clearProblems()
+                        problems = []
                     }
                 }
             } header: {
                 Text("Recent Problems")
             } footer: {
-                Text("The last warnings and errors from the log file, newest last.")
+                Text("The last warnings and errors from the log file, newest last. Clearing hides them here; the log file keeps them.")
             }
         }
         .navigationTitle("Diagnostics")
         .navigationBarTitleDisplayMode(.inline)
-        .onAppear { sections = DiagnosticsSection.all() }
+        .onAppear {
+            sections = DiagnosticsSection.all()
+            problems = DiagnosticsSection.recentProblems()
+        }
     }
 
     private var report: String {
@@ -90,7 +97,7 @@ struct DiagnosticsView: View {
         }
         if let accountCheck { lines.append("Account check: \(accountCheck)") }
         lines.append("## Recent Problems")
-        lines += DiagnosticsSection.recentProblems()
+        lines += problems
         return lines.joined(separator: "\n")
     }
 
@@ -210,10 +217,20 @@ struct DiagnosticsSection: Identifiable {
         return SharedPasteboard.write(token, for: "diagnostics") && SharedPasteboard.read("diagnostics") == token
     }
 
-    /// The last 30 warning, error and fault lines of the log file.
+    /// Logged by "Clear Problems": the list starts after the last one, so the
+    /// log file itself stays whole for "Share Log File".
+    private static let clearedMarker = "Recent Problems cleared"
+
+    static func clearProblems() {
+        Log.settings.notice(clearedMarker)
+    }
+
+    /// The last 30 warning, error and fault lines of the log file, after the last clear.
     static func recentProblems() -> [String] {
         guard let url = FileLog.shared.fileURL, let text = try? String(contentsOf: url, encoding: .utf8) else { return [] }
-        let problems = text.split(separator: "\n").filter {
+        let lines = text.split(separator: "\n")
+        let start = lines.lastIndex { $0.hasSuffix(clearedMarker) }.map { $0 + 1 } ?? lines.startIndex
+        let problems = lines[start...].filter {
             $0.contains("[ERROR]") || $0.contains("[WARNING]") || $0.contains("[FAULT]")
         }
         return problems.suffix(30).map(String.init)
