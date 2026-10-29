@@ -254,6 +254,38 @@ enum LyricsParsing {
         return String(format: "%02d:%02d.%02d", centis / 6000, centis / 100 % 60, centis % 100)
     }
 
+    /// Drops the credit lines some sources put before the lyrics ("作词：Eve",
+    /// "编曲：Eve/Numa", "Lyrics by: X"), plus a leading "Title - Artist" line
+    /// when credits follow it. Only the opening lines are checked, so a sung
+    /// line with a colon later in the song stays.
+    static func droppingCredits(_ lines: [LyricLine]) -> [LyricLine] {
+        var count = 0
+        var sawCredit = false
+        for (index, line) in lines.enumerated() {
+            if isCreditLine(line.text) {
+                sawCredit = true
+            } else if !(index == 0 && line.text.contains(" - ")) {
+                break
+            }
+            count = index + 1
+        }
+        return sawCredit ? Array(lines.dropFirst(count)) : lines
+    }
+
+    private static let creditKeywords = [
+        "词", "詞", "曲", "编", "編", "制作", "製作", "混音", "母带", "录音", "錄音", "和声", "和聲",
+        "监制", "監製", "出品", "发行", "發行", "吉他", "贝斯", "鼓", "弦乐", "企划", "统筹",
+        "lyric", "compos", "written", "writer", "produc", "arrang", "mix", "master", "vocal"
+    ]
+
+    /// "Key: value" with a short key naming a credit role.
+    private static func isCreditLine(_ text: String) -> Bool {
+        guard let colon = text.firstIndex(where: { $0 == ":" || $0 == "：" }) else { return false }
+        let key = text[..<colon].trimmingCharacters(in: .whitespaces).lowercased()
+        guard !key.isEmpty, key.count <= 14 else { return false }
+        return key == "op" || key == "sp" || creditKeywords.contains { key.contains($0) }
+    }
+
     /// Plain text without timestamps — what "Copy" puts on the clipboard.
     static func plainText(_ lines: [LyricLine]) -> String {
         lines.map(\.text).filter { !$0.isEmpty }.joined(separator: "\n")
@@ -308,6 +340,13 @@ enum LyricsParsing {
         assert(krc.count == 1 && krc[0].text == "I have this" && near(krc[0].startTime, 5.499))
         assert(near(krc[0].words?[1].startTime, 5.806) && near(krc[0].words?[2].endTime, 6.999))
         assert(decodeKrc(Data("not krc".utf8)) == nil)
+
+        // Credits before the lyrics go, with the title line; a sung line with a colon stays.
+        let credited = ["AIYOU - Eve", "词：Eve", "编曲：Eve/Numa", "Lyrics by: Someone", "あなたは", "Note: still sung"]
+            .map { LyricLine(text: $0, startTime: nil) }
+        assert(droppingCredits(credited).map(\.text) == ["あなたは", "Note: still sung"])
+        let titleOnly = ["Night - Day", "First line"].map { LyricLine(text: $0, startTime: nil) }
+        assert(droppingCredits(titleOnly).count == 2)
     }
     #endif
 }

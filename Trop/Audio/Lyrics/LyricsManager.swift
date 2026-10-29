@@ -43,8 +43,8 @@ enum LyricsProviderRegistry {
     ]
 
     static let defaultOrder: [String] = [
-        "lrclib",
         "musixmatch",
+        "lrclib",
         "netease",
         "kugou",
         "genius"
@@ -92,7 +92,9 @@ actor LyricsManager {
         return await withTaskGroup(of: (Int, LyricSearchResult)?.self) { group in
             for (provider, index) in providers {
                 group.addTask {
-                    guard let lines = try? await provider.fetch(query: query), !lines.isEmpty else { return nil }
+                    guard let fetched = try? await provider.fetch(query: query) else { return nil }
+                    let lines = LyricsParsing.droppingCredits(fetched)
+                    guard !lines.isEmpty else { return nil }
                     return (index, LyricSearchResult(lines: lines, providerName: provider.name, sortOrder: index))
                 }
             }
@@ -142,9 +144,9 @@ actor LyricsManager {
             for (index, provider) in candidates {
                 group.addTask {
                     do {
-                        let lines = try await Self.withTimeout(seconds: 10) {
+                        let lines = try await LyricsParsing.droppingCredits(Self.withTimeout(seconds: 10) {
                             try await provider.fetch(query: query)
-                        }
+                        })
                         guard !lines.isEmpty, !wordTimedOnly || lines.contains(where: { $0.words != nil }) else {
                             return (index, nil)
                         }

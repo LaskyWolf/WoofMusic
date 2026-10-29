@@ -11,6 +11,7 @@ struct LyricsView: View {
     private let np = NowPlaying.shared
     private let player = PlayerController.shared
     @Environment(SettingsStore.self) private var settings
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @Binding var showLyrics: Bool
     @AppStorage(LyricsState.karaokeEnabledKey) private var karaokeEnabled = false
@@ -39,6 +40,13 @@ struct LyricsView: View {
     /// chrome (title, provider caption) steps aside.
     private var isKaraoke: Bool { karaokeEnabled && LyricsState.shared.hasWordTiming }
 
+    /// Bumped on each karaoke start or stop; plays the mascot greeting.
+    @State private var countdownTrigger = 0
+    /// Bumped on each karaoke start; the lines cascade in from below.
+    @State private var cascadeTrigger = 0
+    /// Karaoke started before the lines loaded: they cascade when they arrive.
+    @State private var cascadePending = false
+
     var body: some View {
         VStack(spacing: 0) {
             headerBar
@@ -47,6 +55,14 @@ struct LyricsView: View {
                 .layoutPriority(1)
         }
         .background { LyricsTimeTracker(onTimeChange: updateActiveLine) }
+        .overlay { KaraokeCountdownOverlay(trigger: countdownTrigger, isOn: isKaraoke) }
+        .onAppear { if isKaraoke { karaokeDidChange() } }
+        .onChange(of: isKaraoke) { _, _ in karaokeDidChange() }
+        .onChange(of: lines.isEmpty) { _, isEmpty in
+            guard !isEmpty, cascadePending else { return }
+            cascadePending = false
+            cascadeTrigger += 1
+        }
         .task(id: np.videoId) { await loadLyrics() }
         .onChange(of: settings.lyricsOffsetSeconds) { _, _ in updateActiveLine() }
         .onChange(of: settings.romanizeCurrentTrack) { _, _ in
@@ -54,6 +70,21 @@ struct LyricsView: View {
         }
         .onChange(of: LyricsState.shared.refreshToken) { _, _ in
             Task { await loadLyrics() }
+        }
+    }
+
+    /// Karaoke turned on (menu toggle, word-timed lyrics arriving, or the
+    /// panel opening with it on) or off. Closing the panel removes this view,
+    /// so closing from karaoke shows no goodbye.
+    private func karaokeDidChange() {
+        guard !reduceMotion else { return }
+        countdownTrigger += 1
+        if !isKaraoke {
+            cascadePending = false
+        } else if lines.isEmpty {
+            cascadePending = true
+        } else {
+            cascadeTrigger += 1
         }
     }
 
@@ -247,6 +278,9 @@ struct LyricsView: View {
     private func lyricsLineRow(index: Int, line: LyricLine, fontSize: Double) -> some View {
         let gap = settings.showIntervalIndicator ? instrumentalGaps.last(where: { $0.afterIndex == index }) : nil
         let romanized = romanization(for: index)
+        // From three lines above the current one down, about the visible window.
+        let cascadeDelay = Double(min(max(index - activeIndex + 3, 0), 9)) * 0.08
+        let wag = index.isMultiple(of: 2) ? 3.0 : -3.0
 
         return VStack(spacing: 0) {
             LyricsLineView(
@@ -274,6 +308,30 @@ struct LyricsView: View {
                     offset: settings.lyricsOffsetSeconds,
                     color: intervalIndicatorColor
                 )
+            }
+        }
+        // Karaoke start: the line rises from below with a little wag.
+        .keyframeAnimator(initialValue: CascadeMotion(), trigger: cascadeTrigger) { content, motion in
+            content
+                .rotationEffect(.degrees(motion.angle))
+                .offset(y: motion.drop)
+                .opacity(motion.opacity)
+        } keyframes: { _ in
+            KeyframeTrack(\.drop) {
+                MoveKeyframe(40.0)
+                LinearKeyframe(40.0, duration: max(cascadeDelay, 0.01))
+                SpringKeyframe(0.0, duration: 0.55, spring: .bouncy)
+            }
+            KeyframeTrack(\.angle) {
+                MoveKeyframe(wag)
+                LinearKeyframe(wag, duration: max(cascadeDelay, 0.01))
+                CubicKeyframe(wag * -0.6, duration: 0.18)
+                SpringKeyframe(0.0, duration: 0.4, spring: .bouncy)
+            }
+            KeyframeTrack(\.opacity) {
+                MoveKeyframe(0.0)
+                LinearKeyframe(0.0, duration: max(cascadeDelay, 0.01))
+                LinearKeyframe(1.0, duration: 0.2)
             }
         }
     }
@@ -412,6 +470,15 @@ struct LyricsView: View {
             activeIndex = idx
         }
     }
+}
+
+/// Offsets of a lyric line during the karaoke start cascade; at rest, none.
+private struct CascadeMotion {
+    /// Degrees.
+    var angle = 0.0
+    /// Points down from the line's spot.
+    var drop = 0.0
+    var opacity = 1.0
 }
 
 // MARK: - Playback Tracking

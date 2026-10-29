@@ -2,9 +2,10 @@ import SwiftUI
 import UIKit
 
 /// The current cover over the whole screen, opened by pinching the full
-/// player's cover. The whole square cover lifts off the player, springs to the
-/// middle of the screen and lands tilted by a small random angle with a wobble,
-/// over a blurred copy of itself and a soft breathing halo. A pinch in or a swipe down flies it back onto the player's cover.
+/// player's cover. The whole square cover levitates off the player with a shake
+/// and a soft glow, springs to the middle of the screen and lands tilted by a
+/// small random angle with a wobble, over a blurred copy of itself and a soft
+/// breathing halo. A pinch in or a swipe down flies it back onto the player's cover.
 struct FullscreenCoverOverlay<Cover: View>: View {
     /// The player's cover on screen, in global coordinates.
     let source: CGRect
@@ -46,25 +47,52 @@ struct FullscreenCoverOverlay<Cover: View>: View {
                     backdrop
                         .frame(width: proxy.size.width, height: proxy.size.height)
                         .clipped()
-                        .opacity(isExpanded ? 1 : 0)
+                        .opacity(isExpanded ? 1 : isLifted ? 0.35 : 0)
 
                     ZStack {
                         halo(size: rect.size)
                         coverCard(size: rect.size)
                     }
-                    // Lands past the angle, swings back a little, then settles on it.
-                    // The first keyframe waits for the lift-off.
-                    .keyframeAnimator(initialValue: Double.zero, trigger: openTrigger) { content, wobble in
-                        content.rotationEffect(.degrees(reduceMotion ? 0 : wobble))
+                    // 0–0.5 s: levitates in place, shaking and glowing, with a puff of motes.
+                    // 0.5 s on: during the flight it lands past the angle, swings back a
+                    // little and settles, while the lift and the glow fade out.
+                    .keyframeAnimator(initialValue: OpeningMotion(), trigger: openTrigger) { content, motion in
+                        levitating(content, reduceMotion ? OpeningMotion() : motion, size: rect.size)
                     } keyframes: { _ in
-                        CubicKeyframe(Double.zero, duration: 0.14)
-                        CubicKeyframe(landingAngle * 0.5, duration: 0.22)
-                        CubicKeyframe(landingAngle * -0.25, duration: 0.18)
-                        SpringKeyframe(Double.zero, duration: 0.35, spring: .smooth)
+                        KeyframeTrack(\.angle) {
+                            CubicKeyframe(-3.0, duration: 0.15)
+                            CubicKeyframe(2.0, duration: 0.13)
+                            CubicKeyframe(0.0, duration: 0.22)
+                            CubicKeyframe(landingAngle * 0.5, duration: 0.22)
+                            CubicKeyframe(landingAngle * -0.25, duration: 0.18)
+                            SpringKeyframe(0.0, duration: 0.35, spring: .smooth)
+                        }
+                        KeyframeTrack(\.lift) {
+                            CubicKeyframe(-16.0, duration: 0.15)
+                            CubicKeyframe(-8.0, duration: 0.13)
+                            CubicKeyframe(-12.0, duration: 0.22)
+                            CubicKeyframe(0.0, duration: 0.4)
+                        }
+                        KeyframeTrack(\.scale) {
+                            CubicKeyframe(1.04, duration: 0.15)
+                            LinearKeyframe(1.04, duration: 0.35)
+                            CubicKeyframe(1.0, duration: 0.4)
+                        }
+                        KeyframeTrack(\.glow) {
+                            CubicKeyframe(0.7, duration: 0.15)
+                            CubicKeyframe(0.6, duration: 0.13)
+                            LinearKeyframe(0.6, duration: 0.22)
+                            CubicKeyframe(0.0, duration: 0.4)
+                        }
+                        KeyframeTrack(\.glowHue) {
+                            LinearKeyframe(0.0, duration: 0.15)
+                            LinearKeyframe(1.0, duration: 0.13)
+                        }
+                        KeyframeTrack(\.burst) {
+                            LinearKeyframe(1.0, duration: 0.6)
+                        }
                     }
                     .rotationEffect(angle)
-                    .scaleEffect(isLifted ? 1.06 : 1)
-                    .offset(y: isLifted ? -12 : 0)
                     .position(x: rect.midX, y: rect.midY)
 
                     if hasLanded, !reduceMotion {
@@ -157,9 +185,39 @@ struct FullscreenCoverOverlay<Cover: View>: View {
             .clipShape(RoundedRectangle(cornerRadius: Self.cornerRadius, style: .continuous))
             .scaleEffect(1.1 * (isBreathing ? 1.08 : 1))
             .blur(radius: 40)
-            .opacity(isExpanded || isLifted ? (isBreathing ? 0.85 : 0.55) : 0)
+            .opacity(isExpanded ? (isBreathing ? 0.85 : 0.55) : 0)
             .allowsHitTesting(false)
             .accessibilityHidden(true)
+    }
+
+    /// The opening keyframes on the cover: a glow behind it shifting from light
+    /// blue to lavender, the puff of motes, the shake, the growth and the lift.
+    private func levitating(_ content: some View, _ motion: OpeningMotion, size: CGSize) -> some View {
+        let tint = Color(
+            red: (160 + 40 * motion.glowHue) / 255,
+            green: (200 - 40 * motion.glowHue) / 255,
+            blue: 1
+        )
+        return content
+            .background {
+                if motion.glow > 0 {
+                    RoundedRectangle(cornerRadius: Self.cornerRadius, style: .continuous)
+                        .fill(tint)
+                        .padding(-10)
+                        .blur(radius: 24)
+                        .opacity(motion.glow)
+                }
+            }
+            .overlay(alignment: .bottom) {
+                // Taller than the cover, so the motes rise off its top edge.
+                if motion.burst > 0, motion.burst < 1 {
+                    MoteBurst(progress: motion.burst)
+                        .frame(width: size.width, height: size.height * 1.5)
+                }
+            }
+            .rotationEffect(.degrees(motion.angle))
+            .scaleEffect(CGFloat(motion.scale))
+            .offset(y: CGFloat(motion.lift))
     }
 
     private func coverCard(size: CGSize) -> some View {
@@ -202,9 +260,10 @@ struct FullscreenCoverOverlay<Cover: View>: View {
             }
             return
         }
-        // Lift-off in place, spring to the middle with an overshoot while tilting,
-        // then settle into the breathing loop.
-        withAnimation(.easeOut(duration: 0.14), completionCriteria: .logicallyComplete) {
+        // Levitate in place while the backdrop starts fading in (the keyframes add
+        // the shake and the glow), spring to the middle with an overshoot while
+        // tilting, then settle into the breathing loop.
+        withAnimation(.easeInOut(duration: 0.5), completionCriteria: .logicallyComplete) {
             isLifted = true
         } completion: {
             guard !isClosing else { return }
@@ -239,11 +298,56 @@ struct FullscreenCoverOverlay<Cover: View>: View {
     }
 }
 
+/// The values the opening keyframes animate, all at rest by default.
+private struct OpeningMotion {
+    /// Degrees, added to the landing tilt.
+    var angle = 0.0
+    /// Points up (negative) from the cover's frame.
+    var lift = 0.0
+    var scale = 1.0
+    /// Opacity of the glow behind the cover.
+    var glow = 0.0
+    /// 0 is light blue, 1 is lavender.
+    var glowHue = 0.0
+    /// Runs 0 to 1 once; the motes show only in between.
+    var burst = 0.0
+}
+
+/// A one-shot puff of tiny glowing dots rising off the cover, drawn at `progress`.
+private struct MoteBurst: View {
+    let progress: Double
+
+    var body: some View {
+        Canvas { context, size in
+            var glow = context
+            glow.addFilter(.blur(radius: 4))
+            for index in 0..<5 {
+                let i = Double(index)
+                // Staggered starts, each mote rising for 60% of the burst.
+                let local = min(max((progress - i * 0.08) / 0.6, 0), 1)
+                let opacity = sin(local * .pi) * 0.9
+                guard opacity > 0.01 else { continue }
+                let x = size.width * CGFloat(0.12 + i * 0.19)
+                let y = size.height * CGFloat(0.9 - local * 0.7)
+                let color = index.isMultiple(of: 2) ? FloatingMotes.tint : .white
+
+                glow.fill(
+                    Path(ellipseIn: CGRect(x: x - 5, y: y - 5, width: 10, height: 10)),
+                    with: .color(color.opacity(opacity * 0.6))
+                )
+                context.fill(Path(ellipseIn: CGRect(x: x - 1.5, y: y - 1.5, width: 3, height: 3)), with: .color(color.opacity(opacity)))
+            }
+        }
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+}
+
 /// A few tiny glowing dots drifting slowly up from the bottom of the screen
 /// and fading out, each on its own staggered loop. One Canvas redraws them all.
 private struct FloatingMotes: View {
     private static let count = 4
-    private static let tint = Color(red: 0.75, green: 0.88, blue: 1)
+    static let tint = Color(red: 0.75, green: 0.88, blue: 1)
 
     var body: some View {
         TimelineView(.animation(minimumInterval: 1 / 30)) { timeline in
