@@ -91,7 +91,6 @@ final class SearchViewModel {
 
     /// Artist hero for artist queries (top result is an artist).
     private(set) var heroArtist: ArtistItem?
-    private(set) var heroSongs: [SongItem] = []
     /// The hero card's audience line, such as "12.3M monthly audience".
     private(set) var heroDetail: String?
 
@@ -283,7 +282,6 @@ final class SearchViewModel {
         selectedSectionFilter = nil
         isShowingLibrary = false
         heroArtist = nil
-        heroSongs = []
         heroDetail = nil
 
         updateHistory(query: query)
@@ -315,7 +313,7 @@ final class SearchViewModel {
             isShowingLibrary = false
             extractHero()
             let summary = results.map { "\($0.title):\($0.items.count)" }.joined(separator: ", ")
-            Log.search.debug("Results for '\(query)': [\(summary)] hero=\(heroArtist?.name ?? "none") heroSongs=\(heroSongs.count)")
+            Log.search.debug("Results for '\(query)': [\(summary)] hero=\(heroArtist?.name ?? "none")")
             phase = results.isEmpty && heroArtist == nil ? .noResults : .results
         } catch {
             guard query == submittedQuery else { return }
@@ -327,13 +325,11 @@ final class SearchViewModel {
         }
     }
 
-    /// Artist-first layout: when the top result is an artist, lift it (plus
-    /// its top songs from the same card) into the hero. The card's songs leave
-    /// every other section too: the API often repeats them at the top of
-    /// Songs, and the card keeps them next to their artist.
+    /// Artist-first layout: when the top result is an artist, lift it into the
+    /// hero card. The card's songs move to the top of Songs; the API often
+    /// repeats them there, so a song already in Songs is not added twice.
     private func extractHero() {
         heroArtist = nil
-        heroSongs = []
         heroDetail = nil
         guard let index = results.firstIndex(where: { section in
             if case .artist = section.items.first { return true }
@@ -342,19 +338,22 @@ final class SearchViewModel {
         guard case .artist(let artist) = results[index].items.first else { return }
         heroArtist = artist
         heroDetail = results[index].subtitle
-        heroSongs = results[index].items.dropFirst().compactMap { item in
-            if case .song(let song) = item { return song }
-            return nil
-        }
-        let heroSongIds = Set(heroSongs.map(\.videoId))
-        results[index].items.removeAll { item in
-            if case .artist = item { return true }
+        let cardSongs = results[index].items.filter { item in
+            if case .song = item { return true }
             return false
         }
-        for i in results.indices {
-            results[i].items.removeAll { item in
-                if case .song(let song) = item { return heroSongIds.contains(song.videoId) }
-                return false
+        results[index].items.removeAll { item in
+            switch item {
+            case .artist, .song: return true
+            default: return false
+            }
+        }
+        if !cardSongs.isEmpty {
+            if let songsIndex = results.firstIndex(where: { $0.title == "Songs" }) {
+                var seen = Set<String>()
+                results[songsIndex].items = (cardSongs + results[songsIndex].items).filter { seen.insert($0.id).inserted }
+            } else {
+                results.append(SearchSection(title: "Songs", items: cardSongs))
             }
         }
         results.removeAll { $0.items.isEmpty }
@@ -391,7 +390,6 @@ final class SearchViewModel {
         selectedSectionFilter = nil
         isShowingLibrary = false
         heroArtist = nil
-        heroSongs = []
         heroDetail = nil
         error = nil
         phase = .idle

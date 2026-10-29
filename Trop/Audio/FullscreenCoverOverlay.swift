@@ -2,9 +2,9 @@ import SwiftUI
 import UIKit
 
 /// The current cover over the whole screen, opened by pinching the full
-/// player's cover. The whole square cover flies to the middle of the screen,
-/// tilted by a small random angle, over a blurred copy of itself and a soft
-/// breathing halo. A pinch in or a swipe down flies it back onto the player's cover.
+/// player's cover. The whole square cover lifts off the player, springs to the
+/// middle of the screen and lands tilted by a small random angle with a wobble,
+/// over a blurred copy of itself and a soft breathing halo. A pinch in or a swipe down flies it back onto the player's cover.
 struct FullscreenCoverOverlay<Cover: View>: View {
     /// The player's cover on screen, in global coordinates.
     let source: CGRect
@@ -20,6 +20,7 @@ struct FullscreenCoverOverlay<Cover: View>: View {
     private let player = PlayerController.shared
     private let np = NowPlaying.shared
 
+    @State private var isLifted = false
     @State private var isExpanded = false
     @State private var hasLanded = false
     @State private var isBreathing = false
@@ -47,13 +48,24 @@ struct FullscreenCoverOverlay<Cover: View>: View {
                         .clipped()
                         .opacity(isExpanded ? 1 : 0)
 
-                    halo(size: rect.size)
-                        .rotationEffect(angle)
-                        .position(x: rect.midX, y: rect.midY)
-
-                    coverCard(size: rect.size)
-                        .rotationEffect(angle)
-                        .position(x: rect.midX, y: rect.midY)
+                    ZStack {
+                        halo(size: rect.size)
+                        coverCard(size: rect.size)
+                    }
+                    // Lands past the angle, swings back a little, then settles on it.
+                    // The first keyframe waits for the lift-off.
+                    .keyframeAnimator(initialValue: Double.zero, trigger: openTrigger) { content, wobble in
+                        content.rotationEffect(.degrees(reduceMotion ? 0 : wobble))
+                    } keyframes: { _ in
+                        CubicKeyframe(Double.zero, duration: 0.14)
+                        CubicKeyframe(landingAngle * 0.5, duration: 0.22)
+                        CubicKeyframe(landingAngle * -0.25, duration: 0.18)
+                        SpringKeyframe(Double.zero, duration: 0.35, spring: .smooth)
+                    }
+                    .rotationEffect(angle)
+                    .scaleEffect(isLifted ? 1.06 : 1)
+                    .offset(y: isLifted ? -12 : 0)
+                    .position(x: rect.midX, y: rect.midY)
 
                     if hasLanded, !reduceMotion {
                         FloatingMotes()
@@ -145,7 +157,7 @@ struct FullscreenCoverOverlay<Cover: View>: View {
             .clipShape(RoundedRectangle(cornerRadius: Self.cornerRadius, style: .continuous))
             .scaleEffect(1.1 * (isBreathing ? 1.08 : 1))
             .blur(radius: 40)
-            .opacity(isExpanded ? (isBreathing ? 0.85 : 0.55) : 0)
+            .opacity(isExpanded || isLifted ? (isBreathing ? 0.85 : 0.55) : 0)
             .allowsHitTesting(false)
             .accessibilityHidden(true)
     }
@@ -173,7 +185,7 @@ struct FullscreenCoverOverlay<Cover: View>: View {
                 }
             }
             .clipShape(shape)
-            .shadow(color: .black.opacity(isExpanded ? 0.4 : 0), radius: 30, y: 16)
+            .shadow(color: .black.opacity(isExpanded || isLifted ? 0.4 : 0), radius: 30, y: 16)
             .scaleEffect(isBreathing ? 1.025 : 1)
     }
 
@@ -190,15 +202,22 @@ struct FullscreenCoverOverlay<Cover: View>: View {
             }
             return
         }
-        // Fly to the middle while tilting, then settle into the breathing loop.
-        withAnimation(.spring(duration: 0.6, bounce: 0.15), completionCriteria: .logicallyComplete) {
-            isExpanded = true
+        // Lift-off in place, spring to the middle with an overshoot while tilting,
+        // then settle into the breathing loop.
+        withAnimation(.easeOut(duration: 0.14), completionCriteria: .logicallyComplete) {
+            isLifted = true
         } completion: {
             guard !isClosing else { return }
-            withAnimation(.easeOut(duration: 0.3)) { hasLanded = true }
-            // 3.5 s each way: one full breath every 7 s.
-            withAnimation(.easeInOut(duration: 3.5).repeatForever(autoreverses: true)) {
-                isBreathing = true
+            withAnimation(.spring(duration: 0.5, bounce: 0.4), completionCriteria: .logicallyComplete) {
+                isLifted = false
+                isExpanded = true
+            } completion: {
+                guard !isClosing else { return }
+                withAnimation(.easeOut(duration: 0.3)) { hasLanded = true }
+                // 3.5 s each way: one full breath every 7 s.
+                withAnimation(.easeInOut(duration: 3.5).repeatForever(autoreverses: true)) {
+                    isBreathing = true
+                }
             }
         }
     }
@@ -210,6 +229,7 @@ struct FullscreenCoverOverlay<Cover: View>: View {
             reduceMotion ? .easeInOut(duration: 0.25) : .smooth(duration: 0.4),
             completionCriteria: .logicallyComplete
         ) {
+            isLifted = false
             isExpanded = false
             hasLanded = false
             isBreathing = false

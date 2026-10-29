@@ -398,7 +398,7 @@ struct LyricsView: View {
 
     private func updateActiveLine() {
         guard !lines.isEmpty else { return }
-        let t = np.currentTime + settings.lyricsOffsetSeconds
+        let t = playbackClock() + settings.lyricsOffsetSeconds
         var idx = 0
         for (i, line) in lines.enumerated() {
             guard let start = line.startTime else { continue }
@@ -416,14 +416,31 @@ struct LyricsView: View {
 
 // MARK: - Playback Tracking
 
-/// Reads `currentTime` so the lyrics list does not: the list redraws only when
-/// the active line changes, not on every playback tick.
+/// The lyrics clock, shared by the active line and the karaoke fill so both
+/// switch together. While playing it is mpv's own position, because
+/// `np.currentTime` only moves every 0.25 s; right after a seek mpv still
+/// reports the old spot for a moment, so then the seek target is used.
+@MainActor
+private func playbackClock() -> TimeInterval {
+    let np = NowPlaying.shared
+    guard np.isPlaying else { return np.currentTime }
+    let live = PlayerController.shared.currentTime
+    return abs(live - np.currentTime) < 1 ? live : np.currentTime
+}
+
+/// Reads the clock so the lyrics list does not: the list redraws only when
+/// the active line changes, not on every playback tick. While playing it
+/// checks 20 times a second, so a line turns active when it starts instead
+/// of up to 0.25 s later.
 private struct LyricsTimeTracker: View {
     let onTimeChange: () -> Void
 
     var body: some View {
-        Color.clear
-            .onChange(of: NowPlaying.shared.currentTime) { _, _ in onTimeChange() }
+        TimelineView(.animation(minimumInterval: 0.05, paused: !NowPlaying.shared.isPlaying)) { context in
+            Color.clear
+                .onChange(of: context.date) { _, _ in onTimeChange() }
+        }
+        .onChange(of: NowPlaying.shared.currentTime) { _, _ in onTimeChange() }
     }
 }
 
@@ -581,40 +598,52 @@ private struct KaraokeLineText: View {
     let offset: Double
 
     private let np = NowPlaying.shared
-    private let player = PlayerController.shared
 
     var body: some View {
         let text = Self.text(for: words)
         TimelineView(.animation(minimumInterval: 1 / 60, paused: !np.isPlaying)) { _ in
-            // While playing, mpv's own position: `np.currentTime` only moves
-            // every 0.25 s. While paused it holds the latest seek target.
-            let now = (np.isPlaying ? player.currentTime : np.currentTime) + offset
-            text.textRenderer(KaraokeRenderer(time: now))
+            text.textRenderer(KaraokeRenderer(time: playbackClock() + offset))
         }
     }
 
     /// One text, so lines wrap normally; each word carries its timing.
     private static func text(for words: [LyricWord]) -> Text {
-        words.reduce(Text(verbatim: "")) { line, word in
+        words.enumerated().reduce(Text(verbatim: "")) { line, item in
+            let (index, word) = item
             // ponytail: a last word with no end tag fills over a fixed 0.5 s.
-            let timing = KaraokeWordTiming(start: word.startTime, end: word.endTime ?? word.startTime + 0.5)
+            let timing = KaraokeWordTiming(index: index, start: word.startTime,
+                                           end: word.endTime ?? word.startTime + 0.5)
             return Text("\(line)\(Text(verbatim: word.text).customAttribute(timing))")
         }
     }
 }
 
 private struct KaraokeWordTiming: TextAttribute {
+    /// The word's position in the line, so two words with equal times stay apart.
+    let index: Int
     let start: TimeInterval
     let end: TimeInterval
 }
 
 /// Draws each word dimmed, then its sung part at full strength, clipped from
 /// the left. Only drawing changes per frame; the text layout is reused.
+/// A word can span several runs — a line wrap, or kanji and kana drawn with
+/// different fonts — so its sung width crosses those runs in order instead
+/// of filling each run at once.
 /// ponytail: fills left to right, so right-to-left scripts fill backwards.
 private struct KaraokeRenderer: TextRenderer {
     var time: TimeInterval
 
     func draw(layout: Text.Layout, in context: inout GraphicsContext) {
+        var wordWidth: [Int: CGFloat] = [:]
+        for line in layout {
+            for run in line {
+                if let timing = run[KaraokeWordTiming.self] {
+                    wordWidth[timing.index, default: 0] += run.typographicBounds.rect.width
+                }
+            }
+        }
+        var drawnWidth: [Int: CGFloat] = [:]
         for line in layout {
             for run in line {
                 guard let timing = run[KaraokeWordTiming.self] else {
@@ -622,19 +651,22 @@ private struct KaraokeRenderer: TextRenderer {
                     continue
                 }
                 let progress = min(1, max(0, (time - timing.start) / max(timing.end - timing.start, 0.01)))
-                if progress >= 1 {
+                let rect = run.typographicBounds.rect
+                let before = drawnWidth[timing.index, default: 0]
+                drawnWidth[timing.index] = before + rect.width
+                let sungWidth = progress * wordWidth[timing.index, default: rect.width] - before
+                if progress >= 1 || sungWidth >= rect.width {
                     context.draw(run)
                     continue
                 }
                 var upcoming = context
                 upcoming.opacity = 0.35
                 upcoming.draw(run)
-                guard progress > 0 else { continue }
-                let rect = run.typographicBounds.rect
+                guard sungWidth > 0 else { continue }
                 var sung = context
                 // Tall clip so only the horizontal edge cuts glyphs.
                 sung.clip(to: Path(CGRect(x: rect.minX, y: rect.minY - rect.height,
-                                          width: rect.width * progress, height: rect.height * 3)))
+                                          width: sungWidth, height: rect.height * 3)))
                 sung.draw(run)
             }
         }

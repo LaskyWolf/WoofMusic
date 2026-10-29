@@ -175,10 +175,14 @@ enum LyricsParsing {
     /// in seconds. Each word starts `o` seconds after its line's `ts` and ends
     /// where the next word starts; the last ends at `te` (spicetify
     /// lyrics-plus ProviderMusixmatch.js, `getKaraoke`).
+    /// Words are split on spaces, so text without spaces (Japanese, Chinese)
+    /// arrives as one piece per line: when most lines are a single piece the
+    /// word timing is dropped and the lines stay line-synced, so a provider
+    /// with real per-character timing (Kugou KRC) wins the karaoke lookup.
     static func parseRichsync(_ body: String) -> [LyricLine] {
         guard let data = body.data(using: .utf8),
               let rows = (try? JSONSerialization.jsonObject(with: data)) as? [[String: Any]] else { return [] }
-        return rows.compactMap { row -> LyricLine? in
+        let lines = rows.compactMap { row -> LyricLine? in
             guard let ts = row["ts"] as? Double,
                   let te = row["te"] as? Double,
                   let parts = row["l"] as? [[String: Any]] else { return nil }
@@ -191,6 +195,9 @@ enum LyricsParsing {
             guard let timed = trimmedWords(words) else { return nil }
             return LyricLine(text: timed.map(\.text).joined(), startTime: ts, words: timed)
         }
+        let singlePiece = lines.filter { $0.words?.count == 1 }.count
+        guard singlePiece * 2 > lines.count else { return lines }
+        return lines.map { LyricLine(text: $0.text, startTime: $0.startTime) }
     }
 
     /// Adds a timed piece; whitespace-only (or empty) pieces join the previous word.
@@ -281,6 +288,10 @@ enum LyricsParsing {
         assert(rich.count == 1 && rich[0].text == "Hi there" && rich[0].words?.count == 2)
         assert(near(rich[0].words?[0].endTime, 5.3))
         assert(near(rich[0].words?[1].startTime, 5.4) && near(rich[0].words?[1].endTime, 6))
+        // Richsync of text without spaces: one piece per line is line timing, not karaoke.
+        let richJa = parseRichsync(#"[{"ts":1,"te":2,"l":[{"c":"あなたは","o":0}]},{"ts":3,"te":4,"l":[{"c":"形だけ","o":0},{"c":" ","o":0.3},{"c":"今日","o":0.4}]},{"ts":5,"te":6,"l":[{"c":"言うけど","o":0}]}]"#)
+        assert(richJa.map(\.text) == ["あなたは", "形だけ 今日", "言うけど"] && richJa[1].startTime == 3)
+        assert(richJa.allSatisfy { $0.words == nil })
 
         // Netease yrc (music.163.com /api/song/lyric?yv=-1): word starts are song time.
         let yrc = parseWordTimedLines(#"{"t":0,"c":[{"tx":"Lyrics"}]}"# + "\n[27360,1290](27360,240,0)I've (27600,90,0)been (27690,360,0)tryna",
