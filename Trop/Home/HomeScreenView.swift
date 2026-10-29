@@ -24,8 +24,8 @@ struct HomeScreenView: View {
             VStack(spacing: 0) {
                 TabHeaderView(
                     title: "Home",
-                    accountIsLoggedIn: viewModel.isLoggedIn,
-                    accountImageUrl: viewModel.accountImageUrl,
+                    accountIsLoggedIn: account.isLoggedIn,
+                    accountImageUrl: account.accountImageUrl,
                     onHistory: { router.homePath.append(DetailRoute.history) },
                     onAccount: { router.homePath.append(DetailRoute.settings) }
                 )

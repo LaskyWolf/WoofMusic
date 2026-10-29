@@ -21,8 +21,6 @@ final class HomeViewModel {
     var error: Error?
 
     var isLoggedIn = false
-    var accountName = "Guest"
-    var accountImageUrl: String?
 
     var hideExplicit = false {
         didSet { mergeSections() }
@@ -122,7 +120,6 @@ final class HomeViewModel {
         guard loggedIn else { return }
         isLoggedIn = true
         await InnerTubeClient.tropShared.loadState(from: cookieStore)
-        await fetchAccountInfo()
     }
 
     func handleLogin(cookies: [String: String], sapisid: String?, visitorData: String?) {
@@ -130,30 +127,15 @@ final class HomeViewModel {
         Task {
             // LoginViewModel already saved the session (with dataSyncId).
             await InnerTubeClient.tropShared.loadState(from: cookieStore)
-            if isLoggedIn {
-                await fetchAccountInfo()
-                await loadPhase2Sections()
-            }
+            if isLoggedIn { await loadPhase2Sections() }
         }
     }
 
     /// Clears account-only sections after a sign-out from Settings.
     func handleLogout() {
         isLoggedIn = false
-        accountName = "Guest"
-        accountImageUrl = nil
         cachedPhase2Sections = []
         mergeSections()
-    }
-
-    private func fetchAccountInfo() async {
-        do {
-            let info = try await InnerTubeClient.tropShared.accountInfo()
-            accountName = info.name
-            accountImageUrl = info.thumbnailUrl
-        } catch {
-            Log.homeViewModel.error("Failed to fetch account info: \(error)")
-        }
     }
 
     // MARK: - Home Data Loading
