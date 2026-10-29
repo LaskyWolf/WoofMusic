@@ -60,10 +60,18 @@ struct FullPlayerView: View {
                     Color.black
                         .ignoresSafeArea()
                 } else if settings.playerStyle == .card {
-                    // One flat colour from the cover, dark enough for white text.
-                    (playerBackgroundColors.first ?? .black)
-                        .mix(with: .black, by: 0.6)
-                        .ignoresSafeArea()
+                    // The cover's colour, brighter at the top and dark enough for
+                    // white text from the middle down, where the controls sit.
+                    let base = playerBackgroundColors.first ?? .black
+                    LinearGradient(
+                        stops: [
+                            .init(color: base.mix(with: .black, by: 0.15), location: 0),
+                            .init(color: base.mix(with: .black, by: 0.6), location: 0.55)
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                    .ignoresSafeArea()
                         .animation(.easeInOut(duration: 0.8), value: playerBackgroundColors)
                 } else {
                     LinearGradient(

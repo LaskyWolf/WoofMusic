@@ -30,7 +30,7 @@ struct FullscreenCoverOverlay<Cover: View>: View {
     /// enough to make the cover look upside down.
     @State private var landingAngle = Double.random(in: 4...12) * (Bool.random() ? 1 : -1)
 
-    private static let cornerRadius: CGFloat = 12
+    private static var cornerRadius: CGFloat { 12 }
 
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
