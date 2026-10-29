@@ -19,6 +19,8 @@ final class DurationResolver {
     }
 
     func resolve(videoId: String, knownDuration: Int) async {
+        // A reused row may now show another song: drop the previous song's value.
+        if resolved != 0 { resolved = 0 }
         guard knownDuration <= 0 else { return }
         if let duration = await InnerTubeClient.tropShared.resolveDuration(videoId: videoId) {
             resolved = duration

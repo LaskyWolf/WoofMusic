@@ -56,11 +56,7 @@ struct HomeScreenView: View {
             .onChange(of: account.isLoggedIn) { _, loggedIn in
                 if loggedIn {
                     guard !viewModel.isLoggedIn else { return }
-                    viewModel.handleLogin(
-                        cookies: account.loginModel.cookies,
-                        sapisid: account.loginModel.sapisid,
-                        visitorData: account.loginModel.visitorData
-                    )
+                    viewModel.handleLogin(sapisid: account.loginModel.sapisid)
                 } else {
                     viewModel.handleLogout()
                 }

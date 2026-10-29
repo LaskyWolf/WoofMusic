@@ -122,7 +122,7 @@ final class HomeViewModel {
         await InnerTubeClient.tropShared.loadState(from: cookieStore)
     }
 
-    func handleLogin(cookies: [String: String], sapisid: String?, visitorData: String?) {
+    func handleLogin(sapisid: String?) {
         isLoggedIn = sapisid != nil
         Task {
             // LoginViewModel already saved the session (with dataSyncId).
@@ -143,7 +143,8 @@ final class HomeViewModel {
     private func load() async {
         loadGeneration += 1
         let generation = loadGeneration
-        isLoading = true
+        // Pull-to-refresh keeps the feed on screen; the skeleton is for the first load.
+        if homeSections.isEmpty { isLoading = true }
         error = nil
 
         async let localTask: Void = storeLocalSections()
@@ -214,7 +215,8 @@ final class HomeViewModel {
             }
             homePage = page
         } catch {
-            if generation == loadGeneration {
+            // A cancelled refresh, or a failed one with a feed on screen, keeps the feed.
+            if generation == loadGeneration, homePage == nil, !error.isCancellation {
                 self.error = error
             }
         }
@@ -313,7 +315,12 @@ final class HomeViewModel {
                     mergeSections()
                 }
             } catch {
-                Log.homeViewModel.error("Continuation error: \(error)")
+                if error.isCancellation { return }
+                if error is URLError {
+                    Log.homeViewModel.notice("Continuation error: \(error)")
+                } else {
+                    Log.homeViewModel.error("Continuation error: \(error)")
+                }
             }
         }
     }
@@ -427,12 +434,9 @@ final class HomeViewModel {
             var newSection = sectionData
             newSection.items = filteredSectionItems
             return .homePageSection(newSection, index: index)
-        case .accountPlaylists: return .accountPlaylists(items: filteredItems)
         case .similarRecommendation(_, let t): return .similarRecommendation(items: filteredItems, title: t)
         case .dailyDiscover: return .dailyDiscover(items: filteredItems)
         case .fromTheCommunity: return .fromTheCommunity(items: filteredItems)
-        case .speedDial: return .speedDial(items: filteredItems)
-        case .moodAndGenres: return .moodAndGenres(items: filteredItems)
         }
     }
 
@@ -445,10 +449,7 @@ final class HomeViewModel {
         case .homePageSection(_, let index): return 40 - index
         case .dailyDiscover: return 70
         case .similarRecommendation: return 35
-        case .accountPlaylists: return 30
         case .fromTheCommunity: return 25
-        case .speedDial: return 20
-        case .moodAndGenres: return 15
         }
     }
 }

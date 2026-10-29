@@ -12,37 +12,63 @@ import SwiftUI
 struct ShimmerFill: View {
     var radius: CGFloat = 8
 
+    /// Set by `shimmerClock()` on a skeleton's root.
+    @Environment(\.shimmerPhase) private var sharedPhase
+
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1 / 30)) { timeline in
-            let sweep = (shimmerPhase(at: timeline.date) * 2 - 1)
-            Color(.systemGray5)
-                .overlay(
-                    GeometryReader { geo in
-                        let w = max(geo.size.width, 1)
-                        let h = max(geo.size.height, 1)
-                        LinearGradient(
-                            stops: [
-                                .init(color: .clear, location: 0),
-                                .init(color: .white.opacity(0.5), location: 0.5),
-                                .init(color: .clear, location: 1)
-                            ],
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        )
-                        .frame(width: w * 1.5, height: h)
-                        .offset(x: sweep * w)
-                    }
-                )
-                .clipShape(RoundedRectangle(cornerRadius: radius))
+        // A fill outside a clocked skeleton runs its own timeline.
+        if let sharedPhase {
+            fill(phase: sharedPhase)
+        } else {
+            TimelineView(.animation(minimumInterval: 1 / 30)) { timeline in
+                fill(phase: shimmerPhase(at: timeline.date))
+            }
         }
-        .allowsHitTesting(false)
-        .accessibilityHidden(true)
+    }
+
+    private func fill(phase: CGFloat) -> some View {
+        let sweep = phase * 2 - 1
+        return Color(.systemGray5)
+            .overlay(
+                GeometryReader { geo in
+                    let w = max(geo.size.width, 1)
+                    let h = max(geo.size.height, 1)
+                    LinearGradient(
+                        stops: [
+                            .init(color: .clear, location: 0),
+                            .init(color: .white.opacity(0.5), location: 0.5),
+                            .init(color: .clear, location: 1)
+                        ],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                    .frame(width: w * 1.5, height: h)
+                    .offset(x: sweep * w)
+                }
+            )
+            .clipShape(RoundedRectangle(cornerRadius: radius))
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
     }
 }
 
 private func shimmerPhase(at date: Date) -> CGFloat {
     let period: TimeInterval = 1.6
     return CGFloat(date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: period) / period)
+}
+
+extension EnvironmentValues {
+    /// 0...1 through the shimmer sweep, shared by every fill under `shimmerClock()`.
+    @Entry var shimmerPhase: CGFloat?
+}
+
+extension View {
+    /// Drives every `ShimmerFill` inside from one timeline, instead of one per block.
+    func shimmerClock() -> some View {
+        TimelineView(.animation(minimumInterval: 1 / 30)) { timeline in
+            self.environment(\.shimmerPhase, shimmerPhase(at: timeline.date))
+        }
+    }
 }
 
 // MARK: - Placeholder primitive
@@ -200,6 +226,7 @@ struct ShimmerLoadingView: View {
         }
         .scrollIndicators(.hidden)
         .allowsHitTesting(false)
+        .shimmerClock()
     }
 
     /// Same box as `HorizontalSection`: title, content, then the section gap.

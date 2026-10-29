@@ -52,7 +52,8 @@ actor LyricsService {
 
     private var cache: [String: [LyricLine]] = [:]
     private var customs: [String: (lines: [LyricLine], providerName: String)] = [:]
-    private var inFlight: [String: Task<FetchResult, Error>] = [:]
+    /// Nil result: no query could be built for the song (not cached as not found).
+    private var inFlight: [String: Task<FetchResult?, Error>] = [:]
     /// Songs no provider had lyrics for, so reopening or preloading them skips
     /// the providers for a while. Entries expire because lyrics can be
     /// published later.
@@ -67,6 +68,7 @@ actor LyricsService {
     private struct FetchResult: Sendable {
         let lines: [LyricLine]
         let providerName: String?
+        let query: LyricsQuery
     }
 
     func fetchLyrics(videoId: String) async throws -> [LyricLine] {
@@ -86,38 +88,43 @@ actor LyricsService {
             throw LyricsError.notFound
         }
         if let flight = inFlight[videoId] {
-            return try await flight.value.lines
+            guard let result = try await flight.value else { throw LyricsError.notFound }
+            return result.lines
         }
-        guard let query = await resolveQuery(videoId: videoId) else {
-            await updateAvailability(videoId: videoId, available: false)
-            throw LyricsError.notFound
-        }
-        let flight = Task<FetchResult, Error> {
+        // Stored before the first await, so callers arriving meanwhile share it.
+        let flight = Task<FetchResult?, Error> {
+            guard let query = await resolveQuery(videoId: videoId) else { return nil }
             let (lines, providerName) = try await LyricsManager.shared.fetchLyricsReturningProvider(query: query)
-            return FetchResult(lines: lines, providerName: providerName)
+            return FetchResult(lines: lines, providerName: providerName, query: query)
         }
         inFlight[videoId] = flight
+        let fetched: FetchResult?
         do {
-            let result = try await flight.value
-            inFlight.removeValue(forKey: videoId)
-            // Only cache successful lookups — empty results should be retried later
-            // since lyrics can be matched/published after playback starts.
-            if !result.lines.isEmpty {
-                cache[videoId] = result.lines
-                upgradeToWordTiming(videoId: videoId, query: query, shown: result.lines, excluding: result.providerName)
-            }
-            await updateAvailability(videoId: videoId, available: !result.lines.isEmpty, providerName: result.providerName)
-            return result.lines
+            fetched = try await flight.value
         } catch {
             inFlight.removeValue(forKey: videoId)
+            // `.notFound` means the providers answered; network errors are retried.
             if case LyricsError.notFound = error {
                 notFoundUntil[videoId] = Date().addingTimeInterval(Self.notFoundTTL)
             }
-            if !(error is CancellationError) {
+            if !error.isCancellation {
                 await updateAvailability(videoId: videoId, available: false)
             }
             throw error
         }
+        inFlight.removeValue(forKey: videoId)
+        guard let result = fetched else {
+            await updateAvailability(videoId: videoId, available: false)
+            throw LyricsError.notFound
+        }
+        // Only cache successful lookups — empty results should be retried later
+        // since lyrics can be matched/published after playback starts.
+        if !result.lines.isEmpty {
+            cache[videoId] = result.lines
+            upgradeToWordTiming(videoId: videoId, query: result.query, shown: result.lines, excluding: result.providerName)
+        }
+        await updateAvailability(videoId: videoId, available: !result.lines.isEmpty, providerName: result.providerName)
+        return result.lines
     }
 
     // MARK: - Manual Manipulations (edit / refetch / search selection / copy)
@@ -252,14 +259,10 @@ actor LyricsService {
         await MainActor.run {
             if available {
                 LyricsState.shared.availableVideoIds.insert(videoId)
+                if NowPlaying.shared.videoId == videoId { LyricsState.shared.providerName = providerName }
             } else {
                 LyricsState.shared.availableVideoIds.remove(videoId)
             }
-        }
-        let currentId = await MainActor.run { NowPlaying.shared.videoId }
-        guard currentId == videoId else { return }
-        await MainActor.run {
-            if available { LyricsState.shared.providerName = providerName }
         }
     }
 

@@ -176,23 +176,6 @@ if [ -d "$FFMPEG_KIT_XCF/libavcodec.xcframework" ]; then
     rename_ffmpegkit_frameworks
 fi
 
-# Update the Xcode project references to the renamed xcframeworks. Runs only
-# while the project still references the pristine lowercase names; once renamed
-# (fk_*), the guard prevents a re-run from double-prefixing
-local_pbx="$WORKING_LOCATION/$PROJECT_NAME.xcodeproj/project.pbxproj"
-if ! grep -q "fk_libavcodec.xcframework" "$local_pbx"; then
-    echo "Updating project references to renamed ffmpeg-kit xcframeworks..."
-    sed -i '' \
-        -e 's/libavcodec\.xcframework/fk_libavcodec.xcframework/g' \
-        -e 's/libavdevice\.xcframework/fk_libavdevice.xcframework/g' \
-        -e 's/libavfilter\.xcframework/fk_libavfilter.xcframework/g' \
-        -e 's/libavformat\.xcframework/fk_libavformat.xcframework/g' \
-        -e 's/libavutil\.xcframework/fk_libavutil.xcframework/g' \
-        -e 's/libswresample\.xcframework/fk_libswresample.xcframework/g' \
-        -e 's/libswscale\.xcframework/fk_libswscale.xcframework/g' \
-        "$local_pbx"
-fi
-
 cd "$BUILD_DIR"
 
 XCODEBUILD_ACTION="${XCODEBUILD_ACTION:-build}"
@@ -326,7 +309,7 @@ fi
 
 cd "$STAGE_DIR"
 rm -f "$IPA_PATH"
-zip -vr "$IPA_PATH" "Payload"
+zip -qr "$IPA_PATH" "Payload"
 
 rm -rf "$PAYLOAD_DIR"
 

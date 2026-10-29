@@ -110,7 +110,8 @@ struct DownloadsView: View {
     /// Rows sit directly in the parent `LazyVStack`, so only the visible ones are built.
     private func songList(_ songs: [SongItem]) -> some View {
         // No separators: the row's own vertical padding keeps songs apart.
-        ForEach(Array(songs.enumerated()), id: \.offset) { _, song in
+        // Downloads are keyed by videoId, so it is unique here.
+        ForEach(songs, id: \.videoId) { song in
             SongRowView(
                 song: song,
                 artSize: DesignTokens.artSmall,

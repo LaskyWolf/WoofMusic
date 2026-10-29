@@ -47,11 +47,18 @@ final class PodcastDetailViewModel {
                 parsed.episodes, podcastId: browseId, podcastName: parsed.title
             )
             if SettingsStore.shared.autoDownloadNewEpisodes, !fresh.isEmpty {
-                for episode in fresh.prefix(10) {
-                    await DownloadManager.shared.download(song: episode.toSongItem())
+                // Not tied to the view: the episodes are already marked as known,
+                // so leaving the page must not cancel the rest of the downloads.
+                let songs = fresh.prefix(10).map { $0.toSongItem() }
+                Task {
+                    for song in songs {
+                        await DownloadManager.shared.download(song: song)
+                    }
                 }
             }
         } catch {
+            // Leaving the page cancels the load: keep isLoading so the next appear retries.
+            if error.isCancellation { return }
             self.error = error
             isLoading = false
         }
@@ -415,7 +422,6 @@ extension PodcastDetailViewModel {
 struct PodcastDetailView: View {
     let browseId: String
     @State private var viewModel: PodcastDetailViewModel
-    @State private var showMoreSheet = false
 
     init(browseId: String) {
         self.browseId = browseId
@@ -441,16 +447,6 @@ struct PodcastDetailView: View {
         .task {
             guard viewModel.isLoading else { return }
             await viewModel.load()
-        }
-        .sheet(isPresented: $showMoreSheet) {
-            if let podcast = viewModel.podcast {
-                PodcastMoreSheet(
-                    podcast: podcast,
-                    isSubscribed: viewModel.isSubscribed,
-                    onToggleSubscribe: { Task { await viewModel.toggleSubscribe() } },
-                    onPlayAll: { playAll(podcast) }
-                )
-            }
         }
     }
 
@@ -491,24 +487,40 @@ struct PodcastDetailView: View {
                         .padding(.top, 4)
                 }
             } buttons: {
-                Button(action: { showMoreSheet = true }, label: {
+                Menu {
+                    Button(
+                        viewModel.isSubscribed ? "Unsubscribe" : "Subscribe",
+                        systemImage: viewModel.isSubscribed ? "minus.circle" : "plus.circle"
+                    ) { Task { await viewModel.toggleSubscribe() } }
+                    if let url = URL(string: "https://music.youtube.com/browse/\(podcast.browseId)") {
+                        ShareLink(item: url) {
+                            Label("Share", systemImage: "square.and.arrow.up")
+                        }
+                    }
+                    Section {
+                        Button("Play All", systemImage: "play.fill") { playAll(podcast) }
+                        SongsMenuActions(songs: podcast.episodes.map { $0.toSongItem() })
+                    }
+                    .disabled(podcast.episodes.isEmpty)
+                } label: {
                     HeaderRoundIcon(systemImage: "ellipsis")
-                })
-                .accessibilityLabel("More options")
+                        .accessibilityLabel("More options")
+                }
+                .menuOrder(.fixed)
 
                 Button(action: {
                     Task { await viewModel.toggleSubscribe() }
                 }, label: {
                     HeaderRoundIcon(
                         systemImage: viewModel.isSubscribed ? "bookmark.fill" : "bookmark",
-                        tint: viewModel.isSubscribed ? .accentColor : .primary
+                        tint: viewModel.isSubscribed ? SettingsStore.shared.accentColor : .primary
                     )
                 })
                 .accessibilityLabel(viewModel.isSubscribed ? "Unsubscribe from podcast" : "Subscribe to podcast")
 
                 if !podcast.episodes.isEmpty {
                     Button(action: { playOrResume(podcast) }, label: {
-                        HeaderRoundIcon(systemImage: "play.fill", primary: .accentColor)
+                        HeaderRoundIcon(systemImage: "play.fill", primary: SettingsStore.shared.accentColor)
                     })
                     .accessibilityLabel("Play")
                 }
@@ -542,7 +554,7 @@ struct PodcastDetailView: View {
                 .font(.system(size: 10, weight: .bold))
                 .foregroundStyle(.white)
                 .frame(width: 20, height: 20)
-                .background(Circle().fill(Color.accentColor))
+                .background(Circle().fill(SettingsStore.shared.accentColor))
                 .accessibilityHidden(true)
             Text(author)
                 .font(.subheadline.weight(.medium))
@@ -608,86 +620,6 @@ struct PodcastDetailView: View {
             guard PlayerController.shared.currentVideoId == episode.videoId else { return }
             PlayerController.shared.seek(to: resumeAt)
         }
-    }
-}
-
-// MARK: - Podcast More Sheet
-
-/// Overflow menu matching PlaylistMoreSheet, with Subscribe as the
-/// first row (mirrors podcast.subscribed_at).
-struct PodcastMoreSheet: View {
-    let podcast: PodcastDetailInfo
-    let isSubscribed: Bool
-    var onToggleSubscribe: (() -> Void)?
-    var onPlayAll: (() -> Void)?
-
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        SheetChrome {
-            MenuCard {
-                MenuRow(
-                    icon: isSubscribed ? "checkmark.circle.fill" : "plus.circle",
-                    title: isSubscribed ? "Subscribed" : "Subscribe",
-                    subtitle: isSubscribed ? "Unsubscribe from this podcast" : "Get new episodes in your library"
-                ) {
-                    onToggleSubscribe?()
-                    dismiss()
-                }
-                Divider()
-                MenuRow(
-                    icon: "play.fill",
-                    title: "Play All",
-                    subtitle: "Play episodes from the top"
-                ) {
-                    onPlayAll?()
-                    dismiss()
-                }
-                Divider()
-                MenuRow(
-                    icon: "list.bullet",
-                    title: "Add to Queue",
-                    subtitle: "Add to the end of the queue"
-                ) {
-                    addToQueue()
-                    dismiss()
-                }
-                Divider()
-                MenuRow(
-                    icon: "square.and.arrow.down",
-                    title: "Download",
-                    subtitle: "Download episodes for offline playback"
-                ) {
-                    downloadAll()
-                    dismiss()
-                }
-                Divider()
-                MenuRow(
-                    icon: "square.and.arrow.up",
-                    title: "Share",
-                    subtitle: "Share this podcast with others"
-                ) {
-                    share()
-                    dismiss()
-                }
-            }
-        }
-    }
-
-    private func addToQueue() {
-        NowPlaying.shared.appendToQueue(podcast.episodes.map { $0.toSongItem() })
-    }
-
-    private func downloadAll() {
-        for episode in podcast.episodes {
-            Task { await DownloadManager.shared.download(song: episode.toSongItem()) }
-        }
-    }
-
-    private func share() {
-        guard let url = URL(string: "https://music.youtube.com/browse/\(podcast.browseId)") else { return }
-        presentShareSheet(items: [url])
-        dismiss()
     }
 }
 
@@ -962,7 +894,7 @@ private struct ExpandableDescriptionText: View {
         var str = AttributedString(displayText)
         guard isTruncated else { return str }
         var toggle = AttributedString(toggleLabel)
-        toggle.foregroundColor = .accentColor
+        toggle.foregroundColor = SettingsStore.shared.accentColor
         toggle.font = .caption.weight(.semibold)
         str.append(toggle)
         return str

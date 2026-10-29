@@ -271,6 +271,10 @@ struct MiniArtworkView: View {
 
     @State private var uiImage: UIImage?
 
+    /// Cropped covers by URL. The parents rebuild this view on every drag
+    /// frame, so `init` must not crop (or read the disk) each time.
+    private static let croppedCovers = NSCache<NSString, UIImage>()
+
     init(song: SongItem, placeholderIconSize: CGFloat = 20) {
         self.song = song
         self.placeholderIconSize = placeholderIconSize
@@ -278,7 +282,7 @@ struct MiniArtworkView: View {
         // The player's own image covers songs whose cover isn't cached under this URL
         // (downloads with embedded art), but only once it belongs to this song.
         let np = NowPlaying.shared
-        _uiImage = State(initialValue: cachedArtwork(for: song)
+        _uiImage = State(initialValue: Self.cachedArtwork(for: song)
             ?? (np.thumbnailVideoId == song.videoId ? np.thumbnailUIImage : nil))
     }
 
@@ -301,16 +305,21 @@ struct MiniArtworkView: View {
     private func load() async {
         guard uiImage == nil, let url = miniArtworkURL(for: song) else { return }
         do {
-            let image = try await ArtworkLoader.image(for: url)
-            uiImage = image.centerCroppedSquare()
-        } catch {
+            let image = try await ArtworkLoader.image(for: url).centerCroppedSquare()
+            Self.croppedCovers.setObject(image, forKey: url.absoluteString as NSString)
+            uiImage = image
+        } catch where !error.isCancellation {
             Log.nowPlaying.error("Mini artwork load failed: \(error)")
-        }
+        } catch {}
     }
-}
 
-@MainActor
-private func cachedArtwork(for song: SongItem) -> UIImage? {
-    guard let url = miniArtworkURL(for: song) else { return nil }
-    return ArtworkLoader.cachedImage(for: url)?.centerCroppedSquare()
+    /// Memory caches only; a cover on disk is loaded by `load()`.
+    private static func cachedArtwork(for song: SongItem) -> UIImage? {
+        guard let url = miniArtworkURL(for: song) else { return nil }
+        let key = url.absoluteString as NSString
+        if let cropped = croppedCovers.object(forKey: key) { return cropped }
+        guard let cropped = ArtworkLoader.memoryImage(for: url)?.centerCroppedSquare() else { return nil }
+        croppedCovers.setObject(cropped, forKey: key)
+        return cropped
+    }
 }

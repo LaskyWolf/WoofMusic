@@ -130,7 +130,7 @@ struct PlaybackSpeedDial: View {
                             .padding(.horizontal, 6)
                             .background(
                                 RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                    .fill(isSelected ? Color.accentColor.opacity(0.55) : .white.opacity(0.1))
+                                    .fill(isSelected ? SettingsStore.shared.accentColor.opacity(0.55) : .white.opacity(0.1))
                             )
                             .contentShape(Rectangle())
                     }
@@ -233,7 +233,7 @@ private struct SpeedScale: View {
                     for x in notchXs {
                         dots.addEllipse(in: CGRect(x: x - 2, y: 15, width: 5, height: 5))
                     }
-                    context.fill(dots, with: .color(.accentColor))
+                    context.fill(dots, with: .color(SettingsStore.shared.accentColor))
                 }
                 ForEach(numbers, id: \.self) { value in
                     Text(value.formatted(.number.precision(.fractionLength(0...1))))

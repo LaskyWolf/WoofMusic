@@ -5,7 +5,6 @@
 // Created by 686udjie on 30/06/2026.
 //
 
-import Combine
 import Foundation
 import GRDB
 
@@ -336,6 +335,12 @@ extension DatabaseService {
         }
     }
 
+    func fetchLikedSongIds() async throws -> [String] {
+        try await dbPool.read { db in
+            try String.fetchAll(db, sql: "SELECT id FROM song WHERE liked = 1")
+        }
+    }
+
     func fetchAllLikedSongCount() async throws -> Int {
         try await dbPool.read { db in
             try SongEntity.filter(Column("liked") == true).fetchCount(db)
@@ -397,29 +402,6 @@ extension DatabaseService {
 
             return events.map { HistoryEntry(event: $0, song: songs[$0.songId]) }
         }
-    }
-}
-
-// MARK: Reactive Observation
-
-extension DatabaseService {
-    func observeAll<T: FetchableRecord & TableRecord & Sendable>(_ type: T.Type) -> AnyPublisher<[T], Error> {
-        ValueObservation
-            .tracking { db in try type.fetchAll(db) }
-            .publisher(in: dbPool, scheduling: .async(onQueue: .main))
-            .eraseToAnyPublisher()
-    }
-
-    func observeAll<T: FetchableRecord & TableRecord & Sendable>(
-        _ type: T.Type,
-        sql: String,
-        arguments: StatementArguments = [])
-        -> AnyPublisher<[T], Error>
-    {
-        ValueObservation
-            .tracking { db in try type.fetchAll(db, sql: sql, arguments: arguments) }
-            .publisher(in: dbPool, scheduling: .async(onQueue: .main))
-            .eraseToAnyPublisher()
     }
 }
 

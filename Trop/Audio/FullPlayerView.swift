@@ -704,8 +704,8 @@ private struct PlayerProgressSection: View {
                 .foregroundStyle(.white)
                 .padding(.horizontal, 9)
                 .padding(.vertical, 3)
-                .background(Capsule().fill(isChanged ? Color.accentColor.opacity(0.55) : .white.opacity(0.14)))
-                .overlay { Capsule().strokeBorder(isChanged ? Color.accentColor : .white.opacity(0.2), lineWidth: 1) }
+                .background(Capsule().fill(isChanged ? SettingsStore.shared.accentColor.opacity(0.55) : .white.opacity(0.14)))
+                .overlay { Capsule().strokeBorder(isChanged ? SettingsStore.shared.accentColor : .white.opacity(0.2), lineWidth: 1) }
                 .padding(.vertical, 4)
                 .padding(.horizontal, 8)
                 .contentShape(Rectangle())

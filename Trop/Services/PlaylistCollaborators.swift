@@ -16,7 +16,8 @@ struct PlaylistCollaborator: Hashable {
 enum PlaylistCollaborators {
     /// The people on a shared playlist, owner first. `params` comes from the
     /// playlist header's facepile; an empty list means the request failed.
-    static func fetch(params: String) async -> [PlaylistCollaborator] {
+    /// `@concurrent`: parses the panel JSON off the caller's actor.
+    @concurrent static func fetch(params: String) async -> [PlaylistCollaborator] {
         guard let data = try? await SignedInnerTube.post("get_panel", ["panelId": "PAplaylist_collaborate", "params": params]),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return [] }
         let people = (((((json["content"] as? [String: Any])?["engagementPanelSectionListRenderer"] as? [String: Any])?["content"]

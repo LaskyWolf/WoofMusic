@@ -13,7 +13,6 @@ enum DesignTokens {
     // MARK: - Spacing
 
     static let rowSpacing: CGFloat = 12
-    static let sectionSpacing: CGFloat = 12
     static let cardInnerSpacing: CGFloat = 4
     static let menuRowSpacing: CGFloat = 14
 

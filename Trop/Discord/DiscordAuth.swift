@@ -60,7 +60,10 @@ final class DiscordAuth {
         do {
             (data, httpResponse) = try await HttpClient.data(for: request)
         } catch {
-            Log.discord.error("Token exchange grant=\(grantType) transport error: \(error.localizedDescription)")
+            // Usually offline; the caller keeps the old token.
+            if !error.isCancellation {
+                Log.discord.notice("Token exchange grant=\(grantType) transport error: \(error.localizedDescription)")
+            }
             throw DiscordAuthError.networkFailure(error)
         }
         let status = httpResponse.statusCode

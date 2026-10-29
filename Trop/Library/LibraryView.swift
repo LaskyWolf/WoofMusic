@@ -462,6 +462,7 @@ struct LibraryView: View {
         }
         .scrollIndicators(.hidden)
         .allowsHitTesting(false)
+        .shimmerClock()
     }
 
     /// A grid cell's placeholder: a cover filling the column and two text lines.
@@ -532,12 +533,20 @@ struct LibraryView: View {
                     )
                 ]
             }
-            artists = try await artistsFetch
-            playlists = try await playlistsFetch.filter { !PlaylistEntity.hiddenIds.contains($0.id) }
-            albums = try await albumsFetch
-            podcasts = try await podcastsFetch.filter { !PlaylistEntity.hiddenIds.contains($0.id) }
-            likedSongCount = try await countFetch
-            shortcutCovers = try await coversFetch
+            // This runs on every appear: assign only what changed, since each
+            // assignment redraws the whole library.
+            let newArtists = try await artistsFetch
+            if artists != newArtists { artists = newArtists }
+            let newPlaylists = try await playlistsFetch.filter { !PlaylistEntity.hiddenIds.contains($0.id) }
+            if playlists != newPlaylists { playlists = newPlaylists }
+            let newAlbums = try await albumsFetch
+            if albums != newAlbums { albums = newAlbums }
+            let newPodcasts = try await podcastsFetch.filter { !PlaylistEntity.hiddenIds.contains($0.id) }
+            if podcasts != newPodcasts { podcasts = newPodcasts }
+            let newCount = try await countFetch
+            if likedSongCount != newCount { likedSongCount = newCount }
+            let newCovers = try await coversFetch
+            if shortcutCovers != newCovers { shortcutCovers = newCovers }
 
             let rows: [(String, Int)] = try await DatabaseService.shared.read { db in
                 try Row.fetchAll(
@@ -549,10 +558,13 @@ struct LibraryView: View {
                 )
                 .map { ($0["playlist_id"] as String, $0["cnt"] as Int) }
             }
-            playlistSongCounts = Dictionary(uniqueKeysWithValues: rows)
+            let newCounts = Dictionary(uniqueKeysWithValues: rows)
+            if playlistSongCounts != newCounts { playlistSongCounts = newCounts }
 
-            isLoading = false
+            if isLoading { isLoading = false }
         } catch {
+            // Leaving the tab cancels the load; the next appear runs it again.
+            if error.isCancellation { return }
             Log.libraryView.error("Failed to load: \(error)")
             isLoading = false
         }

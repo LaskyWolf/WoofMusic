@@ -33,8 +33,8 @@ struct RecapStoryView: View {
     @State private var shareImage: UIImage?
 
     @State private var index = 0
-    /// 0...1 through the current slide.
-    @State private var progress: Double = 0
+    /// Bumped whenever a slide starts, so the timer restarts even on the same index.
+    @State private var slideRun = 0
     @State private var isPaused = false
     @State private var pressStart: Date?
     @State private var dragY: CGFloat = 0
@@ -51,7 +51,9 @@ struct RecapStoryView: View {
         var list: [Slide] = [.intro, .minutes]
         if !stats.topArtists.isEmpty { list.append(.artist) }
         if stats.topSong != nil { list.append(.song) }
-        list += [.badges, .summary]
+        // The shelf only gets a slide when the month unlocked something.
+        if !stats.newBadges.isEmpty { list.append(.badges) }
+        list.append(.summary)
         return list
     }
 
@@ -97,7 +99,6 @@ struct RecapStoryView: View {
         .accessibilityAction(.escape) { dismiss() }
         .sensoryFeedback(.selection, trigger: index)
         .task { await load() }
-        .task(id: "\(index)-\(stats != nil)-\(voiceOver)") { await runTimer() }
     }
 
     // MARK: - Chrome
@@ -121,20 +122,9 @@ struct RecapStoryView: View {
     private var chrome: some View {
         VStack(spacing: 10) {
             if !slides.isEmpty {
-                HStack(spacing: 4) {
-                    ForEach(slides.indices, id: \.self) { i in
-                        let fill = i < index ? 1 : (i == index ? progress : 0)
-                        Capsule()
-                            .fill(.white.opacity(0.3))
-                            .overlay(alignment: .leading) {
-                                Capsule()
-                                    .fill(.white)
-                                    .scaleEffect(x: fill, anchor: .leading)
-                            }
-                            .frame(height: 3)
-                    }
-                }
-                .animation(.linear(duration: 0.05), value: progress)
+                // VoiceOver users move with the slide actions.
+                RecapProgressBar(count: slides.count, index: index, slideRun: slideRun,
+                                 isTimed: !voiceOver, isPaused: $isPaused) { next() }
                 .accessibilityElement()
                 .accessibilityLabel("Slide \(index + 1) of \(slides.count)")
             }
@@ -185,28 +175,16 @@ struct RecapStoryView: View {
             .accessibilityHidden(true)
     }
 
-    // MARK: - Timer
-
-    /// Advances after `slideSeconds`, paused while held. VoiceOver users move with the slide actions.
-    private func runTimer() async {
-        guard !slides.isEmpty, !voiceOver else { return }
-        let tick = 0.05
-        while progress < 1 {
-            try? await Task.sleep(for: .seconds(tick))
-            if Task.isCancelled { return }
-            if !isPaused { progress = min(1, progress + tick / Self.slideSeconds) }
-        }
-        if index < slides.count - 1 { next() }
-    }
+    // MARK: - Navigation
 
     private func next() {
         guard index < slides.count - 1 else { return }
-        progress = 0
+        slideRun += 1
         index += 1
     }
 
     private func previous() {
-        progress = 0
+        slideRun += 1
         if index > 0 { index -= 1 }
     }
 
@@ -227,7 +205,7 @@ struct RecapStoryView: View {
     private var summaryButtons: some View {
         HStack(spacing: 8) {
             Button {
-                progress = 0
+                slideRun += 1
                 index = 0
             } label: {
                 Label("Replay", systemImage: "arrow.counterclockwise")
@@ -295,6 +273,54 @@ struct RecapStoryView: View {
         // 360×640 pt at 3× is 1080×1920 px.
         renderer.scale = 1080 / RecapShareCard.size.width
         return renderer.uiImage
+    }
+}
+
+// MARK: - Progress bar
+
+/// The slide bars and the timer that fills them. A separate view, so the
+/// 20 ticks a second redraw only the bars, not the whole story.
+private struct RecapProgressBar: View {
+    let count: Int
+    let index: Int
+    let slideRun: Int
+    let isTimed: Bool
+    /// A binding, so the running timer reads the live value while the screen is held.
+    @Binding var isPaused: Bool
+    let onFinish: () -> Void
+
+    /// 0...1 through the current slide.
+    @State private var progress: Double = 0
+
+    var body: some View {
+        HStack(spacing: 4) {
+            ForEach(0..<count, id: \.self) { i in
+                let fill = i < index ? 1 : (i == index ? progress : 0)
+                Capsule()
+                    .fill(.white.opacity(0.3))
+                    .overlay(alignment: .leading) {
+                        Capsule()
+                            .fill(.white)
+                            .scaleEffect(x: fill, anchor: .leading)
+                    }
+                    .frame(height: 3)
+            }
+        }
+        .animation(.linear(duration: 0.05), value: progress)
+        .task(id: "\(slideRun)-\(isTimed)") { await runTimer() }
+    }
+
+    /// Advances after `slideSeconds`, paused while held.
+    private func runTimer() async {
+        progress = 0
+        guard isTimed else { return }
+        let tick = 0.05
+        while progress < 1 {
+            try? await Task.sleep(for: .seconds(tick))
+            if Task.isCancelled { return }
+            if !isPaused { progress = min(1, progress + tick / RecapStoryView.slideSeconds) }
+        }
+        onFinish()
     }
 }
 
@@ -641,8 +667,8 @@ private struct UnlockedCard: View {
         }
         .padding(14)
         .background(.white.opacity(0.1), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .overlay { RoundedRectangle(cornerRadius: 20, style: .continuous).strokeBorder(RecapPalette.gold.opacity(0.5)) }
-        .shadow(color: RecapPalette.gold.opacity(0.25), radius: 20)
+        .overlay { RoundedRectangle(cornerRadius: 20, style: .continuous).strokeBorder(SettingsStore.shared.accentColor.opacity(0.5)) }
+        .shadow(color: SettingsStore.shared.accentColor.opacity(0.25), radius: 20)
         .task {
             try? await Task.sleep(for: .seconds(2.2))
             bounce += 1
@@ -657,20 +683,18 @@ private struct BadgesSlide: View {
     var body: some View {
         Appearing { shown in
             VStack(alignment: .leading, spacing: 8) {
-                Kicker(text: "Your badge shelf")
+                Kicker(text: "New on your shelf")
                     .entrance(.rise, shown, delay: 0.1)
-                Text("\(stats.unlockedCount) of \(stats.badges.count) unlocked")
+                Text(stats.newBadges.count == 1 ? "1 badge unlocked in \(month)" : "\(stats.newBadges.count) badges unlocked in \(month)")
                     .headline(size: 26)
                     .entrance(.rise, shown, delay: 0.3)
-                if !stats.newBadges.isEmpty {
-                    Text("\(stats.newBadges.count) new in \(month)")
-                        .font(.subheadline)
-                        .foregroundStyle(RecapPalette.gold)
-                        .entrance(.rise, shown, delay: 0.4)
-                }
+                Text("\(stats.unlockedCount) of \(stats.badges.count) collected")
+                    .font(.subheadline)
+                    .foregroundStyle(SettingsStore.shared.accentColor)
+                    .entrance(.rise, shown, delay: 0.4)
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 3), spacing: 14) {
-                    ForEach(Array(stats.badges.enumerated()), id: \.element.id) { i, badge in
-                        BadgeTile(badge: badge, isNew: stats.newBadges.contains(badge))
+                    ForEach(Array(stats.newBadges.enumerated()), id: \.element.id) { i, badge in
+                        BadgeTile(badge: badge, isNew: true)
                             .entrance(.pop, shown, delay: 0.6 + Double(i) * 0.15)
                     }
                 }

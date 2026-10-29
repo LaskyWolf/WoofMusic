@@ -38,7 +38,9 @@ final class DownloadManager: ObservableObject {
     private let pathMonitor = NWPathMonitor()
     private var currentPath: NWPath?
     private var isReloading = false
-    private var cancelledDownloadIds: Set<String> = []
+    /// The current run of each download. `delete` drops the entry, so a run
+    /// whose token is gone or replaced stops at its next check.
+    private var downloadTokens: [String: UUID] = [:]
     private var lastReportedProgress: [String: Double] = [:]
     private var activeFFmpegSessions: [String: FFmpegSession] = [:]
     private var runningDownloadCount = 0
@@ -263,10 +265,6 @@ final class DownloadManager: ObservableObject {
         if persistedDownloadCount != newTracks.count { persistedDownloadCount = newTracks.count }
     }
 
-    private func scanDownloadedFiles() -> [String: URL] {
-        Self.scanDownloadedFiles(in: downloadsDir)
-    }
-
     nonisolated private static func scanDownloadedFiles(in downloadsDir: URL) -> [String: URL] {
         let keys: [URLResourceKey] = [.fileSizeKey, .contentModificationDateKey]
         guard let urls = try? FileManager.default.contentsOfDirectory(
@@ -324,7 +322,9 @@ extension DownloadManager {
             return
         }
         // Claim the id before the first suspension so a second call stops at the guard above.
-        cancelledDownloadIds.remove(videoId)
+        let token = UUID()
+        downloadTokens[videoId] = token
+        defer { if downloadTokens[videoId] == token { downloadTokens.removeValue(forKey: videoId) } }
         lastReportedProgress.removeValue(forKey: videoId)
         downloads[videoId] = .downloading(0)
 
@@ -344,16 +344,10 @@ extension DownloadManager {
         }
 
         // Queued downloads stay at progress 0 until a slot frees up.
-        guard await acquireDownloadSlot(for: videoId) else {
-            // Cancelled while queued; delete already reset the state.
-            cancelledDownloadIds.remove(videoId)
-            return
-        }
+        // False when cancelled while queued; delete already reset the state.
+        guard await acquireDownloadSlot(for: videoId) else { return }
         defer { releaseDownloadSlot() }
-        if cancelledDownloadIds.contains(videoId) {
-            cancelledDownloadIds.remove(videoId)
-            return
-        }
+        if downloadTokens[videoId] != token { return }
 
         var bgTask: UIBackgroundTaskIdentifier = .invalid
         bgTask = UIApplication.shared.beginBackgroundTask(withName: "trop-download-\(videoId)") {
@@ -385,6 +379,8 @@ extension DownloadManager {
                 forDownload: true
             )
             let resolveElapsed = CFAbsoluteTimeGetCurrent() - resolveStart
+            // Deleted while resolving: stop before writing the file.
+            if downloadTokens[videoId] != token { throw CancellationError() }
             let streamURL = result.streamUrl
             let isAACStream = result.mimeType.lowercased().contains("mp4a")
                 || result.mimeType.lowercased().contains("aac")
@@ -426,6 +422,8 @@ extension DownloadManager {
                     artworkData: artwork,
                     videoId: videoId
                 )
+                // A superseded run may have left its copy here.
+                try? fileManager.removeItem(at: fileURL)
                 try fileManager.moveItem(at: tempDownload, to: fileURL)
             } else {
                 // WebM/Opus is not readable by AVFoundation — transcode first,
@@ -452,13 +450,7 @@ extension DownloadManager {
             }
             Log.downloadManager.debug("FFMPEG \(String(format: "%.1f", CFAbsoluteTimeGetCurrent() - ffmpegStart))s")
 
-            if cancelledDownloadIds.contains(videoId) {
-                cancelledDownloadIds.remove(videoId)
-                lastReportedProgress.removeValue(forKey: videoId)
-                try? fileManager.removeItem(at: fileURL)
-                downloads[videoId] = .notStarted
-                return
-            }
+            if downloadTokens[videoId] != token { throw CancellationError() }
 
             let entity = DownloadedTrackEntity(
                 id: videoId,
@@ -475,14 +467,11 @@ extension DownloadManager {
             lastReportedProgress.removeValue(forKey: videoId)
             let totalElapsed = CFAbsoluteTimeGetCurrent() - downloadStart
             Log.downloadManager.debug("DONE \(String(format: "%.1f", totalElapsed))s total: \(artist) - \(song.title)")
-        } catch is CancellationError {
-            cancelledDownloadIds.remove(videoId)
-            lastReportedProgress.removeValue(forKey: videoId)
-            try? fileManager.removeItem(at: fileURL)
-            downloads[videoId] = .notStarted
         } catch {
-            if cancelledDownloadIds.contains(videoId) || (error as? URLError)?.code == .cancelled {
-                cancelledDownloadIds.remove(videoId)
+            let current = downloadTokens[videoId]
+            // A newer run for this id owns the state and the file.
+            if let current, current != token { return }
+            if current == nil || error.isCancellation {
                 lastReportedProgress.removeValue(forKey: videoId)
                 try? fileManager.removeItem(at: fileURL)
                 downloads[videoId] = .notStarted
@@ -493,7 +482,13 @@ extension DownloadManager {
             }
             downloads[videoId] = .failed(userFacingDownloadError(error))
             lastReportedProgress.removeValue(forKey: videoId)
-            Log.downloadManager.error("Failed download \(videoId): \(error.localizedDescription)")
+            let reason: String
+            if case .invalidAudio(let detail)? = error as? DownloadError {
+                reason = detail
+            } else {
+                reason = error.localizedDescription
+            }
+            Log.downloadManager.error("Failed download \(videoId): \(reason)")
         }
     }
 
@@ -528,8 +523,7 @@ extension DownloadManager {
         let size = values.fileSize ?? 0
         // Real audio streams are well above this; error/HTML bodies are not.
         guard size >= Self.minimumAudioBytes else {
-            Log.downloadManager.error("Downloaded file too small (\(size) bytes) — likely a dead stream URL")
-            throw DownloadError.invalidStreamURL
+            throw DownloadError.invalidAudio("Downloaded file too small (\(size) bytes) — likely a dead stream URL")
         }
 
         let asset = AVURLAsset(url: url)
@@ -537,12 +531,10 @@ extension DownloadManager {
         do {
             audioTracks = try await asset.loadTracks(withMediaType: .audio)
         } catch {
-            Log.downloadManager.error("Cannot open downloaded file as audio: \(error.localizedDescription)")
-            throw DownloadError.invalidStreamURL
+            throw DownloadError.invalidAudio("Cannot open downloaded file as audio: \(error.localizedDescription)")
         }
         guard !audioTracks.isEmpty else {
-            Log.downloadManager.error("Downloaded file has no audio track — rejecting as invalid stream")
-            throw DownloadError.invalidStreamURL
+            throw DownloadError.invalidAudio("Downloaded file has no audio track — rejecting as invalid stream")
         }
     }
 
@@ -600,13 +592,8 @@ extension DownloadManager {
 
     private func cancelAllActiveDownloads() {
         cancelQueuedDownloads { _ in true }
-        for (videoId, state) in downloads {
-            if case .downloading = state {
-                cancelledDownloadIds.insert(videoId)
-            }
-        }
-        for (videoId, session) in activeFFmpegSessions {
-            cancelledDownloadIds.insert(videoId)
+        downloadTokens.removeAll()
+        for session in activeFFmpegSessions.values {
             session.cancel()
         }
         activeFFmpegSessions.removeAll()
@@ -694,7 +681,6 @@ extension DownloadManager {
                     } else if ReturnCode.isCancel(rc) {
                         finish(.failure(CancellationError()))
                     } else {
-                        Log.downloadManager.error("FFmpeg processing failed")
                         finish(.failure(NSError(
                             domain: "DownloadManager",
                             code: -1,
@@ -723,7 +709,7 @@ extension DownloadManager {
 
 extension DownloadManager {
     func delete(videoId: String) async {
-        cancelledDownloadIds.insert(videoId)
+        downloadTokens.removeValue(forKey: videoId)
         cancelQueuedDownloads { $0 == videoId }
         if let session = activeFFmpegSessions.removeValue(forKey: videoId) {
             session.cancel()
@@ -765,7 +751,6 @@ extension DownloadManager {
 
         tracksById.removeAll()
         downloads.removeAll()
-        // Keep cancelledDownloadIds so in-flight download(song:) ops still see cancel.
         lastReportedProgress.removeAll()
         apply([:])
     }
@@ -813,14 +798,6 @@ extension DownloadManager {
 
     // MARK: - Query Helpers
 
-    func isDownloaded(videoId: String) -> Bool {
-        tracksById[videoId] != nil
-    }
-
-    func fetchAll() async -> [DownloadedTrackEntity] {
-        Array(tracksById.values)
-    }
-
     private func fetchAllFromDatabase() async -> [DownloadedTrackEntity] {
         (try? await DatabaseService.shared.fetchAll(DownloadedTrackEntity.self)) ?? []
     }
@@ -836,13 +813,15 @@ extension DownloadManager {
     }
 
     func totalStorageBytes() async -> Int64 {
-        var total: Int64 = 0
-        for track in tracksById.values {
-            guard let url = resolvedURL(for: track) else { continue }
-            let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
-            total += Int64(size)
-        }
-        return total
+        let paths = tracksById.values.map(\.localPath)
+        let dir = downloadsDir
+        // One stat per file: run off the main actor.
+        return await Task.detached(priority: .utility) {
+            paths.reduce(into: Int64(0)) { total, path in
+                guard let url = Self.resolvedURL(forStoredPath: path, in: dir) else { return }
+                total += Int64((try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
+            }
+        }.value
     }
 
     func state(for videoId: String) -> DownloadState {
@@ -961,15 +940,11 @@ private struct ReconcilePlan: Sendable {
 
 enum DownloadError: Error, LocalizedError {
     case invalidStreamURL
-    case transcodeFailed
+    /// The file is not playable audio; the reason goes to the log only.
+    case invalidAudio(String)
 
     var errorDescription: String? {
-        switch self {
-        case .invalidStreamURL:
-            return "The stream URL returned by the server was invalid"
-        case .transcodeFailed:
-            return "Could not convert this track for offline playback."
-        }
+        "The stream URL returned by the server was invalid"
     }
 }
 

@@ -36,6 +36,8 @@ final class Crossfade {
     private var plan: Plan?
     /// Identifies the current planning run; a reset makes older runs stale.
     private var planToken = UUID()
+    /// The planning run, cancelled by a reset so its decodes stop too.
+    private var planTask: Task<Void, Never>?
     private var incoming: MpvDeck?
     private var outgoing: MpvDeck?
     private var incomingReady = false
@@ -100,7 +102,7 @@ final class Crossfade {
             phase = .planning
             let token = planToken
             let duration = np.duration
-            Task { await makePlan(from: current, to: next, duration: duration, token: token) }
+            planTask = Task { await makePlan(from: current, to: next, duration: duration, token: token) }
         case .planned:
             guard let plan, position >= plan.mix.fadeStart - Self.prepareLead else { return }
             phase = .prepared
@@ -129,6 +131,8 @@ final class Crossfade {
     func reset() {
         fadeTask?.cancel()
         speedTask?.cancel()
+        planTask?.cancel()
+        planTask = nil
         planToken = UUID()
         let active = player.activeDeck
         for deck in [incoming, outgoing].compactMap({ $0 }) where deck != active {
@@ -228,12 +232,12 @@ final class Crossfade {
         let bass: Double? = plan.mix.isBeatMatched ? Self.bassCut : nil
         player.deck(deck, set: "pause", "yes")
         player.deck(deck, set: "volume", "0")
-        player.deck(deck, set: "speed", Self.fmt(plan.mix.speed))
+        player.deck(deck, set: "speed", PlayerController.fmt(plan.mix.speed))
         // Keep the audio output open between files: closing it deactivates
         // the audio session (see `complete`).
         player.deck(deck, set: "gapless-audio", "yes")
         player.deck(deck, set: "af", player.filterChain(loudness: plan.loudness, bassGain: bass))
-        player.deck(deck, set: "start", Self.fmt(plan.mix.inStart))
+        player.deck(deck, set: "start", PlayerController.fmt(plan.mix.inStart))
         player.deck(deck, command: ["loadfile", plan.url, "replace"])
     }
 
@@ -294,7 +298,7 @@ final class Crossfade {
                 let correction = max(-Self.maxLockCorrection, min(Self.maxLockCorrection, -Self.lockGain * error))
                 let speed = mix.speed * (1 + correction)
                 if abs(speed - lastSpeed) > 0.0005 {
-                    player.deck(incoming, set: "speed", Self.fmt(speed))
+                    player.deck(incoming, set: "speed", PlayerController.fmt(speed))
                     lastSpeed = speed
                 }
             }
@@ -367,7 +371,7 @@ final class Crossfade {
     /// Changes the bass filter in place (no audio gap). Only decks that
     /// were loaded with AutoMix on have it; on others mpv ignores the command.
     private func setBass(_ deck: MpvDeck, gain: Double) {
-        player.deck(deck, command: ["af-command", PlayerController.bassFilterLabel, "g", Self.fmt(gain)])
+        player.deck(deck, command: ["af-command", PlayerController.bassFilterLabel, "g", PlayerController.fmt(gain)])
     }
 
     private func easeSpeed(_ deck: MpvDeck, from speed: Double) {
@@ -375,7 +379,7 @@ final class Crossfade {
             let start = Date()
             while !Task.isCancelled {
                 let t = min(1, Date().timeIntervalSince(start) / Self.speedEaseSeconds)
-                self?.player.deck(deck, set: "speed", Self.fmt(speed + (1 - speed) * t))
+                self?.player.deck(deck, set: "speed", PlayerController.fmt(speed + (1 - speed) * t))
                 if t >= 1 { return }
                 try? await Task.sleep(for: .milliseconds(200))
             }
@@ -415,22 +419,49 @@ final class Crossfade {
         args += ["-i", url, "-t", "\(Int(seconds))", "-vn", "-ac", "1",
                  "-ar", "\(TrackAnalyzer.sampleRate)", "-f", "f32le", output.path]
 
-        let succeeded = await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
-            FFmpegKit.execute(withArgumentsAsync: args) { session in
-                continuation.resume(returning: ReturnCode.isSuccess(session?.getReturnCode()))
+        // A reset cancels the plan; the session is stopped instead of decoding on.
+        let running = RunningSession()
+        let succeeded = await withTaskCancellationHandler {
+            await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
+                let started = FFmpegKit.execute(withArgumentsAsync: args) { session in
+                    continuation.resume(returning: ReturnCode.isSuccess(session?.getReturnCode()))
+                }
+                running.start(started)
             }
+        } onCancel: {
+            running.cancel()
         }
         guard succeeded, let data = try? Data(contentsOf: output), !data.isEmpty else { return nil }
         return data.withUnsafeBytes { Array($0.bindMemory(to: Float.self)) }
     }
 
-    private nonisolated static func fmt(_ value: Double) -> String {
-        String(format: "%.4f", value)
-    }
-
     /// mpv's volume is cubic (amplitude = (volume / 100)³), so a linear gain
     /// needs a cube root to fade smoothly.
     private nonisolated static func mpvVolume(_ gain: Double) -> String {
-        fmt(100 * cbrt(max(0, gain)))
+        PlayerController.fmt(100 * cbrt(max(0, gain)))
+    }
+}
+
+/// The FFmpeg session of a decode, shared with its cancellation handler,
+/// which can run before the session exists.
+private final class RunningSession: @unchecked Sendable {
+    private let lock = NSLock()
+    private var session: FFmpegSession?
+    private var isCancelled = false
+
+    func start(_ session: FFmpegSession?) {
+        lock.lock()
+        self.session = session
+        let cancelled = isCancelled
+        lock.unlock()
+        if cancelled { session?.cancel() }
+    }
+
+    func cancel() {
+        lock.lock()
+        isCancelled = true
+        let session = session
+        lock.unlock()
+        session?.cancel()
     }
 }

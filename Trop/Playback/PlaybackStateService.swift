@@ -23,6 +23,8 @@ actor PlaybackStateService {
     private var hasRecordedPlayback = false
     private var periodicCheckTask: Task<Void, Never>?
     private var bankedPlayTimeMs: Int64 = 0
+    /// Last song whose row is known to exist; banking runs every 5s.
+    private var ensuredSongId: String?
 
     private init() {}
 
@@ -120,6 +122,7 @@ actor PlaybackStateService {
     /// Inserts the song row when missing (title/artwork from the queue),
     /// so banking and history never hit a missing row. No-op when present.
     private func ensureSongEntity(videoId: String) async {
+        guard ensuredSongId != videoId else { return }
         let queueSong: SongItem? = await MainActor.run {
             NowPlaying.shared.queueSongs.first(where: { $0.videoId == videoId })
         }
@@ -147,6 +150,7 @@ actor PlaybackStateService {
                 try entity.insert(db, onConflict: .ignore)
                 Log.playbackState.debug("Ensured SongEntity for \(videoId)")
             }
+            ensuredSongId = videoId
         } catch {
             Log.playbackState.error("Failed to ensure song entity: \(error)")
         }
@@ -177,6 +181,9 @@ actor PlaybackStateService {
                 Task {
                     do {
                         try await InnerTubeClient.tropShared.registerPlayback(trackingUrl: trackingUrl)
+                    } catch let error as URLError {
+                        // Usually offline; the play is already counted locally.
+                        if error.code != .cancelled { Log.playbackState.notice("YTM playback registration failed: \(error)") }
                     } catch {
                         Log.playbackState.error("YTM playback registration failed: \(error)")
                     }

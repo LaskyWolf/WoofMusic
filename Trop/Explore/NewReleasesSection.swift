@@ -244,7 +244,7 @@ struct NewReleaseCard: View {
 
             Button(action: playTapped) {
                 Self.roundIcon(isPlaying ? "pause.fill" : "play.fill",
-                               fill: .accentColor, foreground: .white, isBusy: showsSpinner)
+                               fill: SettingsStore.shared.accentColor, foreground: .white, isBusy: showsSpinner)
             }
             .disabled(isStarting)
             .task(id: isStarting) {

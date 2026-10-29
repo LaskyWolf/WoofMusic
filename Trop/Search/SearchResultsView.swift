@@ -74,6 +74,7 @@ struct SearchResultsView: View {
         }
         .scrollIndicators(.hidden)
         .scrollDisabled(true)
+        .shimmerClock()
     }
 
     // MARK: - Submission

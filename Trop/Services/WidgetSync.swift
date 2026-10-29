@@ -17,7 +17,9 @@ final class WidgetSync {
 
     private var lastNowPlaying: NowPlayingState?
     private var lastQuickPicks: QuickPicksSnapshot?
+    private var lastStats: StatsSnapshot?
     private var pending: Task<Void, Never>?
+    private var pendingQuickPicks: Task<Void, Never>?
     /// Cover encoded for `NowPlaying.thumbnailVersion`.
     private var cover: (version: Int, data: Data?)?
     /// Small covers by thumbnail URL, for up next, Quick Picks and stats.
@@ -80,8 +82,10 @@ final class WidgetSync {
     // MARK: - Quick Picks
 
     /// Home calls this with the cards it shows: pinned songs first, then the picks.
+    /// A newer call cancels the older one, so a stale list never lands last.
     func updateQuickPicks(_ cards: [(song: SongItem, isPinned: Bool)], isEnabled: Bool) {
-        Task {
+        pendingQuickPicks?.cancel()
+        pendingQuickPicks = Task {
             var songs: [WidgetSong] = []
             for card in cards.prefix(6) {
                 var song = await widgetSong(card.song)
@@ -89,6 +93,7 @@ final class WidgetSync {
                 song.payload = try? JSONEncoder().encode(card.song)
                 songs.append(song)
             }
+            guard !Task.isCancelled else { return }
             let snapshot = QuickPicksSnapshot(songs: songs, isEnabled: isEnabled)
             if snapshot != lastQuickPicks, WidgetStore.write(snapshot, to: WidgetStore.quickPicksFile) {
                 lastQuickPicks = snapshot
@@ -127,7 +132,8 @@ final class WidgetSync {
                 artists.append(StatsSnapshot.Artist(name: artist.name, minutes: artist.minutes,
                                                     artwork: await smallCover(artist.thumbnailUrl)))
             }
-            let badges = stats.badges.map { badge in
+            // Unlocked first: the widget has room for 7 of the 23.
+            let badges = (stats.badges.filter(\.isUnlocked) + stats.badges.filter { !$0.isUnlocked }).map { badge in
                 let pair = badge.kind.hexPair
                 return StatsSnapshot.Badge(emoji: badge.kind.emoji, name: badge.kind.name,
                                            isUnlocked: badge.isUnlocked, colors: [pair.0, pair.1])
@@ -144,7 +150,8 @@ final class WidgetSync {
                 badges: badges,
                 isTracking: settings.trackPlayHistory
             )
-            if WidgetStore.write(snapshot, to: WidgetStore.statsFile) {
+            if snapshot != lastStats, WidgetStore.write(snapshot, to: WidgetStore.statsFile) {
+                lastStats = snapshot
                 WidgetCenter.shared.reloadTimelines(ofKind: WidgetKind.stats)
             }
         }

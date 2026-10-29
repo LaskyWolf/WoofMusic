@@ -64,6 +64,10 @@ struct PlayMusicIntent: AudioPlaybackIntent {
         let sections: [SearchSection]
         do {
             sections = SearchParser.parseSearchResults(from: try await SearchService.shared.search(query: text))
+        } catch let error as URLError {
+            // Usually offline.
+            if error.code != .cancelled { Log.search.notice("Siri search failed: \(error)") }
+            return .result(dialog: "I couldn't search Woof Music right now.")
         } catch {
             Log.search.error("Siri search failed: \(error)")
             return .result(dialog: "I couldn't search Woof Music right now.")

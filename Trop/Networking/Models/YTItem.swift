@@ -555,16 +555,6 @@ struct EpisodeItem {
             viewsText: viewsText
         )
     }
-
-    /// "17k views • 4 hr ago • 1 hr 23 mins" meta line under each episode.
-    var metaLine: String {
-        var parts: [String] = []
-        if let views = viewsText, !views.isEmpty { parts.append(views) }
-        if let date = publishDate, !date.isEmpty { parts.append(date) }
-        let durationStr = duration.wordsDuration
-        if !durationStr.isEmpty { parts.append(durationStr) }
-        return parts.joined(separator: " • ")
-    }
 }
 
 // MARK: - Web URL

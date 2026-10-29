@@ -12,9 +12,6 @@ import Observation
 final class SleepTimer {
     static let shared = SleepTimer()
 
-    /// Minutes offered in the player menu.
-    static let presetMinutes = [5, 15, 30, 45, 60]
-
     /// When the countdown pauses playback; nil unless a countdown is running.
     private(set) var endsAt: Date?
     /// Pause when the current song ends instead of after a countdown.

@@ -206,10 +206,10 @@ struct DialPlayButton: View {
             if isCurrent {
                 PlayPauseGlyph(isPlaying: np.isPlaying, size: 16, color: .white)
                     .frame(width: NewReleaseCard.buttonSize, height: NewReleaseCard.buttonSize)
-                    .background(Circle().fill(Color.accentColor))
+                    .background(Circle().fill(SettingsStore.shared.accentColor))
                     .contentShape(Circle())
             } else {
-                NewReleaseCard.roundIcon("play.fill", fill: .accentColor, foreground: .white, isBusy: showsSpinner)
+                NewReleaseCard.roundIcon("play.fill", fill: SettingsStore.shared.accentColor, foreground: .white, isBusy: showsSpinner)
             }
         }
         .buttonStyle(ZoomPressStyle(scale: 0.92))

@@ -35,6 +35,7 @@ final class HistoryViewModel {
             let raw = try await db.fetchHistory(limit: 100)
             groupedEntries = Self.groupByDate(raw)
         } catch {
+            if error.isCancellation { return }
             Log.historyView.error("Failed to load local history: \(error)")
         }
     }
@@ -48,8 +49,13 @@ final class HistoryViewModel {
             let sections = Self.parseRemoteHistory(from: json)
             remoteSections = sections
         } catch {
-            Log.historyView.error("Failed to load remote history: \(error)")
-            remoteError = error
+            if error is URLError, !error.isCancellation {
+                Log.historyView.notice("Failed to load remote history: \(error)")
+                remoteError = error
+            } else if !error.isCancellation {
+                Log.historyView.error("Failed to load remote history: \(error)")
+                remoteError = error
+            }
         }
         isRemoteLoading = false
     }
@@ -77,16 +83,8 @@ final class HistoryViewModel {
         let cal = Calendar.current
         if cal.isDateInToday(day) { return "Today" }
         if cal.isDateInYesterday(day) { return "Yesterday" }
-        return dayFormatter.string(from: day)
+        return day.formatted(date: .abbreviated, time: .omitted)
     }
-
-    private static let dayFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.locale = Locale.current
-        f.dateStyle = .medium
-        f.timeStyle = .none
-        return f
-    }()
 
     func deleteEvents(_ events: [Event]) async {
         for event in events {

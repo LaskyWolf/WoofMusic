@@ -42,15 +42,6 @@ extension View {
         modifier(CoverZoomSource(route: route))
     }
 
-    /// Presents a DetailRoute destination in a NavigationStack
-    func detailRouteSheet(item: Binding<DetailRoute?>) -> some View {
-        self.sheet(item: item) { route in
-            NavigationStack {
-                DetailRouteDestinationView(route: route)
-            }
-        }
-    }
-
     /// Standard sheet presentation: detents plus a visible drag indicator.
     func appSheetChrome(_ detents: Set<PresentationDetent> = [.medium, .large]) -> some View {
         presentationDetents(detents)

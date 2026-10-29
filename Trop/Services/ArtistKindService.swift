@@ -21,6 +21,8 @@ actor ArtistKindService {
     /// MusicBrainz answers 503 to roughly one request in six even at that pace.
     private static let maxAttempts = 3
     private static let minimumScore = 90
+    /// Keeps the UserDefaults entry small; it is rewritten on every new name.
+    private static let maxCachedNames = 500
 
     /// Lowercased name → label. An empty label records a miss.
     private var cache: [String: String]
@@ -53,6 +55,10 @@ actor ArtistKindService {
             }
             let label = match.flatMap(Self.label(for:)) ?? ""
             cache[key] = label
+            // ponytail: evicts arbitrary names, not the oldest; an evicted name is just looked up again.
+            while cache.count > Self.maxCachedNames, let evicted = cache.keys.first(where: { $0 != key }) {
+                cache.removeValue(forKey: evicted)
+            }
             UserDefaults.standard.set(cache, forKey: Self.defaultsKey)
             return label.isEmpty ? nil : label
         }

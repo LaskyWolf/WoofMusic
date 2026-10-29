@@ -399,8 +399,7 @@ final class NowPlaying {
            let url = URL(string: ArtworkURLs.highRes(previous) ?? previous) {
             urls.append(url)
         }
-        guard !urls.isEmpty else { return }
-        Task { await ImagePreloader.shared.append(urls) }
+        urls.forEach(ArtworkLoader.warm)
     }
 
     /// Artist string from `artists`, falling back to `artist`.
@@ -663,9 +662,14 @@ final class NowPlaying {
     private func preloadNextTrack() {
         guard hasNext else { return }
         let nextId = queueSongs[queueIndex + 1].videoId
-        loggedTask(Log.nowPlaying, "Pre-resolve failed") {
-            _ = try await PlaybackManager.shared.resolve(videoId: nextId)
-            Log.nowPlaying.debug("Pre-resolved next track: \(nextId)")
+        Task {
+            do {
+                _ = try await PlaybackManager.shared.resolve(videoId: nextId)
+                Log.nowPlaying.debug("Pre-resolved next track: \(nextId)")
+            } catch where !error.isCancellation {
+                // Optional: the song resolves again when it is played.
+                Log.nowPlaying.notice("Pre-resolve failed: \(error)")
+            } catch {}
         }
     }
 
@@ -725,6 +729,22 @@ func artistDisplayString(from artists: [YTArtist]) -> String {
         .joined(separator: ", ")
 }
 
+/// Built once: the player reads artist names on every redraw.
+private let trailingYearRegex = try? NSRegularExpression(pattern: "\\s*[\\(\\[]\\d{4}[\\)\\]]\\s*$")
+
+private let junkArtistLabels: Set<String> = [
+    "song", "video", "track", "music", "podcast", "episode",
+    "album", "playlist", "released", "year", "plays", "views",
+    "downloads", "listeners", "subscribers", "watchers", "likes"
+]
+
+private let junkArtistPatterns: [NSRegularExpression] = [
+    // Number optionally followed by K/M/B/T and an optional metric word
+    "^[\\d,\\.]+[KMBT]?\\s*(views|downloads|listeners|subscribers|plays|watchers|likes?)?$",
+    "^\\d{4}$",              // bare year
+    "^[\\d,\\.\\s]+[KMBT]?$" // purely numeric / abbreviated counts
+].compactMap { try? NSRegularExpression(pattern: $0, options: .caseInsensitive) }
+
 func cleanArtistDisplay(_ name: String) -> String {
     var tempName = name
 
@@ -734,7 +754,7 @@ func cleanArtistDisplay(_ name: String) -> String {
     }
 
     // Strip trailing year "(2025)" / "[2025]"
-    if let r = try? NSRegularExpression(pattern: "\\s*[\\(\\[]\\d{4}[\\)\\]]\\s*$") {
+    if let r = trailingYearRegex {
         tempName = r.stringByReplacingMatches(
             in: tempName,
             range: NSRange(tempName.startIndex..., in: tempName),
@@ -760,21 +780,8 @@ private func _isJunkArtistSegment(_ segment: String) -> Bool {
     let lower = segment.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     if lower.isEmpty || lower == "•" || lower == "·" { return true }
 
-    let junkLabels: Set<String> = [
-        "song", "video", "track", "music", "podcast", "episode",
-        "album", "playlist", "released", "year", "plays", "views",
-        "downloads", "listeners", "subscribers", "watchers", "likes"
-    ]
-    if junkLabels.contains(lower) { return true }
+    if junkArtistLabels.contains(lower) { return true }
 
-    let patterns = [
-        // Number optionally followed by K/M/B/T and an optional metric word
-        "^[\\d,\\.]+[KMBT]?\\s*(views|downloads|listeners|subscribers|plays|watchers|likes?)?$",
-        "^\\d{4}$",              // bare year
-        "^[\\d,\\.\\s]+[KMBT]?$" // purely numeric / abbreviated counts
-    ]
-    for pattern in patterns where lower.range(of: pattern, options: [.regularExpression, .caseInsensitive]) != nil {
-        return true
-    }
-    return false
+    let range = NSRange(lower.startIndex..., in: lower)
+    return junkArtistPatterns.contains { $0.firstMatch(in: lower, range: range) != nil }
 }

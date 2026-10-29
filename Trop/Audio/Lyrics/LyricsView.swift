@@ -299,7 +299,6 @@ struct LyricsView: View {
                 onTap: {
                     if let t = line.startTime {
                         player.seek(to: t)
-                        np.currentTime = t
                         resumeAutoScroll()
                     }
                 }
@@ -491,14 +490,15 @@ private struct CascadeMotion {
 // MARK: - Playback Tracking
 
 /// The lyrics clock, shared by the active line and the karaoke fill so both
-/// switch together. While playing it is mpv's own position, because
-/// `np.currentTime` only moves every 0.25 s; right after a seek mpv still
-/// reports the old spot for a moment, so then the seek target is used.
+/// switch together. `np.currentTime` only moves every 0.25 s, so while playing
+/// the clock counts forward from the last progress update (read up to 80
+/// times a second, too often to ask mpv). An estimate off by a second or more
+/// means a seek or song change set `currentTime` directly; then that is used.
 @MainActor
 private func playbackClock() -> TimeInterval {
     let np = NowPlaying.shared
-    guard np.isPlaying else { return np.currentTime }
-    let live = PlayerController.shared.currentTime
+    guard np.isPlaying, let last = PlayerController.shared.lastProgress else { return np.currentTime }
+    let live = last.position + Date().timeIntervalSince(last.at) * PlaybackSpeed.shared.rate
     return abs(live - np.currentTime) < 1 ? live : np.currentTime
 }
 

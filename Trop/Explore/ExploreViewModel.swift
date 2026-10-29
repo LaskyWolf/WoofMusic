@@ -50,7 +50,8 @@ final class ExploreViewModel {
     }
 
     private func fetch() async {
-        phase = .loading
+        // Pull-to-refresh keeps the current page on screen; the skeleton is for the first load.
+        if sections.isEmpty { phase = .loading }
         error = nil
         let region = SettingsStore.shared.contentCountry
         Log.explore.debug("Explore fetch start browseId=\(HomePageParser.exploreBrowseId)")
@@ -73,7 +74,16 @@ final class ExploreViewModel {
             phase = sections.isEmpty ? .empty : .loaded
             hasLoaded = phase == .loaded
         } catch {
-            Log.explore.error("Explore fetch failed: \(error)")
+            if error.isCancellation {
+                // Back to idle so the next appear can start the load again.
+                if phase == .loading { phase = .idle }
+                return
+            }
+            if error is URLError {
+                Log.explore.notice("Explore fetch failed: \(error)")
+            } else {
+                Log.explore.error("Explore fetch failed: \(error)")
+            }
             self.error = error
             phase = .failed
         }
@@ -186,7 +196,12 @@ final class ExploreViewModel {
             )
             return sections
         } catch {
-            Log.explore.error("Explore mood '\(mood.title)' failed: \(error)")
+            if error.isCancellation { return [] }
+            if error is URLError {
+                Log.explore.notice("Explore mood '\(mood.title)' failed: \(error)")
+            } else {
+                Log.explore.error("Explore mood '\(mood.title)' failed: \(error)")
+            }
             return []
         }
     }

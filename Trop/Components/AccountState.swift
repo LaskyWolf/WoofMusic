@@ -61,7 +61,12 @@ final class AccountState {
             do {
                 info = try await InnerTubeClient.tropShared.accountInfo()
             } catch {
-                Log.loginViewModel.error("fetchAccountInfo: attempt \(attempt) failed: \(error)")
+                if error.isCancellation { return }
+                if error is URLError {
+                    Log.loginViewModel.notice("fetchAccountInfo: attempt \(attempt) failed: \(error)")
+                } else {
+                    Log.loginViewModel.error("fetchAccountInfo: attempt \(attempt) failed: \(error)")
+                }
                 return
             }
             guard !info.name.isEmpty, info.name != "Guest" else {

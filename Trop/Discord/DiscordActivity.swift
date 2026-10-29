@@ -8,8 +8,7 @@
 import Foundation
 
 struct DiscordActivity: Equatable {
-    // 0 playing, 2 listening, 3 watching, 5 competing
-    var activityType: Int = 2
+    var activityType: Int = ActivityType.listening.rawValue
     var name: String?
     var state: String
     var details: String?
@@ -23,7 +22,4 @@ struct DiscordActivity: Equatable {
     var button1Url: String?
     var button2Label: String?
     var button2Url: String?
-
-    static let typePlaying = 0
-    static let typeListening = 2
 }

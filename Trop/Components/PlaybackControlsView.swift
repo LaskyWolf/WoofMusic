@@ -11,7 +11,7 @@ import SwiftUI
 /// Canonicalizes on the PlaylistHeaderView styling (48/64pt, grouped
 /// background, accent glow shadow).
 struct PlaybackControlsView: View {
-    var accent: Color = .accentColor
+    var accent: Color = SettingsStore.shared.accentColor
     var showsShuffle: Bool = true
     var showsMore: Bool = false
     var onPlay: () -> Void

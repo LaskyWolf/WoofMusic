@@ -81,67 +81,27 @@ final class FileLog {
 struct AppLogger {
     let logger: Logger
     var category: String = ""
-    /// mpv streams every internal log line through here — far too chatty to
-    /// mirror onto disk.
-    var writesToDisk: Bool = true
     var redact: Bool = true
 
-    private func emit(_ level: String, _ message: String) {
-        guard writesToDisk else { return }
+    func debug(_ message: String) { log(.debug, "DEBUG", message) }
+    func info(_ message: String) { log(.info, "INFO", message) }
+    func notice(_ message: String) { log(.default, "NOTICE", message) }
+    func warning(_ message: String) { log(.error, "WARNING", message) }
+    func error(_ message: String) { log(.error, "ERROR", message) }
+    func fault(_ message: String) { log(.fault, "FAULT", message) }
+
+    private func log(_ type: OSLogType, _ level: String, _ message: String) {
+        // Release builds keep debug lines out of the file, so its ~1 MB holds
+        // the problems Diagnostics lists instead of routine traces.
+        #if DEBUG
         FileLog.shared.append(category, level, message)
-    }
-
-    func debug(_ message: String) {
-        emit("DEBUG", message)
+        #else
+        if type != .debug { FileLog.shared.append(category, level, message) }
+        #endif
         if redact {
-            logger.debug("\(message, privacy: .private)")
+            logger.log(level: type, "\(message, privacy: .private)")
         } else {
-            logger.debug("\(message)")
-        }
-    }
-
-    func info(_ message: String) {
-        emit("INFO", message)
-        if redact {
-            logger.info("\(message, privacy: .private)")
-        } else {
-            logger.info("\(message)")
-        }
-    }
-
-    func notice(_ message: String) {
-        emit("NOTICE", message)
-        if redact {
-            logger.notice("\(message, privacy: .private)")
-        } else {
-            logger.notice("\(message)")
-        }
-    }
-
-    func warning(_ message: String) {
-        emit("WARNING", message)
-        if redact {
-            logger.warning("\(message, privacy: .private)")
-        } else {
-            logger.warning("\(message)")
-        }
-    }
-
-    func error(_ message: String) {
-        emit("ERROR", message)
-        if redact {
-            logger.error("\(message, privacy: .private)")
-        } else {
-            logger.error("\(message)")
-        }
-    }
-
-    func fault(_ message: String) {
-        emit("FAULT", message)
-        if redact {
-            logger.fault("\(message, privacy: .private)")
-        } else {
-            logger.fault("\(message)")
+            logger.log(level: type, "\(message)")
         }
     }
 }
@@ -150,7 +110,6 @@ enum Log {
     private static let subsystem = Bundle.main.bundleIdentifier ?? "com.686udjie.Trop"
 
     static let player = AppLogger(logger: Logger(subsystem: subsystem, category: "Player"), category: "player", redact: false)
-    static let mpv = AppLogger(logger: Logger(subsystem: subsystem, category: "mpv"), category: "mpv", writesToDisk: false, redact: false)
     static let nowPlaying = AppLogger(logger: Logger(subsystem: subsystem, category: "NowPlaying"), category: "nowPlaying")
     static let login = AppLogger(logger: Logger(subsystem: subsystem, category: "Login"), category: "login")
     static let loginViewModel = AppLogger(logger: Logger(subsystem: subsystem, category: "LoginViewModel"), category: "loginViewModel")
@@ -168,13 +127,10 @@ enum Log {
     static let explore = AppLogger(logger: Logger(subsystem: subsystem, category: "Explore"), category: "explore")
     static let libraryView = AppLogger(logger: Logger(subsystem: subsystem, category: "LibraryView"), category: "libraryView")
     static let playlistCover = AppLogger(logger: Logger(subsystem: subsystem, category: "PlaylistCover"), category: "playlistCover")
-    static let innerTube = AppLogger(logger: Logger(subsystem: subsystem, category: "InnerTube"), category: "innerTube")
     static let playbackState = AppLogger(logger: Logger(subsystem: subsystem, category: "PlaybackState"), category: "playbackState")
-    static let registerPlayback = AppLogger(logger: Logger(subsystem: subsystem, category: "RegisterPlayback"), category: "registerPlayback")
     static let search = AppLogger(logger: Logger(subsystem: subsystem, category: "Search"), category: "search")
     static let searchView = AppLogger(logger: Logger(subsystem: subsystem, category: "SearchView"), category: "searchView")
     static let downloadManager = AppLogger(logger: Logger(subsystem: subsystem, category: "DownloadManager"), category: "downloadManager")
-    static let sync = AppLogger(logger: Logger(subsystem: subsystem, category: "Sync"), category: "sync")
     static let addSong = AppLogger(logger: Logger(subsystem: subsystem, category: "AddSong"), category: "addSong")
     static let settings = AppLogger(logger: Logger(subsystem: subsystem, category: "Settings"), category: "settings")
     static let discord = AppLogger(logger: Logger(subsystem: subsystem, category: "DiscordSvc"), category: "discord")

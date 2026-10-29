@@ -83,6 +83,8 @@ final class PlaylistDetailViewModel {
             PlaylistHeaderCache.store(parsed, for: playlistId)
             await persist(parsed, rows: rows, browseId: browseId)
         } catch {
+            // Leaving the page cancels the load: keep isLoading so the next appear retries.
+            if error.isCancellation { return }
             // A saved copy stays on screen when the refresh fails.
             if playlist == nil { self.error = error }
             isLoading = false
@@ -145,6 +147,7 @@ final class PlaylistDetailViewModel {
             playlist = try await localInfo(entity: entity)
             isLoading = false
         } catch {
+            if error.isCancellation { return }
             self.error = error
             isLoading = false
         }
@@ -228,7 +231,7 @@ final class PlaylistDetailViewModel {
             )
             isLoading = false
         } catch {
-            guard generation == autoLoadGeneration else { return }
+            guard generation == autoLoadGeneration, !error.isCancellation else { return }
             self.error = error
             isLoading = false
         }
@@ -617,7 +620,7 @@ struct PlaylistDetailView: View {
                 .accessibilityLabel("Shuffle")
 
                 Button(action: { playAll(playlist) }, label: {
-                    HeaderRoundIcon(systemImage: "play.fill", primary: .accentColor)
+                    HeaderRoundIcon(systemImage: "play.fill", primary: SettingsStore.shared.accentColor)
                 })
                 .accessibilityLabel("Play all")
             }
@@ -869,6 +872,7 @@ struct AddSongToPlaylistView: View {
                 sql: "SELECT * FROM song WHERE title != '' ORDER BY create_date DESC LIMIT 200"
             )
         } catch {
+            if error.isCancellation { return }
             Log.addSong.error("Failed to load songs: \(error)")
         }
     }

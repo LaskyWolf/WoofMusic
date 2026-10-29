@@ -8,18 +8,6 @@
 import Foundation
 import WebKit
 
-// Errors specific to session import and login verification
-enum AuthError: LocalizedError {
-    case verificationFailed(Error?)
-
-    var errorDescription: String? {
-        switch self {
-        case .verificationFailed(let error):
-            return "Failed to verify login: \(error?.localizedDescription ?? "unknown")"
-        }
-    }
-}
-
 // Acts as the session and auth entry point for the rest of the app
 actor AuthService {
     static let shared = AuthService()
@@ -39,15 +27,6 @@ actor AuthService {
 
     await innerTube.loadState(from: cookieStore)
   }
-
-    // Probes `account/account_menu` to confirm the current session is still valid
-    func verifyLogin() async throws -> Bool {
-        do {
-            return try await innerTube.verifySession()
-        } catch {
-            throw AuthError.verificationFailed(error)
-        }
-    }
 
     // Re-hydrates InnerTube from whatever is currently saved in the CookieStore
     func loadPersistedSession() async {

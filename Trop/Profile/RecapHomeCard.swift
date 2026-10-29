@@ -16,6 +16,7 @@ struct RecapHomeCard<Fallback: View>: View {
     @AppStorage("recap.dismissedMonth") private var dismissedMonth = ""
     @State private var hasHistory = false
     @State private var showsRecap = false
+    @State private var rimTurned = false
 
     /// Days at the start of a month that the card shows.
     static var visibleDays: Int { 7 }
@@ -109,23 +110,36 @@ struct RecapHomeCard<Fallback: View>: View {
     /// Dark card with a turning rainbow rim and a soft glow; the rim stands still with Reduce Motion.
     private var cardBackground: some View {
         let shape = RoundedRectangle(cornerRadius: 22, style: .continuous)
+        return ZStack {
+            rimGradient
+                .mask { shape.strokeBorder(lineWidth: 6).blur(radius: 12) }
+                .opacity(0.55)
+            shape.fill(
+                RadialGradient(colors: [RecapPalette.gold.opacity(0.25), .clear],
+                               center: UnitPoint(x: 0.85, y: 0.2), startRadius: 0, endRadius: 140)
+            )
+            .background(shape.fill(Color(red: 0.08, green: 0.06, blue: 0.15)))
+            rimGradient
+                .mask { shape.strokeBorder(lineWidth: 2) }
+        }
+        .onAppear {
+            guard !reduceMotion else { return }
+            // One turn every 5 s, run by the animation system instead of redrawing each frame.
+            withAnimation(.linear(duration: 5).repeatForever(autoreverses: false)) { rimTurned = true }
+        }
+    }
+
+    /// A still gradient that turns under the rim mask. It is a square wider than the
+    /// card's diagonal, so turning never shows its corners; the margin covers the glow.
+    private var rimGradient: some View {
         let rim = [RecapPalette.teal, RecapPalette.gold, Color(red: 0.73, green: 0.55, blue: 1),
                    Color(red: 1, green: 0.48, blue: 0.66), RecapPalette.teal]
-        return TimelineView(.animation(minimumInterval: 1 / 30, paused: reduceMotion)) { context in
-            // One turn every 5 s.
-            let turn = context.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 5) / 5
-            let gradient = AngularGradient(colors: rim, center: .center, angle: .degrees(turn * 360))
-            ZStack {
-                shape.strokeBorder(gradient, lineWidth: 6)
-                    .blur(radius: 12)
-                    .opacity(0.55)
-                shape.fill(
-                    RadialGradient(colors: [RecapPalette.gold.opacity(0.25), .clear],
-                                   center: UnitPoint(x: 0.85, y: 0.2), startRadius: 0, endRadius: 140)
-                )
-                .background(shape.fill(Color(red: 0.08, green: 0.06, blue: 0.15)))
-                shape.strokeBorder(gradient, lineWidth: 2)
-            }
+        return GeometryReader { geo in
+            let side = hypot(geo.size.width, geo.size.height) + 60
+            AngularGradient(colors: rim, center: .center)
+                .frame(width: side, height: side)
+                .rotationEffect(.degrees(rimTurned && !reduceMotion ? 360 : 0))
+                .position(x: geo.size.width / 2, y: geo.size.height / 2)
         }
     }
 }

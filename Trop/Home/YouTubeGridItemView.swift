@@ -77,7 +77,7 @@ struct YouTubeGridItemView: View {
                 card
             }
         }
-        .task {
+        .task(id: videoId) {
             guard let vid = videoId else { return }
             let known: Int
             switch item {
@@ -164,7 +164,7 @@ struct YouTubeListItemView: View {
                 }
                 .background(DownloadCellProgressView(song: song))
             }
-            .task { await durations.resolve(videoId: song.videoId, knownDuration: song.duration) }
+            .task(id: song.videoId) { await durations.resolve(videoId: song.videoId, knownDuration: song.duration) }
             .onReceive(NotificationCenter.default.publisher(for: .durationDidUpdate)) { notification in
                 durations.handleUpdate(notification, videoId: song.videoId)
             }

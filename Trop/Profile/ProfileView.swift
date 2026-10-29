@@ -208,10 +208,10 @@ struct BadgeTile: View {
                     if isNew {
                         Text("NEW")
                             .font(.system(size: 9, weight: .heavy))
-                            .foregroundStyle(.black)
+                            .foregroundStyle(.white)
                             .padding(.horizontal, 5)
                             .padding(.vertical, 2)
-                            .background(RecapPalette.gold, in: Capsule())
+                            .background(SettingsStore.shared.accentColor, in: Capsule())
                             .offset(x: 10, y: -2)
                     }
                 }
@@ -256,14 +256,14 @@ private struct BadgeDetailView: View {
             if badge.isUnlocked {
                 Label("Unlocked", systemImage: "checkmark.seal.fill")
                     .font(.headline)
-                    .foregroundStyle(RecapPalette.teal)
+                    .foregroundStyle(SettingsStore.shared.accentColor)
             } else {
                 ProgressView(value: badge.progress) {
                     Text(badge.progressText)
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
-                .tint(RecapPalette.gold)
+                .tint(SettingsStore.shared.accentColor)
                 .padding(.horizontal, 40)
             }
         }
@@ -304,6 +304,22 @@ extension RecapBadge.Kind {
         case .explorer: (0x7FE0D2, 0x2A7A70)
         case .podcastSage: (0xFFA98A, 0xB8463A)
         case .timeBender: (0x9FD0FF, 0x2B5FA8)
+        case .firstSteps: (0xFFF3A8, 0xE0A92B)
+        case .thousandClub: (0xFFB3D9, 0xB0306E)
+        case .hundredHours: (0xE8D3A8, 0x8A6235)
+        case .marathon: (0xA8F0A0, 0x2F8A3A)
+        case .weekendWarrior: (0xFFC2E8, 0x9A3AA8)
+        case .lunchBreak: (0xFFE3B0, 0xC9783A)
+        case .insomniac: (0x8FA8FF, 0x2A2F7A)
+        case .ironPaw: (0xC9D2DE, 0x4A5566)
+        case .oldFriend: (0xF2E6D0, 0x9A7A52)
+        case .onRepeat: (0x8AF0FF, 0x2A7AA8)
+        case .superfan: (0xFFE98A, 0xC9952B)
+        case .deepDiver: (0x8AD8FF, 0x1F4F8A)
+        case .collector: (0xD9B38C, 0x7A4A2B)
+        case .varietyPack: (0xFFB08A, 0xC93A5A)
+        case .podcastPup: (0xFFC9A8, 0xB8603A)
+        case .bingeListener: (0xC8A8FF, 0x5A3AA8)
         }
     }
 

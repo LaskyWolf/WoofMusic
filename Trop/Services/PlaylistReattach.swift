@@ -23,7 +23,7 @@ enum PlaylistReattach {
     }
 
     /// Sends the local changes to YouTube Music, then marks the playlist synced.
-    /// If any change fails the playlist stays local with its songs, and a retry
+    /// If the request fails the playlist stays local with its songs, and a retry
     /// works out the plan again against the songs online.
     static func reattach(playlistId id: String) async throws {
         #if DEBUG
@@ -40,31 +40,18 @@ enum PlaylistReattach {
         // The playlist is still local here, so MutationService would only touch
         // the database: edit the playlist online directly, as PlaylistSongEdits does.
         let bareId = PlaylistSongEdits.bareId(id)
-        var failed = 0
-        for songId in plan.addToRemote {
+        // One request for all changes: editPlaylist takes a list of actions.
+        var actions = plan.addToRemote.flatMap { PlaylistEditAction.dictionaries([.addVideo(videoId: $0)]) }
+        actions += plan.removeFromRemote.compactMap { setVideoIds[$0] }
+            .flatMap { PlaylistEditAction.dictionaries([.removeVideo(setVideoId: $0)]) }
+        if !actions.isEmpty {
             do {
-                _ = try await InnerTubeClient.tropShared.editPlaylist(
-                    playlistId: bareId,
-                    actions: PlaylistEditAction.dictionaries([.addVideo(videoId: songId)])
-                )
+                _ = try await InnerTubeClient.tropShared.editPlaylist(playlistId: bareId, actions: actions)
             } catch {
-                Log.playlistDetail.error("Reattach: adding \(songId) to \(id) failed: \(error)")
-                failed += 1
+                Log.playlistDetail.error("Reattach: sending \(actions.count) changes to \(id) failed: \(error)")
+                throw ReattachError(failed: actions.count)
             }
         }
-        for songId in plan.removeFromRemote {
-            guard let setVideoId = setVideoIds[songId] else { continue }
-            do {
-                _ = try await InnerTubeClient.tropShared.editPlaylist(
-                    playlistId: bareId,
-                    actions: PlaylistEditAction.dictionaries([.removeVideo(setVideoId: setVideoId)])
-                )
-            } catch {
-                Log.playlistDetail.error("Reattach: removing \(songId) from \(id) failed: \(error)")
-                failed += 1
-            }
-        }
-        guard failed == 0 else { throw ReattachError(failed: failed) }
 
         try await SyncBridge.store.reattachPlaylist(id: id)
         UserDefaults.standard.removeObject(forKey: baseKey(id))

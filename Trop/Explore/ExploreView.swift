@@ -616,6 +616,7 @@ private struct ExploreSkeletonView: View {
         }
         .scrollIndicators(.hidden)
         .allowsHitTesting(false)
+        .shimmerClock()
     }
 
     /// Card carousel: square cover, title and subtitle, like the real cards.
@@ -676,5 +677,6 @@ private struct MoodDetailSkeletonView: View {
         }
         .scrollIndicators(.hidden)
         .allowsHitTesting(false)
+        .shimmerClock()
     }
 }

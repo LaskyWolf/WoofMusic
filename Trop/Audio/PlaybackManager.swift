@@ -85,6 +85,13 @@ actor PlaybackManager {
             return cached
         }
 
+        // A preload of this song is already resolving: play its result instead
+        // of resolving twice. If it fails, the play resolves on its own below.
+        if let preload = inflightResolutions[videoId], let result = try? await preload.value {
+            await playNetworkResult(result, videoId: videoId)
+            return result
+        }
+
         // Own key: a resolve-only preload of the same id must not swallow the play.
         let key = "\(videoId):play"
         if let existing = inflightResolutions[key] {

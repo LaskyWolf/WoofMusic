@@ -22,8 +22,8 @@ func loggedTask(
     Task { @MainActor in
         do {
             try await operation()
-        } catch {
+        } catch let error where !error.isCancellation {
             logger.error("\(message): \(error)")
-        }
+        } catch {}
     }
 }

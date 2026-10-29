@@ -11,6 +11,7 @@ import MediaPlayer
 import Combine
 import AVFoundation
 import UIKit
+import os
 
 // MARK: - PlayerController
 
@@ -34,8 +35,19 @@ final class PlayerController {
     nonisolated(unsafe) private var eventLoopThread: Thread?
 
     nonisolated(unsafe) var isRunning = false
-    nonisolated(unsafe) var currentVideoId: String?
-    nonisolated(unsafe) var pendingVideoId: String?
+    /// Read on the mpv event thread and written on the main actor; Strings
+    /// can tear when raced, so both sit behind a lock.
+    nonisolated private let videoIds = OSAllocatedUnfairLock<(current: String?, pending: String?)>(
+        initialState: (nil, nil)
+    )
+    nonisolated var currentVideoId: String? {
+        get { videoIds.withLock { $0.current } }
+        set { videoIds.withLock { $0.current = newValue } }
+    }
+    nonisolated var pendingVideoId: String? {
+        get { videoIds.withLock { $0.pending } }
+        set { videoIds.withLock { $0.pending = newValue } }
+    }
     var currentLoudnessDb: Double?
     /// False once mpv rejects the AutoMix bass filter; see `applyPlaybackSettings`.
     private(set) var hasBassFilter = true
@@ -59,19 +71,19 @@ final class PlayerController {
     /// Position, time and queue length of the last progress sent to the lock
     /// screen, which counts forward from there by itself while playing.
     private var lastProgressPush: (position: TimeInterval, at: Date, queueCount: Int)?
+    /// Position written by the last progress update and when, so the lyrics
+    /// can count forward from it instead of asking mpv every frame.
+    private(set) var lastProgress: (position: TimeInterval, at: Date)?
 
-    var currentTime: TimeInterval {
+    var currentTime: TimeInterval { doubleProperty("time-pos") }
+
+    var duration: TimeInterval { doubleProperty("duration") }
+
+    /// A number property of the playing deck; 0 when unset or not ready.
+    private func doubleProperty(_ name: String) -> Double {
         withMpv { mpv in
             var val = Double(0)
-            mpv_get_property(mpv, "time-pos", MPV_FORMAT_DOUBLE, &val)
-            return val
-        } ?? 0
-    }
-
-    var duration: TimeInterval {
-        withMpv { mpv in
-            var val = Double(0)
-            mpv_get_property(mpv, "duration", MPV_FORMAT_DOUBLE, &val)
+            mpv_get_property(mpv, name, MPV_FORMAT_DOUBLE, &val)
             return val
         } ?? 0
     }
@@ -185,10 +197,12 @@ extension PlayerController {
         Crossfade.shared.finishNow()
         pendingSeek = (time, Date().addingTimeInterval(1.5))
         NowPlaying.shared.currentTime = time
+        // With nothing loaded the seek fails by design; the position is kept for `setPaused`.
+        let isLoaded = playState.value != .stopped
         withMpv { mpv in
             var val = time
             let result = mpv_set_property(mpv, "time-pos", MPV_FORMAT_DOUBLE, &val)
-            if result < 0 { Log.player.error("seek failed: mpv error \(result)") }
+            if result < 0, isLoaded { Log.player.error("seek failed: mpv error \(result)") }
         }
         // The progress timer is stopped while paused.
         updateNowPlayingProgress()
@@ -278,28 +292,27 @@ extension PlayerController {
         // rebuilds the filters of the playing song.
         let bass = bassGain ?? 0
 
-        return {
-            var filters: [String] = []
-            if includesBass ?? hasBassFilter {
-                filters.append("@\(Self.bassFilterLabel):bass=f=180:g=\(Self.fmt(bass))")
+        var filters: [String] = []
+        if includesBass ?? hasBassFilter {
+            filters.append("@\(Self.bassFilterLabel):bass=f=180:g=\(Self.fmt(bass))")
+        }
+        if eqEnabled {
+            let entries = zip(equalizerFrequencies, eqGains)
+                .map { "entry(\(Self.fmt($0.0)),\(Self.fmt($0.1)))" }
+                .joined(separator: ";")
+            if !entries.isEmpty {
+                filters.append("firequalizer=gain_entry=\"\(entries)\"")
             }
-            if eqEnabled {
-                let entries = zip(equalizerFrequencies, eqGains)
-                    .map { "entry(\(Self.fmt($0.0)),\(Self.fmt($0.1)))" }
-                    .joined(separator: ";")
-                if !entries.isEmpty {
-                    filters.append("firequalizer=gain_entry=\"\(entries)\"")
-                }
-            }
-            if norm, let loudness, loudness.isFinite {
-                let gain = max(-12, min(12, -14 - loudness))
-                filters.append("volume=\(Self.fmt(gain))dB")
-            }
-            return filters.joined(separator: ",")
-        }()
+        }
+        if norm, let loudness, loudness.isFinite {
+            let gain = max(-12, min(12, -14 - loudness))
+            filters.append("volume=\(Self.fmt(gain))dB")
+        }
+        return filters.joined(separator: ",")
     }
 
-    private static func fmt(_ value: Double) -> String {
+    /// Numbers as mpv properties and filter arguments take them.
+    nonisolated static func fmt(_ value: Double) -> String {
         String(format: "%.4f", value)
     }
 }
@@ -423,6 +436,10 @@ extension PlayerController {
                 Log.player.debug("TRANSITION START_FILE")
             case MPV_EVENT_END_FILE:
                 handleEndFile(event)
+            case MPV_EVENT_IDLE where isCrossfading:
+                // The outgoing song ended before the mix swapped decks: going
+                // idle closed the audio session under the incoming deck.
+                Task { @MainActor in self.restoreAudioOutput() }
             default:
                 break
             }
@@ -727,23 +744,16 @@ extension PlayerController {
 
 extension PlayerController {
     func setNowPlayingMetadata() {
-        assertAudioSession()
+        // Activating the session while paused would interrupt other apps' audio.
+        if desiredPlaying { assertAudioSession() }
         let np = NowPlaying.shared
         nowPlayingInfo.removeAll()
 
-        let liveDur = withMpv { mpv in
-            var val = Double(0)
-            mpv_get_property(mpv, "duration", MPV_FORMAT_DOUBLE, &val)
-            return val
-        } ?? 0
+        let liveDur = self.duration
         let duration = liveDur > 0 ? liveDur : np.duration
         if duration > 0 { np.duration = duration }
 
-        let livePos = withMpv { mpv in
-            var val = Double(0)
-            mpv_get_property(mpv, "time-pos", MPV_FORMAT_DOUBLE, &val)
-            return val
-        } ?? 0
+        let livePos = self.currentTime
         let elapsed = livePos > 0 ? livePos : np.currentTime
 
         nowPlayingInfo[MPMediaItemPropertyTitle] = np.title
@@ -809,6 +819,7 @@ extension PlayerController {
         if np.duration != props.dur { np.duration = props.dur }
         info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = props.pos
         np.currentTime = props.pos
+        lastProgress = (props.pos, Date())
         info[MPNowPlayingInfoPropertyPlaybackRate] = np.isPlaying ? PlaybackSpeed.shared.rate : 0
         info[MPNowPlayingInfoPropertyPlaybackQueueIndex] = np.queueIndex
         info[MPNowPlayingInfoPropertyPlaybackQueueCount] = np.queueSongs.count

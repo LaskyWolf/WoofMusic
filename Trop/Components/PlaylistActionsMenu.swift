@@ -29,7 +29,7 @@ struct PlaylistActionsMenu<MenuLabel: View>: View {
                 Button("Edit", systemImage: "pencil") { showEdit = true }
                     .disabled(!isOwned)
                     // The compact icon row keeps the accent colour when disabled.
-                    .tint(isOwned ? Color.accentColor : Color.gray)
+                    .tint(isOwned ? SettingsStore.shared.accentColor : Color.gray)
                 Button("Sync", systemImage: "arrow.triangle.2.circlepath") { onSync?() }
                     .disabled(onSync == nil)
                 if let url = URL.playlistShareURL(id: playlist.playlistId) {
@@ -41,8 +41,7 @@ struct PlaylistActionsMenu<MenuLabel: View>: View {
             .controlGroupStyle(.compactMenu)
 
             Section {
-                Button("Add to Queue", systemImage: "text.append", action: addToQueue)
-                Button("Download", systemImage: "arrow.down.circle", action: downloadAll)
+                SongsMenuActions(songs: playlist.songs)
                 Button("Remove Downloads", systemImage: "trash", role: .destructive) {
                     showRemoveDownloads = true
                 }
@@ -85,20 +84,27 @@ struct PlaylistActionsMenu<MenuLabel: View>: View {
 
     // MARK: - Actions
 
-    private func addToQueue() {
-        NowPlaying.shared.appendToQueue(playlist.songs)
-    }
-
-    private func downloadAll() {
-        for song in playlist.songs {
-            Task { await DownloadManager.shared.download(song: song) }
-        }
-    }
-
     private func deleteAllDownloads() {
         let dm = DownloadManager.shared
         for song in playlist.songs {
             Task { await dm.delete(videoId: song.videoId) }
+        }
+    }
+}
+
+/// Add to Queue and Download for a page's songs, shared by the playlist,
+/// album and podcast "⋯" menus.
+struct SongsMenuActions: View {
+    let songs: [SongItem]
+
+    var body: some View {
+        Button("Add to Queue", systemImage: "text.append") {
+            NowPlaying.shared.appendToQueue(songs)
+        }
+        Button("Download", systemImage: "arrow.down.circle") {
+            for song in songs {
+                Task { await DownloadManager.shared.download(song: song) }
+            }
         }
     }
 }

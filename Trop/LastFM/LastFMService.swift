@@ -98,11 +98,13 @@ final class LastFMService: @unchecked Sendable {
         do {
             (data, httpResponse) = try await HttpClient.data(for: req)
         } catch {
-            Log.lastfm.error("LastFM \(method) transport error: \(error.localizedDescription)")
+            // Usually offline.
+            if !error.isCancellation {
+                Log.lastfm.notice("LastFM \(method) transport error: \(error.localizedDescription)")
+            }
             throw LastFMError.network(error)
         }
         let status = httpResponse.statusCode
-        let bodyStr = String(data: data, encoding: .utf8) ?? ""
 
         // Check for API error embedded in 200 response
         if let errorObj = try? JSONDecoder().decode(LastFMErrorResponse.self, from: data), errorObj.error != 0 {
@@ -115,11 +117,6 @@ final class LastFMService: @unchecked Sendable {
         }
 
         if !(200...299).contains(status) {
-            // Try to decode error
-            if let err = try? JSONDecoder().decode(LastFMErrorResponse.self, from: data) {
-                Log.lastfm.error("LastFM \(method) status=\(status) apiError=\(err.error) msg=\(err.message)")
-                throw LastFMError.api(err.error, err.message)
-            }
             Log.lastfm.error("LastFM \(method) http=\(status)")
             throw LastFMError.http(status, "Response body omitted")
         }
@@ -127,13 +124,6 @@ final class LastFMService: @unchecked Sendable {
         do {
             return try JSONDecoder().decode(T.self, from: data)
         } catch {
-            // Try raw text contains error?
-            if bodyStr.contains("\"error\""),
-               let err = try? JSONDecoder().decode(LastFMErrorResponse.self, from: data) {
-                if err.error == 14 { throw LastFMError.unauthorizedToken }
-                Log.lastfm.error("LastFM \(method) apiError=\(err.error) msg=\(err.message)")
-                throw LastFMError.api(err.error, err.message)
-            }
             Log.lastfm.error("LastFM \(method) response could not be decoded")
             throw LastFMError.network(error)
         }
@@ -303,7 +293,8 @@ final class LastFMService: @unchecked Sendable {
             Log.lastfm.debug("fetchAvatarURL: no image for user=\(trimmed)")
             return nil
         } catch {
-            Log.lastfm.warning("fetchAvatarURL failed: \(error.localizedDescription)")
+            // Optional data, usually missing because the device is offline.
+            if !error.isCancellation { Log.lastfm.notice("fetchAvatarURL failed: \(error.localizedDescription)") }
             return nil
         }
     }

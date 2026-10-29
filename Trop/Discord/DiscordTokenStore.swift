@@ -14,8 +14,6 @@ final class DiscordTokenStore: @unchecked Sendable {
     private let accessTokenKey = "access_token"
     private let refreshTokenKey = "refresh_token"
     private let expiresAtKey = "expires_at"
-    private let deviceVendorIdKey = "device_vendor_id"
-    private let clientUuidKey = "client_uuid"
 
     // In-memory cache to avoid Keychain roundtrips
     private var cachedAccessToken: String?
@@ -55,9 +53,6 @@ final class DiscordTokenStore: @unchecked Sendable {
         }
     }
 
-    func getDeviceVendorId() -> String? { getOrCreateId(key: deviceVendorIdKey) }
-    func getClientUuid() -> String? { getOrCreateId(key: clientUuidKey) }
-
     func store(token: String) { storeFull(accessToken: token, refreshToken: "", expiresInSec: 0) }
 
     func storeFull(accessToken: String, refreshToken: String, expiresInSec: Int64) {
@@ -88,26 +83,9 @@ final class DiscordTokenStore: @unchecked Sendable {
             delete(for: accessTokenKey)
             delete(for: refreshTokenKey)
             delete(for: expiresAtKey)
-            // Keep vendor/client UUIDs across logout? Spec clears them on logout (DiscordRpcManager.logout)
-            // We delete them here to match DiscordTokenStore.clear() behavior.
-            delete(for: deviceVendorIdKey)
-            delete(for: clientUuidKey)
             cachedAccessToken = nil
             cachedRefreshToken = nil
             cachedExpiresAt = nil
-        }
-    }
-
-    // MARK: - UUID cache
-
-    private func getOrCreateId(key: String) -> String? {
-        queue.sync(flags: .barrier) {
-            if let existing: String = loadString(for: key), !existing.isEmpty {
-                return existing
-            }
-            let newId = UUID().uuidString
-            saveString(newId, for: key)
-            return newId
         }
     }
 

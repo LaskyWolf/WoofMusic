@@ -47,6 +47,8 @@ struct RecapStats: Sendable {
 struct RecapBadge: Sendable, Hashable, Identifiable {
     enum Kind: String, Sendable, CaseIterable {
         case nightOwl, earlyBird, loyalPup, streak, explorer, podcastSage, timeBender
+        case firstSteps, thousandClub, hundredHours, marathon, weekendWarrior, lunchBreak, insomniac, ironPaw
+        case oldFriend, onRepeat, superfan, deepDiver, collector, varietyPack, podcastPup, bingeListener
     }
 
     let kind: Kind
@@ -69,6 +71,22 @@ extension RecapBadge.Kind {
         case .explorer: "Explorer"
         case .podcastSage: "Podcast Sage"
         case .timeBender: "Time Bender"
+        case .firstSteps: "First Steps"
+        case .thousandClub: "Thousand Club"
+        case .hundredHours: "Hundred Hours"
+        case .marathon: "Marathon"
+        case .weekendWarrior: "Weekend Warrior"
+        case .lunchBreak: "Lunch Break"
+        case .insomniac: "Insomniac"
+        case .ironPaw: "Iron Paw"
+        case .oldFriend: "Old Friend"
+        case .onRepeat: "On Repeat"
+        case .superfan: "Superfan"
+        case .deepDiver: "Deep Diver"
+        case .collector: "Collector"
+        case .varietyPack: "Variety Pack"
+        case .podcastPup: "Podcast Pup"
+        case .bingeListener: "Binge Listener"
         }
     }
 
@@ -81,6 +99,22 @@ extension RecapBadge.Kind {
         case .explorer: "🧭"
         case .podcastSage: "📻"
         case .timeBender: "⏩"
+        case .firstSteps: "🐣"
+        case .thousandClub: "🎟️"
+        case .hundredHours: "⏳"
+        case .marathon: "🏃"
+        case .weekendWarrior: "🎉"
+        case .lunchBreak: "🥪"
+        case .insomniac: "🌙"
+        case .ironPaw: "🐾"
+        case .oldFriend: "🦴"
+        case .onRepeat: "🔁"
+        case .superfan: "⭐"
+        case .deepDiver: "🤿"
+        case .collector: "📚"
+        case .varietyPack: "🎨"
+        case .podcastPup: "🎙️"
+        case .bingeListener: "📺"
         }
     }
 
@@ -94,6 +128,22 @@ extension RecapBadge.Kind {
         case .explorer: "Played songs by \(t.explorerArtists) different artists"
         case .podcastSage: "Listened to \(t.podcastSageHours) hours of episodes"
         case .timeBender: "Played a show at a speed other than 1×"
+        case .firstSteps: "Played your first \(t.firstStepsPlays) songs"
+        case .thousandClub: "Played \(t.thousandClubPlays.formatted()) songs"
+        case .hundredHours: "Listened for \(t.hundredHoursHours) hours"
+        case .marathon: "Listened \(t.marathonMinutes / 60) hours in a single day"
+        case .weekendWarrior: "\(Int(t.weekendShare * 100))% of your listening on weekends"
+        case .lunchBreak: "\(Int(t.lunchShare * 100))% of your listening between noon and 2 pm"
+        case .insomniac: "Listened between 3 and 5 am on \(t.insomniacNights) nights"
+        case .ironPaw: "Listened \(t.ironPawDays) days in a row"
+        case .oldFriend: "Listened on \(t.oldFriendDays) different days"
+        case .onRepeat: "Played one song \(t.onRepeatPlays) times in a single day"
+        case .superfan: "Played one artist \(t.superfanPlays) times"
+        case .deepDiver: "Played \(t.deepDiverSongs) different songs by one artist"
+        case .collector: "Played \(t.collectorSongs) different songs"
+        case .varietyPack: "Played \(t.varietyArtists) different artists in a single day"
+        case .podcastPup: "Listened to your first hour of episodes"
+        case .bingeListener: "Played \(t.bingeEpisodes) episodes in a single day"
         }
     }
 }
@@ -108,6 +158,22 @@ enum RecapService {
     static let streakDays = 7
     static let explorerArtists = 50
     static let podcastSageHours = 10
+    static let firstStepsPlays = 10
+    static let thousandClubPlays = 1000
+    static let hundredHoursHours = 100
+    static let marathonMinutes = 180
+    static let weekendShare = 0.4
+    static let lunchShare = 0.25
+    static let insomniacNights = 10
+    static let ironPawDays = 30
+    static let oldFriendDays = 100
+    static let onRepeatPlays = 10
+    static let superfanPlays = 300
+    static let deepDiverSongs = 25
+    static let collectorSongs = 500
+    static let varietyArtists = 15
+    static let podcastPupMinutes = 60
+    static let bingeEpisodes = 5
     /// Length counted for a YouTube history song that came without one.
     static let unknownSongSeconds = 180
 
@@ -121,6 +187,7 @@ enum RecapService {
                 return try stats(plays: plays, remote: remote, interval: interval, calendar: calendar, db: db)
             }
         } catch {
+            if error.isCancellation { return nil }
             Log.db.error("Recap failed: \(error)")
             return nil
         }
@@ -134,6 +201,7 @@ enum RecapService {
                 try badges(fetchPlays(before: .distantFuture, calendar: calendar, db: db), calendar: calendar)
             }
         } catch {
+            if error.isCancellation { return [] }
             Log.db.error("Badges failed: \(error)")
             return []
         }
@@ -378,8 +446,8 @@ enum RecapService {
         let totalMs = plays.reduce(Int64(0)) { $0 + $1.ms }
         let totalMinutes = Int(totalMs / 60_000)
 
-        func share(_ hours: Range<Int>, needed: Double, label: String) -> RecapBadge.Values {
-            let ms = plays.filter { hours.contains($0.hour) }.reduce(Int64(0)) { $0 + $1.ms }
+        func share(needed: Double, label: String, _ counts: (Play) -> Bool) -> RecapBadge.Values {
+            let ms = plays.filter(counts).reduce(Int64(0)) { $0 + $1.ms }
             let ratio = totalMs > 0 ? Double(ms) / Double(totalMs) : 0
             let hasEnough = totalMinutes >= ratioMinimumMinutes
             let text = hasEnough
@@ -393,9 +461,24 @@ enum RecapService {
             (value >= goal, Double(value) / Double(goal), "\(min(value, goal))/\(goal) \(unit)")
         }
 
-        let bestSongPlays = Dictionary(grouping: plays.filter { !$0.isEpisode }, by: \.songId).values.map(\.count).max() ?? 0
-        let artists = Set(plays.filter { !$0.isEpisode }.compactMap(\.artist)).count
-        let episodeHours = Int(plays.filter(\.isEpisode).reduce(Int64(0)) { $0 + $1.ms } / 3_600_000)
+        let music = plays.filter { !$0.isEpisode }
+        let episodes = plays.filter(\.isEpisode)
+        let byArtist = Dictionary(grouping: music.filter { $0.artist != nil }, by: { $0.artist ?? "" })
+        let musicDays = Dictionary(grouping: music, by: \.day)
+        let bestSongPlays = Dictionary(grouping: music, by: \.songId).values.map(\.count).max() ?? 0
+        let artists = byArtist.count
+        let episodeMs = episodes.reduce(Int64(0)) { $0 + $1.ms }
+        let episodeHours = Int(episodeMs / 3_600_000)
+        let bestDayMinutes = Dictionary(grouping: plays, by: \.day).values
+            .map { Int($0.reduce(Int64(0)) { $0 + $1.ms } / 60_000) }.max() ?? 0
+        let lateNights = Set(plays.filter { (3..<5).contains($0.hour) }.map(\.day)).count
+        let bestDaySongRepeats = musicDays.values
+            .map { Dictionary(grouping: $0, by: \.songId).values.map(\.count).max() ?? 0 }.max() ?? 0
+        let bestArtistPlays = byArtist.values.map(\.count).max() ?? 0
+        let bestArtistSongs = byArtist.values.map { Set($0.map(\.songId)).count }.max() ?? 0
+        let bestDayArtists = musicDays.values.map { Set($0.compactMap(\.artist)).count }.max() ?? 0
+        let bestDayEpisodes = Dictionary(grouping: episodes, by: \.day).values
+            .map { Set($0.map(\.songId)).count }.max() ?? 0
 
         var longest = 0
         var run = 0
@@ -411,13 +494,29 @@ enum RecapService {
         }
 
         let values: [(RecapBadge.Kind, RecapBadge.Values)] = [
-            (.nightOwl, share(0..<5, needed: nightOwlShare, label: "after midnight")),
-            (.earlyBird, share(5..<9, needed: earlyBirdShare, label: "before 9 am")),
+            (.nightOwl, share(needed: nightOwlShare, label: "after midnight") { (0..<5).contains($0.hour) }),
+            (.earlyBird, share(needed: earlyBirdShare, label: "before 9 am") { (5..<9).contains($0.hour) }),
             (.loyalPup, tally(bestSongPlays, of: loyalPupPlays, "plays")),
             (.streak, tally(longest, of: streakDays, "days")),
             (.explorer, tally(artists, of: explorerArtists, "artists")),
             (.podcastSage, tally(episodeHours, of: podcastSageHours, "h")),
-            (.timeBender, timeBender())
+            (.timeBender, timeBender()),
+            (.firstSteps, tally(plays.count, of: firstStepsPlays, "plays")),
+            (.thousandClub, tally(plays.count, of: thousandClubPlays, "plays")),
+            (.hundredHours, tally(totalMinutes / 60, of: hundredHoursHours, "h")),
+            (.marathon, tally(bestDayMinutes, of: marathonMinutes, "min in a day")),
+            (.weekendWarrior, share(needed: weekendShare, label: "on weekends") { calendar.isDateInWeekend($0.date) }),
+            (.lunchBreak, share(needed: lunchShare, label: "at lunch") { (12..<14).contains($0.hour) }),
+            (.insomniac, tally(lateNights, of: insomniacNights, "nights")),
+            (.ironPaw, tally(longest, of: ironPawDays, "days")),
+            (.oldFriend, tally(Set(plays.map(\.day)).count, of: oldFriendDays, "days")),
+            (.onRepeat, tally(bestDaySongRepeats, of: onRepeatPlays, "plays in a day")),
+            (.superfan, tally(bestArtistPlays, of: superfanPlays, "plays")),
+            (.deepDiver, tally(bestArtistSongs, of: deepDiverSongs, "songs")),
+            (.collector, tally(Set(music.map(\.songId)).count, of: collectorSongs, "songs")),
+            (.varietyPack, tally(bestDayArtists, of: varietyArtists, "artists in a day")),
+            (.podcastPup, tally(Int(episodeMs / 60_000), of: podcastPupMinutes, "min")),
+            (.bingeListener, tally(bestDayEpisodes, of: bingeEpisodes, "episodes in a day"))
         ]
         return values.map { kind, value in
             RecapBadge(kind: kind, isUnlocked: value.0, progress: min(1, max(0, value.1)), progressText: value.2)

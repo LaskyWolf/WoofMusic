@@ -32,17 +32,6 @@ jobs:
           path: build/ffmpeg-kit-xcframeworks
           key: ffmpeg-kit-${{ env.FFMPEG_KIT_TAG }}-arm64+sim-openssl-${{ runner.os }}
 
-      - name: Cache DerivedData
-        uses: actions/cache@v6.1.0
-        with:
-          path: build/DerivedDataApp
-          key: trop-dd-${{ runner.os }}-${{ hashFiles('Trop.xcodeproj/**', '**/Package.resolved', 'Trop/**/*.swift') }}
-          restore-keys: |
-            trop-dd-${{ runner.os }}-
-
-      - name: Make build script executable
-        run: chmod +x ./build_ipa.sh
-
       - name: Download Discord Social SDK
         env:
           # The SDK must not be public: it lives in a private repo (DISCORD_SDK_REPO)

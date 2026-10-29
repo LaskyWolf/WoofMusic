@@ -588,7 +588,7 @@ private struct SleepTimerStatus: View {
             if let endsAt = timer.endsAt {
                 TimelineView(.periodic(from: .now, by: 1)) { context in
                     Label {
-                        Text("\(Self.countdown(endsAt.timeIntervalSince(context.date))) left · pauses at \(endsAt.formatted(date: .omitted, time: .shortened))")
+                        Text("\(DurationFormat.playbackTime(endsAt.timeIntervalSince(context.date).rounded(.up))) left · pauses at \(endsAt.formatted(date: .omitted, time: .shortened))")
                             .monospacedDigit()
                     } icon: {
                         Image(systemName: "moon.zzz.fill")
@@ -600,17 +600,6 @@ private struct SleepTimerStatus: View {
         }
         .font(.subheadline.weight(.medium))
         .foregroundStyle(.tint)
-    }
-
-    /// "12:34" or "1:05:00".
-    private static func countdown(_ seconds: TimeInterval) -> String {
-        let total = max(Int(seconds.rounded(.up)), 0)
-        let hours = total / 3600
-        let minutes = total / 60 % 60
-        let secs = total % 60
-        return hours > 0
-            ? String(format: "%d:%02d:%02d", hours, minutes, secs)
-            : String(format: "%d:%02d", minutes, secs)
     }
 }
 

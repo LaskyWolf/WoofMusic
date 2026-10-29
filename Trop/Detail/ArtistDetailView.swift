@@ -48,6 +48,8 @@ final class ArtistDetailViewModel {
             artist = parsed
             ArtistDetailCache.store(parsed)
         } catch {
+            // Leaving the page cancels the load: keep the flags so the next appear retries.
+            if error.isCancellation { return }
             if artist == nil { self.error = error }
         }
         isLoading = false
@@ -402,7 +404,7 @@ struct ArtistDetailView: View {
             Button(action: { toggleSubscribe(artist) }, label: {
                 HeaderRoundIcon(
                     systemImage: artist.isSubscribed ? "person.fill.checkmark" : "person.badge.plus",
-                    tint: artist.isSubscribed ? Color.accentColor : .primary
+                    tint: artist.isSubscribed ? SettingsStore.shared.accentColor : .primary
                 )
             })
             .accessibilityLabel(artist.isSubscribed ? "Unsubscribe" : "Subscribe")
@@ -415,7 +417,7 @@ struct ArtistDetailView: View {
                 .accessibilityLabel("Shuffle artist")
 
                 Button(action: { playAll(artist) }, label: {
-                    HeaderRoundIcon(systemImage: "play.fill", primary: .accentColor)
+                    HeaderRoundIcon(systemImage: "play.fill", primary: SettingsStore.shared.accentColor)
                 })
                 .accessibilityLabel("Play songs")
             }
