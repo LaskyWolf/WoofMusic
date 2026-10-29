@@ -91,7 +91,9 @@ struct TropApp: App {
         guard url.scheme == WidgetLink.scheme else { return }
         switch url.host() {
         case "player": AppRouter.shared.expandPlayer()
-        case "home": AppRouter.shared.selectedTabIndex = 0
+        case "home":
+            AppRouter.shared.collapsePlayer()
+            AppRouter.shared.selectedTabIndex = 0
         case "recap": showsRecap = true
         default: break
         }

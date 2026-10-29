@@ -97,11 +97,11 @@ import UIKit
     func playNext() {}
     func playPrevious() {}
 }
-@MainActor final class AppRouter: ObservableObject {
+@Observable @MainActor final class AppRouter {
     static let shared = AppRouter()
-    @Published var activeRoute: String?
-    @Published var playerExpandToken = 0
-    @Published var selectedTabIndex = 0
+    var playerCollapseToken = 0
+    var playerExpandToken = 0
+    var selectedTabIndex = 0
     var activePathDepth = 0
     func popActiveRoute() {}
     func reselectTab(_ tab: Int) {}
@@ -188,9 +188,8 @@ struct CheckRoot: View {
                     SurfaceProbe.trace("Expansion requested")
                     for _ in 0..<3 {
                         try? await Task.sleep(for: .milliseconds(120))
-                        AppRouter.shared.activeRoute = "interrupt opening"
+                        AppRouter.shared.playerCollapseToken += 1
                         try? await Task.sleep(for: .milliseconds(120))
-                        AppRouter.shared.activeRoute = nil
                         AppRouter.shared.playerExpandToken += 1
                     }
                     try? await Task.sleep(for: .seconds(3))
@@ -199,19 +198,17 @@ struct CheckRoot: View {
                     await SurfaceProbe.report(mode + "-expanded")
                     try? await Task.sleep(for: .seconds(2))
                     SurfaceProbe.trace("Request collapse")
-                    AppRouter.shared.activeRoute = "close"
+                    AppRouter.shared.playerCollapseToken += 1
                     SurfaceProbe.trace("Collapse requested")
                     try? await Task.sleep(for: .milliseconds(120))
-                    AppRouter.shared.activeRoute = nil
                     AppRouter.shared.playerExpandToken += 1
                     try? await Task.sleep(for: .milliseconds(120))
-                    AppRouter.shared.activeRoute = "interrupt closing"
+                    AppRouter.shared.playerCollapseToken += 1
                     try? await Task.sleep(for: .seconds(3))
                     precondition(!SurfaceProbe.playerVisible, "Interrupted closing must settle collapsed")
                     SurfaceProbe.trace("PASS: interrupted closing settled collapsed")
                     await SurfaceProbe.report(mode + "-after")
                     try? await Task.sleep(for: .seconds(2))
-                    AppRouter.shared.activeRoute = nil
                 }
                 await SurfaceProbe.report("complete")
             }
