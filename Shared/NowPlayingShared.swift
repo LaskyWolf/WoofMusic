@@ -6,7 +6,18 @@
 import AppIntents
 import Foundation
 import Security
+import SwiftUI
 import UIKit
+
+extension Color {
+    /// 0xRRGGBB.
+    init(hex: UInt32) {
+        let red = Double((hex >> 16) & 0xFF) / 255
+        let green = Double((hex >> 8) & 0xFF) / 255
+        let blue = Double(hex & 0xFF) / 255
+        self.init(red: red, green: green, blue: blue)
+    }
+}
 
 /// A song as the widgets show it.
 struct WidgetSong: Codable, Hashable, Identifiable {

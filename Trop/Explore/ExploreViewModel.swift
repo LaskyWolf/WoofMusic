@@ -172,11 +172,7 @@ final class ExploreViewModel {
     private static func headerBrowseId(_ carousel: [String: Any]) -> String? {
         guard let header = (carousel["header"] as? [String: Any])?["musicCarouselShelfBasicHeaderRenderer"]
             as? [String: Any] else { return nil }
-        let titleRun = ((header["title"] as? [String: Any])?["runs"] as? [[String: Any]])?.first
-        let button = (header["moreContentButton"] as? [String: Any])?["buttonRenderer"] as? [String: Any]
-        let endpoint = titleRun?["navigationEndpoint"] as? [String: Any]
-            ?? button?["navigationEndpoint"] as? [String: Any]
-        return (endpoint?["browseEndpoint"] as? [String: Any])?["browseId"] as? String
+        return HomePageParser.exploreHeaderBrowseId(header)
     }
 
     // MARK: - Moods

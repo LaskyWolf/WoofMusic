@@ -517,7 +517,7 @@ private struct MoodCard: View {
         let index = key.flatMap { MoodFamily.names.firstIndex(of: $0) }
             ?? title.unicodeScalars.reduce(0) { $0 &+ Int($1.value) &* 31 }
         let rgb = pantone[(index % pantone.count + pantone.count) % pantone.count].rgb
-        return Color(red: Double((rgb >> 16) & 0xFF) / 255, green: Double((rgb >> 8) & 0xFF) / 255, blue: Double(rgb & 0xFF) / 255)
+        return Color(hex: UInt32(rgb))
     }
 }
 

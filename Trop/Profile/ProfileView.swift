@@ -291,7 +291,7 @@ extension RecapBadge.Kind {
     /// Light to dark gem gradient.
     var colors: [Color] {
         let pair = hexPair
-        return [Self.color(pair.0), Self.color(pair.1)]
+        return [Color(hex: pair.0), Color(hex: pair.1)]
     }
 
     /// Light and dark gem colours as 0xRRGGBB; the stats widget draws them too.
@@ -321,12 +321,5 @@ extension RecapBadge.Kind {
         case .podcastPup: (0xFFC9A8, 0xB8603A)
         case .bingeListener: (0xC8A8FF, 0x5A3AA8)
         }
-    }
-
-    private static func color(_ hex: UInt32) -> Color {
-        let red = Double((hex >> 16) & 0xFF) / 255
-        let green = Double((hex >> 8) & 0xFF) / 255
-        let blue = Double(hex & 0xFF) / 255
-        return Color(red: red, green: green, blue: blue)
     }
 }

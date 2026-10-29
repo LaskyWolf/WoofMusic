@@ -240,7 +240,7 @@ extension HomePageParser {
 
     /// Header identity per ytmusic-rs: the title runs' navigation endpoint,
     /// falling back to the more-content button.
-    private static func exploreHeaderBrowseId(_ basicHeader: [String: Any]) -> String? {
+    static func exploreHeaderBrowseId(_ basicHeader: [String: Any]) -> String? {
         if let title = basicHeader["title"] as? [String: Any],
            let runs = title["runs"] as? [[String: Any]],
            let first = runs.first,
