@@ -572,19 +572,12 @@ private struct SleepTimerSheet: View {
         .appSheetChrome([.height(contentHeight), .large])
     }
 
-    /// Inline title with Done, in place of a navigation bar, so the measured
-    /// height covers the whole sheet.
+    /// Inline title, in place of a navigation bar, so the measured height covers
+    /// the whole sheet. No Done: picking a time closes it, and so does a swipe down.
     private var header: some View {
-        ZStack {
-            Text("Sleep Timer")
-                .font(.headline)
-                .accessibilityAddTraits(.isHeader)
-            HStack {
-                Spacer()
-                Button("Done") { dismiss() }
-                    .fontWeight(.semibold)
-            }
-        }
+        Text("Sleep Timer")
+            .font(.headline)
+            .accessibilityAddTraits(.isHeader)
     }
 }
 
