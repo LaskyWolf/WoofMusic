@@ -78,12 +78,25 @@ struct PlaybackSpeedDial: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private let speed = PlaybackSpeed.shared
     @State private var hapticCount = 0
+    /// The dial replaces the speed chip, so its header is the way back.
+    let onClose: () -> Void
 
     var body: some View {
         VStack(spacing: 6) {
             HStack(alignment: .center, spacing: 8) {
-                Text(PlaybackSpeed.label(speed.rate))
-                    .font(.title3.weight(.bold).monospacedDigit())
+                Button(action: onClose) {
+                    HStack(spacing: 4) {
+                        Text(PlaybackSpeed.label(speed.rate))
+                            .font(.title3.weight(.bold).monospacedDigit())
+                        Image(systemName: "chevron.up")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(.white.opacity(0.7))
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Playback speed, \(PlaybackSpeed.label(speed.rate))")
+                .accessibilityHint("Closes the speed dial")
                 SpeedTimeLeft(rate: speed.rate)
                 Spacer()
                 SpeedKnob(rate: speed.rate)

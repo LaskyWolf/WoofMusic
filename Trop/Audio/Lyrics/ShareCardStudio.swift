@@ -15,13 +15,13 @@ protocol ShareCardOption: RawRepresentable, CaseIterable, Identifiable, Hashable
 }
 
 enum ShareCardBackground: String, ShareCardOption {
-    case glow, aurora, paws, halftone, confetti
+    case glow, equalizer, paws, halftone, confetti
     var id: Self { self }
 
     var title: String {
         switch self {
         case .glow: "Cover Glow"
-        case .aurora: "Aurora"
+        case .equalizer: "Equalizer"
         case .paws: "Paws"
         case .halftone: "Halftone"
         case .confetti: "Confetti"
@@ -30,7 +30,7 @@ enum ShareCardBackground: String, ShareCardOption {
 }
 
 enum ShareCardFrame: String, ShareCardOption {
-    case polaroid, ticket, cassette, vinyl
+    case polaroid, ticket, cassette, vinyl, cd
     var id: Self { self }
 
     var title: String {
@@ -39,6 +39,7 @@ enum ShareCardFrame: String, ShareCardOption {
         case .ticket: "Ticket"
         case .cassette: "Cassette"
         case .vinyl: "Vinyl"
+        case .cd: "CD"
         }
     }
 }
@@ -193,7 +194,7 @@ struct ShareCard: View {
         ZStack {
             ForEach($stickers) { $sticker in
                 ShareCardStickerView(sticker: $sticker, phase: phase, editScale: editScale) {
-                    stickers.removeAll { $0.id == sticker.id }
+                    withAnimation(.spring(duration: 0.3)) { stickers.removeAll { $0.id == sticker.id } }
                 }
             }
         }
@@ -235,7 +236,7 @@ private struct ShareCardBackgroundView: View {
         ZStack {
             switch kind {
             case .glow: glow
-            case .aurora: aurora
+            case .equalizer: equalizer
             case .paws: paws
             case .halftone: halftone
             case .confetti: confetti
@@ -245,21 +246,48 @@ private struct ShareCardBackgroundView: View {
         }
     }
 
+    /// Two glows circling in opposite directions and breathing twice per loop.
     private var glow: some View {
-        ZStack {
+        let angle = phase * 2 * .pi
+        let breath = 40 * sin(2 * angle)
+        return ZStack {
             colors[0]
-            RadialGradient(colors: [colors[1], .clear], center: UnitPoint(x: 0.3, y: 0.2), startRadius: 0, endRadius: 340)
-            RadialGradient(colors: [colors[2].opacity(0.85), .clear], center: UnitPoint(x: 0.8, y: 0.75), startRadius: 0, endRadius: 300)
+            RadialGradient(
+                colors: [colors[1], .clear],
+                center: UnitPoint(x: 0.3 + 0.18 * cos(angle), y: 0.25 + 0.12 * sin(angle)),
+                startRadius: 0, endRadius: 340 + breath
+            )
+            RadialGradient(
+                colors: [colors[2].opacity(0.85), .clear],
+                center: UnitPoint(x: 0.75 - 0.18 * cos(angle), y: 0.72 - 0.12 * sin(angle)),
+                startRadius: 0, endRadius: 300 - breath
+            )
         }
     }
 
-    /// The gradient's axis turns once per loop.
-    private var aurora: some View {
-        let angle = phase * 2 * .pi
-        let start = UnitPoint(x: 0.5 + 0.5 * cos(angle), y: 0.5 + 0.5 * sin(angle))
-        let end = UnitPoint(x: 1 - start.x, y: 1 - start.y)
-        return LinearGradient(colors: [colors[0], colors[1], colors[2], colors[0]], startPoint: start, endPoint: end)
-            .saturation(1.15)
+    /// Equalizer bars along the bottom. Each bar bounces a whole number of
+    /// times per loop, so the loop has no seam.
+    private var equalizer: some View {
+        ZStack {
+            LinearGradient(colors: [colors[0], colors[1]], startPoint: .top, endPoint: .bottom)
+            Canvas { context, size in
+                let count = 18
+                let gap: CGFloat = 6
+                let width = (size.width - gap * CGFloat(count + 1)) / CGFloat(count)
+                for index in 0..<count {
+                    let bounces = Double(1 + index % 3)
+                    let wave = sin((phase * bounces + Self.noise(index, 4)) * 2 * .pi)
+                    let height = size.height * (0.18 + 0.16 * (wave + 1) + 0.12 * Self.noise(index, 5))
+                    let x = gap + CGFloat(index) * (width + gap)
+                    let rect = CGRect(x: x, y: size.height - height, width: width, height: height + width / 2)
+                    let shading = GraphicsContext.Shading.linearGradient(
+                        Gradient(colors: [colors[2], colors[2].opacity(0.25)]),
+                        startPoint: CGPoint(x: x, y: rect.minY), endPoint: CGPoint(x: x, y: size.height)
+                    )
+                    context.fill(Path(roundedRect: rect, cornerRadius: width / 2), with: shading)
+                }
+            }
+        }
     }
 
     /// Paw prints drifting up two rows and right one cell per loop: the
@@ -366,6 +394,7 @@ private struct ShareCardFrameView: View {
         case .ticket: ticket
         case .cassette: cassette
         case .vinyl: vinyl
+        case .cd: cd
         }
     }
 
@@ -520,6 +549,40 @@ private struct ShareCardFrameView: View {
         }
     }
 
+    /// The cover printed on a CD, turning once per loop.
+    private var cd: some View {
+        let side: CGFloat = 250
+        return VStack(spacing: 16) {
+            ZStack {
+                coverImage
+                    .frame(width: side, height: side)
+                // Rainbow sheen of the disc surface.
+                Circle()
+                    .fill(AngularGradient(colors: [.clear, .cyan.opacity(0.25), .clear, .pink.opacity(0.22), .clear, .yellow.opacity(0.2), .clear], center: .center))
+                    .blendMode(.screen)
+                // The clear plastic ring round the hole.
+                Circle()
+                    .fill(.white.opacity(0.35))
+                    .frame(width: side * 0.3, height: side * 0.3)
+                Circle()
+                    .stroke(.white.opacity(0.5), lineWidth: 1)
+                    .frame(width: side * 0.3, height: side * 0.3)
+                Circle()
+                    .frame(width: side * 0.12, height: side * 0.12)
+                    .blendMode(.destinationOut)
+            }
+            .frame(width: side, height: side)
+            .clipShape(Circle())
+            .compositingGroup()
+            .overlay { Circle().stroke(.white.opacity(0.35), lineWidth: 1) }
+            .rotationEffect(.degrees(phase * 360))
+            .shadow(color: .black.opacity(0.4), radius: 12, y: 8)
+            titles(titleSize: 18, alignment: .center, color: .white, lineLimit: 1)
+                .shadow(color: .black.opacity(0.35), radius: 3)
+                .frame(width: 280)
+        }
+    }
+
     private func record(side: CGFloat) -> some View {
         ZStack {
             Circle().fill(Color(white: 0.07))
@@ -643,10 +706,12 @@ private struct ShareCardStickerView: View {
             .font(.system(size: 52 * sticker.scale))
             .shadow(color: .black.opacity(0.3), radius: 3, y: 2)
             .rotationEffect(.degrees(sticker.tilt + wiggle))
-            .position(x: sticker.position.x * ShareCard.size.width, y: sticker.position.y * ShareCard.size.height)
+            // Before position: after it, the view is card-sized and the gestures miss.
+            .contentShape(Rectangle())
+            .onTapGesture(perform: onRemove)
             .gesture(drag.simultaneously(with: pinch), including: editScale == nil ? .none : .all)
-            .onTapGesture(count: 2, perform: onRemove)
             .allowsHitTesting(editScale != nil)
+            .position(x: sticker.position.x * ShareCard.size.width, y: sticker.position.y * ShareCard.size.height)
             .accessibilityLabel("Sticker \(sticker.emoji)")
             .accessibilityAction(named: "Remove", onRemove)
     }
@@ -764,7 +829,7 @@ struct ShareCardStudio: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("Card preview. Drag stickers to move them, pinch to resize, double-tap to remove.")
+        .accessibilityLabel("Card preview. Drag stickers to move them, pinch to resize, tap to remove.")
     }
 
     /// One loop of the moving parts lasts as long as the video.
@@ -792,6 +857,20 @@ struct ShareCardStudio: View {
                 group("Stickers") {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 4) {
+                            if !stickers.isEmpty {
+                                Button {
+                                    withAnimation(.spring(duration: 0.3)) { stickers.removeAll() }
+                                } label: {
+                                    Image(systemName: "trash")
+                                        .font(.subheadline.weight(.semibold))
+                                        .foregroundStyle(.red)
+                                        .frame(width: 36, height: 36)
+                                        .background(.quaternary, in: Circle())
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel("Remove all stickers")
+                                .transition(.scale.combined(with: .opacity))
+                            }
                             ForEach(Self.stickerChoices, id: \.self) { emoji in
                                 Button { addSticker(emoji) } label: {
                                     Text(verbatim: emoji)

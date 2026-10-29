@@ -898,6 +898,8 @@ private struct PlaylistPeopleChip: View {
     @State private var people: [PlaylistCollaborator] = []
     @State private var hasLoadedPeople = false
     @State private var showPeople = false
+    /// Profile picked in the sheet, opened once the sheet is gone.
+    @State private var pickedChannel: String?
 
     private var isShared: Bool { !playlist.collaboratorAvatarUrls.isEmpty }
 
@@ -930,7 +932,7 @@ private struct PlaylistPeopleChip: View {
             if isShared, let params = playlist.collaboratorsPanelParams {
                 Button { showPeople = true } label: { chip(tappable: true) }
                     .accessibilityLabel("\(label), shared playlist")
-                    .sheet(isPresented: $showPeople) { peopleSheet }
+                    .sheet(isPresented: $showPeople, onDismiss: openPickedChannel) { peopleSheet }
                     .task(id: params) {
                         let fetched = await PlaylistCollaborators.fetch(params: params)
                         withAnimation(.easeInOut(duration: 0.2)) {
@@ -991,20 +993,14 @@ private struct PlaylistPeopleChip: View {
         NavigationStack {
             List {
                 ForEach(Array(people.enumerated()), id: \.offset) { index, person in
-                    HStack(spacing: 12) {
-                        avatar(avatarUrl(for: person, at: index), size: 36)
-                            .overlay { if person.isOwner { OwnerCrown(size: 36) } }
-                        Text(person.name)
-                            .lineLimit(1)
-                        if person.name == AccountState.shared.accountName {
-                            Text("(you)")
-                                .foregroundStyle(.secondary)
-                        }
-                        Spacer(minLength: 8)
-                        Text(person.isOwner ? "Owner" : "Editor")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
+                    Button {
+                        pickedChannel = person.channelId
+                        showPeople = false
+                    } label: {
+                        personRow(person, at: index)
                     }
+                    .disabled(person.channelId == nil)
+                    .accessibilityHint(person.channelId == nil ? "" : "Opens their profile")
                 }
             }
             .overlay {
@@ -1023,6 +1019,36 @@ private struct PlaylistPeopleChip: View {
         }
         .presentationDetents([.medium])
         .presentationDragIndicator(.visible)
+    }
+
+    private func personRow(_ person: PlaylistCollaborator, at index: Int) -> some View {
+        HStack(spacing: 12) {
+            avatar(avatarUrl(for: person, at: index), size: 36)
+                .overlay { if person.isOwner { OwnerCrown(size: 36) } }
+            Text(person.name)
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+            if person.name == AccountState.shared.accountName {
+                Text("(you)")
+                    .foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 8)
+            Text(person.isOwner ? "Owner" : "Editor")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+            if person.channelId != nil {
+                Image(systemName: "chevron.right")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+            }
+        }
+        .contentShape(Rectangle())
+    }
+
+    private func openPickedChannel() {
+        guard let channel = pickedChannel else { return }
+        pickedChannel = nil
+        AppRouter.shared.open(.artist(browseId: channel))
     }
 
     @ViewBuilder

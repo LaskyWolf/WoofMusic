@@ -155,6 +155,8 @@ struct PlaybackControlsRow: View {
     let onPrevious: () -> Void
     let onPlayPause: () -> Void
     let onNext: () -> Void
+    /// The karaoke mascot or the radio antenna stands in its place.
+    var hidesPlayPause = false
     @State private var previousAnimation = 0
     @State private var nextAnimation = 0
 
@@ -174,6 +176,9 @@ struct PlaybackControlsRow: View {
             .accessibilityLabel("Previous")
 
             PlayerPlayPauseButton(isPlaying: isPlaying, action: onPlayPause)
+                .scaleEffect(hidesPlayPause ? 0.3 : 1)
+                .opacity(hidesPlayPause ? 0 : 1)
+                .allowsHitTesting(!hidesPlayPause)
 
             Button {
                 nextAnimation &+= 1

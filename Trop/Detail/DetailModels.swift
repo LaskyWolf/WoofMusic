@@ -34,6 +34,9 @@ struct ArtistDetailInfo {
     var videos: [SongItem] = []
     var playlists: [PlaylistItem] = []
     var relatedArtists: [ArtistItem] = []
+
+    /// False for a listener's channel: no songs, albums or singles under its name.
+    var hasMusic: Bool { !songs.isEmpty || !albums.isEmpty || !singles.isEmpty }
 }
 
 /// Parsed detail data for a playlist page.

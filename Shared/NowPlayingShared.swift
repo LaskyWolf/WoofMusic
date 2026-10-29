@@ -5,6 +5,7 @@
 
 import AppIntents
 import Foundation
+import Security
 
 /// A song as the widgets show it.
 struct WidgetSong: Codable, Hashable, Identifiable {
@@ -89,8 +90,8 @@ enum WidgetLink {
 }
 
 /// JSON files in the App Group container, written by the app and read by the
-/// widgets. The container is nil when the signed app has no App Group
-/// entitlement: then the app writes nothing and the widgets show their placeholder.
+/// widgets. Signing tools that use a shared certificate usually drop the App
+/// Group; then the files go to a Keychain group the team shares instead.
 enum WidgetStore {
     static let nowPlayingFile = "nowplaying.json"
     static let quickPicksFile = "quickpicks.json"
@@ -108,16 +109,97 @@ enum WidgetStore {
             .appendingPathComponent(name)
     }
 
+    /// False when the app and the widgets have nowhere to share data:
+    /// the widgets then say the signing tool is the cause.
+    static var canShare: Bool {
+        fileURL("") != nil || SharedKeychain.group != nil
+    }
+
     static func read<Value: Decodable>(_ type: Value.Type, from name: String) -> Value? {
-        guard let url = fileURL(name), let data = try? Data(contentsOf: url) else { return nil }
+        let data = if let url = fileURL(name) { try? Data(contentsOf: url) } else { SharedKeychain.read(name) }
+        guard let data else { return nil }
         return try? JSONDecoder().decode(type, from: data)
     }
 
-    /// Returns false when there is no App Group container to write to.
+    /// Returns false when there is nowhere to write to.
     @discardableResult
     static func write<Value: Encodable>(_ value: Value, to name: String) -> Bool {
-        guard let url = fileURL(name), let data = try? JSONEncoder().encode(value) else { return false }
-        return (try? data.write(to: url, options: .atomic)) != nil
+        guard let data = try? JSONEncoder().encode(value) else { return false }
+        if let url = fileURL(name) { return (try? data.write(to: url, options: .atomic)) != nil }
+        return SharedKeychain.write(data, for: name)
+    }
+}
+
+/// Generic-password items in "TEAMID.woofmusic.widgets". The usual profile of a
+/// shared certificate grants the Keychain groups "TEAMID.*" to the app and its
+/// extensions, so both reach this group without an App Group.
+enum SharedKeychain {
+    private static let service = "WoofWidgets"
+
+    /// Nil when the entitlements don't cover the group (an App Group build, or a profile without "TEAMID.*").
+    static let group: String? = {
+        guard let team = teamId() else { return nil }
+        let group = team + ".woofmusic.widgets"
+        // Writing a probe is the only way to learn whether the group is allowed.
+        return upsert(Data(), account: "probe", group: group) ? group : nil
+    }()
+
+    static func read(_ account: String) -> Data? {
+        guard let group else { return nil }
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account,
+            kSecAttrAccessGroup as String: group,
+            kSecReturnData as String: true
+        ]
+        var result: CFTypeRef?
+        guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess else { return nil }
+        return result as? Data
+    }
+
+    static func write(_ data: Data, for account: String) -> Bool {
+        guard let group else { return false }
+        return upsert(data, account: account, group: group)
+    }
+
+    private static func upsert(_ data: Data, account: String, group: String) -> Bool {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account,
+            kSecAttrAccessGroup as String: group
+        ]
+        let status = SecItemUpdate(query as CFDictionary, [kSecValueData as String: data] as CFDictionary)
+        guard status == errSecItemNotFound else { return status == errSecSuccess }
+        var item = query
+        item[kSecValueData as String] = data
+        // Widgets refresh while the phone is locked.
+        item[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
+        return SecItemAdd(item as CFDictionary, nil) == errSecSuccess
+    }
+
+    /// The team id, read off the access group of an item saved in the default group ("TEAMID.<bundle id>").
+    private static func teamId() -> String? {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: "team-probe",
+            kSecReturnAttributes as String: true
+        ]
+        var result: CFTypeRef?
+        var status = SecItemCopyMatching(query as CFDictionary, &result)
+        if status == errSecItemNotFound {
+            var item = query
+            item[kSecValueData as String] = Data()
+            item[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
+            status = SecItemAdd(item as CFDictionary, &result)
+        }
+        guard status == errSecSuccess,
+              let attributes = result as? [String: Any],
+              let accessGroup = attributes[kSecAttrAccessGroup as String] as? String,
+              let team = accessGroup.split(separator: ".").first else { return nil }
+        return String(team)
     }
 }
 

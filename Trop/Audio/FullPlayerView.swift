@@ -53,6 +53,11 @@ struct FullPlayerView: View {
     /// grow from. A plain box, not state: the swipe and pull move the cover
     /// every frame and must not redraw the player.
     @State private var coverFrame = CoverFrameBox()
+    /// The controls row and the secondary row, for the Radio Bloom. Boxes, like `coverFrame`.
+    @State private var controlsFrame = CoverFrameBox()
+    @State private var secondaryFrame = CoverFrameBox()
+    @State private var karaokeReplacesPlay = false
+    @State private var radioReplacesPlay = false
     private var playerBackgroundColors: [Color] { np.dominantColors }
 
     var body: some View {
@@ -157,7 +162,7 @@ struct FullPlayerView: View {
                     // Takes its room from the cover area above, and grows out of
                     // the speed chip: its top centre sits right under the chip.
                     if showsSpeedDial {
-                        PlaybackSpeedDial()
+                        PlaybackSpeedDial(onClose: { showsSpeedDial = false })
                             .padding(.horizontal, 22)
                             .padding(.bottom, 12)
                             .transition(reduceMotion ? .opacity : .scale(scale: 0.08, anchor: .top).combined(with: .opacity))
@@ -172,15 +177,18 @@ struct FullPlayerView: View {
                         hasNext: np.hasNext,
                         onPrevious: { np.playPrevious() },
                         onPlayPause: { player.togglePlayPause() },
-                        onNext: { np.playNext() }
+                        onNext: { np.playNext() },
+                        hidesPlayPause: karaokeReplacesPlay || radioReplacesPlay
                     )
-                    // The karaoke mascot pops out of the play button.
+                    // The karaoke mascot takes the play button's place.
                     .overlay {
                         KaraokeCountdownOverlay(
                             trigger: LyricsState.shared.karaokeGreeting,
-                            isOn: LyricsState.shared.karaokeGreetingIsOn
+                            isOn: LyricsState.shared.karaokeGreetingIsOn,
+                            replacesPlayButton: $karaokeReplacesPlay
                         )
                     }
+                    .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { controlsFrame.rect = $0 }
                     .padding(.bottom, 8)
 
                     PlayerVolumeSlider()
@@ -192,6 +200,7 @@ struct FullPlayerView: View {
                         isRepeatOn: $np.isRepeatOn,
                         showLyrics: $showLyrics
                     )
+                    .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { secondaryFrame.rect = $0 }
 
                     Color.clear.frame(height: 8)
                 }
@@ -211,6 +220,21 @@ struct FullPlayerView: View {
                 SleepEndedOverlay(size: sleepOverlaySize)
                     .frame(width: sleepOverlaySize.width, height: sleepOverlaySize.height)
                     .offset(y: -artworkTopInset)
+            }
+            .overlay {
+                RadioBloomOverlay(
+                    event: np.radioBloom,
+                    cover: { coverFrame.rect },
+                    // The row is symmetric: the play button sits at its centre.
+                    playButton: { controlsFrame.rect },
+                    // The queue button is the last of the row's three equal columns.
+                    queueButton: {
+                        let row = secondaryFrame.rect
+                        return CGRect(x: row.maxX - row.width / 3, y: row.minY, width: row.width / 3, height: row.height)
+                    },
+                    coverCornerRadius: settings.playerStyle == .card ? Self.cardCoverRadius : 0,
+                    replacesPlayButton: $radioReplacesPlay
+                )
             }
             .animation(.easeInOut(duration: reduceMotion ? 0.15 : 0.25), value: showQueue)
             .animation(.easeInOut(duration: reduceMotion ? 0.15 : 0.25), value: showLyrics)
@@ -632,7 +656,13 @@ private struct PlayerProgressSection: View {
                     .font(.caption2.monospacedDigit())
                     .foregroundStyle(.white.opacity(0.6))
             }
-            .overlay { speedChip(rate: rate) }
+            // The dial takes the chip's place while open; its header closes it.
+            .overlay {
+                speedChip(rate: rate)
+                    .scaleEffect(showsSpeedDial ? 0.6 : 1)
+                    .opacity(showsSpeedDial ? 0 : 1)
+                    .allowsHitTesting(!showsSpeedDial)
+            }
         }
         .padding(.horizontal, 32)
     }

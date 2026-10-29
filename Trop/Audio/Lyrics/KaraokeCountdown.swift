@@ -5,15 +5,17 @@
 
 import SwiftUI
 
-/// The karaoke start and stop greeting, laid over the player's play button.
-/// On start a mascot pops out of the button, tilts its head and barks three
-/// times. On stop it pops out, yawns while 💤 float up, and ducks back in.
-/// Overlay only: it never touches or delays the lyrics or the button.
+/// The karaoke start and stop greeting, in the player's play button's place.
+/// On start the button shrinks away and a mascot pops up where it was, tilts
+/// its head and barks three times. On stop it yawns while one 💤 drifts up
+/// slowly, then the button comes back. It never delays the lyrics.
 struct KaraokeCountdownOverlay: View {
     /// Bumped by the lyrics on each karaoke start or stop.
     let trigger: Int
     /// Karaoke after the change: on plays the countdown, off the goodbye.
     let isOn: Bool
+    /// True while the mascot stands in for the play button.
+    @Binding var replacesPlayButton: Bool
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// Karaoke starts so far; every third one brings the wolf.
@@ -21,7 +23,7 @@ struct KaraokeCountdownOverlay: View {
 
     /// Picked once per start; the goodbye reuses it.
     @State private var isWolf = false
-    /// 0 is tucked inside the button, 1 is fully out above it.
+    /// 0 is a dot at the button's centre, 1 is full size in its place.
     @State private var lift: CGFloat = 0
     /// Degrees; the wolf lifts its head to howl instead.
     @State private var tilt = 0.0
@@ -31,9 +33,8 @@ struct KaraokeCountdownOverlay: View {
     @State private var bubbleTriggers = [0, 0, 0]
     @State private var barkTrigger = 0
     @State private var yawnTrigger = 0
+    @State private var run: Task<Void, Never>?
 
-    /// How far above the button's centre the mascot stands when out.
-    private static let rise: CGFloat = 62
     /// Starts brought by the wolf: one in this many.
     private static let wolfEvery = 3
     /// Bubble spots around the mascot's head, one per bark.
@@ -46,28 +47,39 @@ struct KaraokeCountdownOverlay: View {
     var body: some View {
         ZStack {
             ForEach(0..<3, id: \.self) { slot in
-                KaraokeBarkBubble(text: bubbleTexts[slot], isBig: slot == 2, trigger: bubbleTriggers[slot])
-                    .offset(x: Self.bubbleOffsets[slot].width, y: Self.bubbleOffsets[slot].height - Self.rise)
+                KaraokeBarkBubble(text: bubbleTexts[slot], isBig: slot == 2, isSlow: !isOn, trigger: bubbleTriggers[slot])
+                    .offset(x: Self.bubbleOffsets[slot].width, y: Self.bubbleOffsets[slot].height)
             }
             mascot
         }
         .allowsHitTesting(false)
         .accessibilityHidden(true)
         .sensoryFeedback(.impact(weight: .light), trigger: barkTrigger)
-        .task(id: trigger) {
-            guard trigger > 0, !reduceMotion else { return }
-            // Cancelled when the next start or stop replaces this run.
-            if isOn {
-                try? await countdown()
-            } else {
-                try? await goodbye()
+        // onChange, not task(id:): opening the player must not replay the last greeting.
+        .onChange(of: trigger) { _, _ in
+            run?.cancel()
+            guard !reduceMotion else { return }
+            run = Task {
+                withAnimation(.spring(duration: 0.3, bounce: 0.3)) { replacesPlayButton = true }
+                if isOn {
+                    try? await countdown()
+                } else {
+                    try? await goodbye()
+                }
+                // A newer greeting took over and keeps the button hidden.
+                guard !Task.isCancelled else { return }
+                withAnimation(.spring(duration: 0.35, bounce: 0.3)) { replacesPlayButton = false }
             }
+        }
+        .onDisappear {
+            run?.cancel()
+            replacesPlayButton = false
         }
     }
 
     private var mascot: some View {
         Text(verbatim: isWolf ? "🐺" : "🐶")
-            .font(.system(size: 52))
+            .font(.system(size: 50))
             // A bark: a quick swell from the chin.
             .keyframeAnimator(initialValue: CGFloat(1), trigger: barkTrigger) { content, scale in
                 content.scaleEffect(scale, anchor: .bottom)
@@ -84,10 +96,9 @@ struct KaraokeCountdownOverlay: View {
                 SpringKeyframe(CGFloat(1), duration: 0.12, spring: .bouncy)
             }
             .rotationEffect(.degrees(tilt), anchor: .bottom)
-            // Tucked in, it is a small dot at the button's centre.
             .scaleEffect(0.2 + 0.8 * lift)
             .opacity(min(1, lift * 2.5))
-            .offset(y: -lift * Self.rise - headRaise)
+            .offset(y: -headRaise)
     }
 
     // MARK: - Scripts
@@ -126,22 +137,26 @@ struct KaraokeCountdownOverlay: View {
         }
     }
 
-    /// About 1.3 s: a yawn and three 💤 drifting up, a 🌙 first for the wolf.
+    /// About 3 s: a slow yawn, one 💤 (🌙 for the wolf) drifting up, and a nod off.
     private func goodbye() async throws {
-        bubbleTexts = [isWolf ? "🌙" : "💤", "💤", "💤"]
-        withAnimation(.spring(duration: 0.3, bounce: 0.35)) {
+        bubbleTexts = ["", "", isWolf ? "🌙" : "💤"]
+        withAnimation(.easeOut(duration: 0.5)) {
             lift = 1
             tilt = 0
             headRaise = 0
         }
-        try await Task.sleep(for: .seconds(0.25))
+        try await Task.sleep(for: .seconds(0.5))
         yawnTrigger += 1
-        for slot in 0..<3 {
-            bubbleTriggers[slot] += 1
-            try await Task.sleep(for: .seconds(0.22))
+        try await Task.sleep(for: .seconds(0.3))
+        bubbleTriggers[2] += 1
+        // The head droops while the 💤 floats away.
+        withAnimation(.easeInOut(duration: 1.2)) { tilt = 12 }
+        try await Task.sleep(for: .seconds(1.6))
+        withAnimation(.easeIn(duration: 0.6)) {
+            lift = 0
+            tilt = 0
         }
-        try await Task.sleep(for: .seconds(0.2))
-        withAnimation(.easeIn(duration: 0.25)) { lift = 0 }
+        try await Task.sleep(for: .seconds(0.6))
     }
 }
 
@@ -150,6 +165,8 @@ struct KaraokeCountdownOverlay: View {
 private struct KaraokeBarkBubble: View {
     let text: String
     let isBig: Bool
+    /// Drifts up slowly, for the goodbye.
+    var isSlow = false
     let trigger: Int
 
     /// Emoji float on their own; words get the bubble.
@@ -184,12 +201,12 @@ private struct KaraokeBarkBubble: View {
             }
             KeyframeTrack(\.rise) {
                 MoveKeyframe(0.0)
-                LinearKeyframe(-34.0, duration: 0.6)
+                CubicKeyframe(isSlow ? -60.0 : -34.0, duration: isSlow ? 1.8 : 0.6)
             }
             KeyframeTrack(\.opacity) {
                 MoveKeyframe(1.0)
-                LinearKeyframe(1.0, duration: 0.35)
-                LinearKeyframe(0.0, duration: 0.25)
+                LinearKeyframe(1.0, duration: isSlow ? 1.0 : 0.35)
+                LinearKeyframe(0.0, duration: isSlow ? 0.8 : 0.25)
             }
         }
     }

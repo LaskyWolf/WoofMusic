@@ -370,7 +370,7 @@ struct ArtistDetailView: View {
                 && artist.playlists.isEmpty && artist.relatedArtists.isEmpty {
                 VStack(spacing: 8) {
                     Spacer().frame(height: 40)
-                    Text("No content found")
+                    Text(artist.hasMusic ? "No content found" : "Nothing public on this profile yet")
                         .font(.subheadline)
                         .foregroundColor(.secondary)
                 }
@@ -381,7 +381,7 @@ struct ArtistDetailView: View {
     /// Header card over the blurred avatar: round avatar, subscribers, name,
     /// then Subscribe, Shuffle and Play. Same card as the playlist and album headers.
     private func header(for artist: ArtistDetailInfo) -> some View {
-        DetailHeaderCard(meta: artistKind ?? "Artist", title: artist.name) {
+        DetailHeaderCard(meta: kindLabel(for: artist), title: artist.name) {
             AsyncImageView(url: ArtworkURLs.sized(artist.thumbnailUrl, width: 1200, height: 1200))
                 .clipShape(Circle())
         } secondary: {
@@ -400,16 +400,18 @@ struct ArtistDetailView: View {
             })
             .accessibilityLabel(artist.isSubscribed ? "Unsubscribe" : "Subscribe")
 
-            Button(action: { shufflePlay(artist) }, label: {
-                HeaderRoundIcon(systemImage: "shuffle")
-            })
-            .accessibilityLabel("Shuffle artist")
+            // A profile with no songs has nothing to play.
+            if !artist.songs.isEmpty {
+                Button(action: { shufflePlay(artist) }, label: {
+                    HeaderRoundIcon(systemImage: "shuffle")
+                })
+                .accessibilityLabel("Shuffle artist")
 
-            Button(action: { playAll(artist) }, label: {
-                HeaderRoundIcon(systemImage: "play.fill", primary: .accentColor)
-            })
-            .accessibilityLabel("Play songs")
-            .disabled(artist.songs.isEmpty)
+                Button(action: { playAll(artist) }, label: {
+                    HeaderRoundIcon(systemImage: "play.fill", primary: .accentColor)
+                })
+                .accessibilityLabel("Play songs")
+            }
         }
         .padding(.vertical, 16)
         .frame(maxWidth: .infinity)
@@ -417,8 +419,17 @@ struct ArtistDetailView: View {
             BlurredArtworkBackdrop(url: ArtworkURLs.sized(artist.thumbnailUrl, width: 1200, height: 1200))
         }
         .task(id: artist.name) {
+            // A listener's name could match an unrelated MusicBrainz artist.
+            guard artist.hasMusic else { return }
             artistKind = await ArtistKindService.shared.kind(for: artist.name)
         }
+    }
+
+    /// "Artist" (or its MusicBrainz kind) for a channel with music; a channel
+    /// without any is a person's profile: "Creator" with videos, else "User".
+    private func kindLabel(for artist: ArtistDetailInfo) -> String {
+        if artist.hasMusic { return artistKind ?? "Artist" }
+        return artist.videos.isEmpty ? "User" : "Creator"
     }
 
     private func subscriberLabel(for count: String) -> String {

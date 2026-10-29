@@ -31,6 +31,8 @@ final class NowPlaying {
     }
     /// True from the moment a song is requested until its audio is loaded.
     var isLoadingTrack = false
+    /// The full player's Radio Bloom animation follows this.
+    var radioBloom = RadioBloomEvent()
     var currentTime: TimeInterval = 0
     var duration: TimeInterval = 0
     var progress: Float {

@@ -97,19 +97,24 @@ struct IntentCircleButton<Intent: AppIntent>: View {
     }
 }
 
-/// Shown when the app hasn't written anything yet (or has no App Group).
+/// Shown when the app hasn't written anything yet, or can't share anything at all.
 struct WidgetPlaceholder: View {
     let symbol: String
     let text: String
 
+    /// Neither an App Group nor the team's Keychain group came through signing.
+    private static let noStorage = "Your signing tool removed the shared storage widgets need. Re-sign with App Groups kept."
+
     var body: some View {
+        let canShare = WidgetStore.canShare
         VStack(alignment: .leading, spacing: 6) {
-            Image(systemName: symbol)
+            Image(systemName: canShare ? symbol : "exclamationmark.triangle")
                 .font(.title2)
             Spacer(minLength: 0)
-            Text(text)
+            Text(canShare ? text : Self.noStorage)
                 .font(.subheadline.weight(.medium))
-                .lineLimit(3)
+                .lineLimit(4)
+                .minimumScaleFactor(0.8)
         }
         .foregroundStyle(.white)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
