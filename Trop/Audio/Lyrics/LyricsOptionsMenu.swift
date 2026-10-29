@@ -46,13 +46,13 @@ struct LyricsOptionsMenu<MenuLabel: View>: View {
                 Toggle(isOn: $settings.romanizeCurrentTrack) {
                     Label("Romanize Current Track", systemImage: "globe")
                 }
+                // Stays enabled: turning it on is what looks for word-timed lyrics.
                 Toggle(isOn: $karaokeEnabled) {
                     Label("Karaoke", systemImage: "music.mic")
-                    if !LyricsState.shared.hasWordTiming {
-                        Text("Needs word-timed lyrics")
+                    if karaokeEnabled && !LyricsState.shared.hasWordTiming {
+                        Text("No word-timed lyrics found")
                     }
                 }
-                .disabled(!LyricsState.shared.hasWordTiming)
             }
         } label: {
             label()
@@ -71,6 +71,10 @@ struct LyricsOptionsMenu<MenuLabel: View>: View {
                     duration: np.duration
                 )
             }
+        }
+        .onChange(of: karaokeEnabled) { _, isOn in
+            guard isOn, let videoId = np.videoId else { return }
+            Task { await LyricsService.shared.requestWordTiming(videoId: videoId) }
         }
     }
 

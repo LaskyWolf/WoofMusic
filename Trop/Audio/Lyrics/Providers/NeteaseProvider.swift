@@ -6,6 +6,7 @@
 //
 
 // https://github.com/spicetify/cli/blob/main/CustomApps/lyrics-plus/ProviderNetease.js
+// yrc word timing: https://github.com/chenmozhijin/LDDC/blob/main/LDDC/core/parser/yrc.py
 
 import Foundation
 
@@ -13,8 +14,9 @@ struct NeteaseProvider: LyricsProvider {
     let id = "netease"
     let name = "Netease"
 
-    private let searchURL = "https://music.xianqiao.wang/neteaseapiv2/search"
-    private let lyricURL = "https://music.xianqiao.wang/neteaseapiv2/lyric"
+    // Netease's own public web API; needs no login.
+    private let searchURL = "https://music.163.com/api/search/get"
+    private let lyricURL = "https://music.163.com/api/song/lyric"
 
     func fetch(query: LyricsQuery) async throws -> [LyricLine] {
         let cleanTitle = normalize(query.title)
@@ -23,7 +25,7 @@ struct NeteaseProvider: LyricsProvider {
         components.queryItems = [
             URLQueryItem(name: "limit", value: "10"),
             URLQueryItem(name: "type", value: "1"),
-            URLQueryItem(name: "keywords", value: keyword)
+            URLQueryItem(name: "s", value: keyword)
         ]
         guard let url = components.url else { throw LyricsError.invalidURL }
 
@@ -85,12 +87,20 @@ struct NeteaseProvider: LyricsProvider {
 
     private func fetchLyrics(songId: String) async throws -> [LyricLine] {
         guard var components = URLComponents(string: lyricURL) else { throw LyricsError.invalidURL }
-        components.queryItems = [URLQueryItem(name: "id", value: songId)]
+        // -1 asks for each lyric kind: lrc, klyric, tlyric and yrc (word-timed).
+        components.queryItems = ["lv", "kv", "tv", "yv"].map { URLQueryItem(name: $0, value: "-1") }
+            + [URLQueryItem(name: "id", value: songId)]
         guard let url = components.url else { throw LyricsError.invalidURL }
 
         let json = try await LyricsHTTP.getJSON(URLRequest(url: url))
 
-        // Word-timed karaoke lyrics, when the song has them
+        // Word-timed lyrics: the current yrc format, then the legacy klyric
+        if let yrc = json["yrc"] as? [String: Any],
+           let lyric = yrc["lyric"] as? String,
+           !lyric.isEmpty {
+            let lines = LyricsParsing.parseWordTimedLines(lyric, offsetsFromLineStart: false)
+            if !lines.isEmpty { return lines }
+        }
         if let klyric = json["klyric"] as? [String: Any],
            let lyric = klyric["lyric"] as? String,
            !lyric.isEmpty {

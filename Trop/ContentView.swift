@@ -17,7 +17,7 @@ struct ContentView: View {
     @State private var scrollState = MiniPlayerScrollState()
 
     var body: some View {
-        TabView(selection: $selectedTab) {
+        TabView(selection: tabSelection) {
             // Right-to-left puts the first tab on the right, so the left-handed layout
             // declares them in reverse: on screen they stay Home, Library, Explore.
             if settings.leftHandedTabBar {
@@ -38,6 +38,9 @@ struct ContentView: View {
         // Right-to-left moves Search to the left; every page inside is set back to left-to-right.
         .environment(\.layoutDirection, settings.leftHandedTabBar ? .rightToLeft : .leftToRight)
         .tabBarMinimizeBehavior(.onScrollDown)
+        // Selecting the Search tab activates search (keyboard up); Cancel
+        // deactivates it and goes back to the previously selected tab.
+        .tabViewSearchActivation(.searchTabSelection)
             .tabViewBottomAccessory(isEnabled: nowPlaying.isBarPresented) {
                 MiniPlayerBarView(onExpand: expandPlayer, isTransitioning: isExpanded)
                     .environment(\.layoutDirection, .leftToRight)
@@ -105,6 +108,17 @@ struct ContentView: View {
         Tab("Explore", systemImage: "flame", value: 2) {
             ExploreView().environment(\.layoutDirection, .leftToRight)
         }
+    }
+
+    /// `selectedTab`, plus a tap on the tab that is already selected reaches the router.
+    private var tabSelection: Binding<Int> {
+        Binding(
+            get: { selectedTab },
+            set: { tab in
+                if tab == selectedTab { AppRouter.shared.reselectTab(tab) }
+                selectedTab = tab
+            }
+        )
     }
 
     private func expandPlayer() {

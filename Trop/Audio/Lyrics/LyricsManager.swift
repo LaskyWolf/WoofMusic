@@ -111,24 +111,43 @@ actor LyricsManager {
     }
 
     func fetchLyricsReturningProvider(query: LyricsQuery) async throws -> ([LyricLine], providerName: String?) {
+        guard let best = await race(query: query, excluding: nil, wordTimedOnly: false) else {
+            throw LyricsError.notFound
+        }
+        return (best.lines, best.providerName)
+    }
+
+    /// The highest-priority result with word timing, for karaoke when the
+    /// chosen lyrics are line-only. `excluding` is the provider that gave them.
+    func fetchWordTimed(query: LyricsQuery, excluding providerName: String?) async -> ([LyricLine], providerName: String)? {
+        guard let best = await race(query: query, excluding: providerName, wordTimedOnly: true) else { return nil }
+        return (best.lines, best.providerName)
+    }
+
+    /// Asks the enabled providers concurrently and returns the highest-priority
+    /// hit; with `wordTimedOnly`, results without word timing do not count.
+    private func race(query: LyricsQuery, excluding: String?, wordTimedOnly: Bool) async -> ProviderHit? {
         let order = await LyricsSettings.shared.providerOrder
         let disabled = SettingsStore.shared.disabledLyricsProviders
         let candidates: [(index: Int, provider: LyricsProvider)] = order.enumerated().compactMap { index, id in
-            guard !disabled.contains(id), let provider = LyricsProviderRegistry.provider(for: id) else { return nil }
+            guard !disabled.contains(id), let provider = LyricsProviderRegistry.provider(for: id),
+                  provider.name != excluding else { return nil }
             return (index, provider)
         }
-        guard !candidates.isEmpty else { throw LyricsError.notFound }
+        guard !candidates.isEmpty else { return nil }
 
         // Returns as soon as no higher-priority provider is still pending,
         // instead of waiting for every provider (each up to 10 s).
-        let best = await withTaskGroup(of: (Int, ProviderHit?).self, returning: ProviderHit?.self) { group in
+        return await withTaskGroup(of: (Int, ProviderHit?).self, returning: ProviderHit?.self) { group in
             for (index, provider) in candidates {
                 group.addTask {
                     do {
                         let lines = try await Self.withTimeout(seconds: 10) {
                             try await provider.fetch(query: query)
                         }
-                        guard !lines.isEmpty else { return (index, nil) }
+                        guard !lines.isEmpty, !wordTimedOnly || lines.contains(where: { $0.words != nil }) else {
+                            return (index, nil)
+                        }
                         return (index, ProviderHit(order: index, lines: lines, providerName: provider.name))
                     } catch {
                         return (index, nil)
@@ -148,10 +167,6 @@ actor LyricsManager {
             }
             return winner
         }
-        guard let best else {
-            throw LyricsError.notFound
-        }
-        return (best.lines, best.providerName)
     }
 
     private static func withTimeout<T: Sendable>(seconds: Double, work: @escaping @Sendable () async throws -> T) async throws -> T {

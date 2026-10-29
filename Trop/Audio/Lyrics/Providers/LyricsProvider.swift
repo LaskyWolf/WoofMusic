@@ -30,9 +30,12 @@ enum LyricsParsing {
     private static let tagRegex = try? NSRegularExpression(pattern: #"\[(\d{1,2}):(\d{1,2})(?:\.(\d{1,3}))?\]"#)
     /// Enhanced LRC word tag: `<mm:ss.xx>`.
     private static let wordTagRegex = try? NSRegularExpression(pattern: #"<(\d{1,2}):(\d{1,2})(?:\.(\d{1,3}))?>"#)
-    /// Netease klyric line start `[startMs,durationMs]` and word tag `(x,durationMs)`.
+    /// Netease klyric / yrc and Kugou KRC line start `[startMs,durationMs]`.
     private static let klyricLineRegex = try? NSRegularExpression(pattern: #"^\[(\d+),\d+\]"#)
+    /// Netease klyric word tag `(x,durationMs)`.
     private static let klyricWordRegex = try? NSRegularExpression(pattern: #"\(\d+,(\d+)\)"#)
+    /// Netease yrc word tag `(startMs,durationMs,0)` or Kugou KRC `<offsetMs,durationMs,0>`.
+    private static let timedWordRegex = try? NSRegularExpression(pattern: #"[(<](\d+),(\d+),-?\d+[)>]"#)
 
     /// Seconds from a tag match whose groups 1–3 are minutes, seconds and an
     /// optional 2 or 3 digit fraction.
@@ -127,6 +130,45 @@ enum LyricsParsing {
             guard let timed = trimmedWords(words) else { return nil }
             return LyricLine(text: timed.map(\.text).joined(), startTime: startMs / 1000, words: timed)
         }
+    }
+
+    /// Netease `yrc`: `[lineMs,durMs](startMs,durMs,0)word`, word starts in song
+    /// time. Kugou KRC: `[lineMs,durMs]<offsetMs,durMs,0>word`, word starts
+    /// from the line start (LDDC core/parser/yrc.py and krc.py).
+    static func parseWordTimedLines(_ raw: String, offsetsFromLineStart: Bool) -> [LyricLine] {
+        guard let lineRegex = klyricLineRegex, let wordRegex = timedWordRegex else { return [] }
+        return raw.split(whereSeparator: \.isNewline).compactMap { sub -> LyricLine? in
+            let line = sub.trimmingCharacters(in: .whitespaces)
+            let ns = line as NSString
+            guard let head = lineRegex.firstMatch(in: line, range: NSRange(location: 0, length: ns.length)),
+                  let lineMs = Double(ns.substring(with: head.range(at: 1))) else { return nil }
+            let body = ns.substring(from: head.range.location + head.range.length) as NSString
+            let tags = wordRegex.matches(in: body as String, range: NSRange(location: 0, length: body.length))
+            let baseMs = offsetsFromLineStart ? lineMs : 0
+            var words: [LyricWord] = []
+            for (i, tag) in tags.enumerated() {
+                let from = tag.range.location + tag.range.length
+                let to = i + 1 < tags.count ? tags[i + 1].range.location : body.length
+                let start = (baseMs + (Double(body.substring(with: tag.range(at: 1))) ?? 0)) / 1000
+                let duration = (Double(body.substring(with: tag.range(at: 2))) ?? 0) / 1000
+                appendPiece(body.substring(with: NSRange(location: from, length: to - from)),
+                            start: start, end: start + duration, to: &words)
+            }
+            guard let timed = trimmedWords(words) else { return nil }
+            return LyricLine(text: timed.map(\.text).joined(), startTime: lineMs / 1000, words: timed)
+        }
+    }
+
+    /// Kugou KRC file: `krc1` + zlib data XORed with a fixed key
+    /// (LyricsKit KugouKrcDecrypter.swift, LDDC core/decryptor).
+    static func decodeKrc(_ data: Data) -> String? {
+        let key: [UInt8] = [64, 71, 97, 119, 94, 50, 116, 71, 81, 54, 49, 45, 206, 210, 110, 105]
+        guard data.count > 10, data.starts(with: Array("krc1".utf8)) else { return nil }
+        let zlibBytes = data.dropFirst(4).enumerated().map { i, byte in byte ^ key[i % key.count] }
+        // NSData's `.zlib` is raw DEFLATE: drop the 2-byte zlib header and the 4-byte checksum.
+        let deflate = Data(zlibBytes.dropFirst(2).dropLast(4)) as NSData
+        guard let inflated = try? deflate.decompressed(using: .zlib) else { return nil }
+        return String(data: inflated as Data, encoding: .utf8)
     }
 
     /// Musixmatch `richsync_body`: a JSON array of lines `{ts, te, l: [{c, o}]}`
@@ -239,6 +281,22 @@ enum LyricsParsing {
         assert(rich.count == 1 && rich[0].text == "Hi there" && rich[0].words?.count == 2)
         assert(near(rich[0].words?[0].endTime, 5.3))
         assert(near(rich[0].words?[1].startTime, 5.4) && near(rich[0].words?[1].endTime, 6))
+
+        // Netease yrc (music.163.com /api/song/lyric?yv=-1): word starts are song time.
+        let yrc = parseWordTimedLines(#"{"t":0,"c":[{"tx":"Lyrics"}]}"# + "\n[27360,1290](27360,240,0)I've (27600,90,0)been (27690,360,0)tryna",
+                                      offsetsFromLineStart: false)
+        assert(yrc.count == 1 && yrc[0].text == "I've been tryna" && near(yrc[0].startTime, 27.36))
+        assert(yrc[0].words?.map(\.text) == ["I've ", "been ", "tryna"])
+        assert(near(yrc[0].words?[1].startTime, 27.6) && near(yrc[0].words?[2].endTime, 28.05))
+
+        // Kugou KRC (lyrics.kugou.com/download?fmt=krc): decode, then offsets from the line start.
+        let krcFile = Data(base64Encoded: "a3JjMTjb6lmXhgaLev/l2Ib/pOalzVdC74agdmUDAaV7475Ydne2Ru7BIPdQB71h46ZihXJVqiVLXjiKHUMdoIOnYoUKdVP85zL4oEDp") ?? Data()
+        let krcText = decodeKrc(krcFile) ?? ""
+        assert(krcText.hasPrefix("[ti:Anti-Hero]\n[5499,1500]<0,307,0>I "))
+        let krc = parseWordTimedLines(krcText, offsetsFromLineStart: true)
+        assert(krc.count == 1 && krc[0].text == "I have this" && near(krc[0].startTime, 5.499))
+        assert(near(krc[0].words?[1].startTime, 5.806) && near(krc[0].words?[2].endTime, 6.999))
+        assert(decodeKrc(Data("not krc".utf8)) == nil)
     }
     #endif
 }

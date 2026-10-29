@@ -367,6 +367,9 @@ final class NowPlaying {
             artists: song.artists,
             thumbnailUrl: song.thumbnailUrl
         )
+        // Known before the stream resolves, so the play button shows a
+        // podcast's microphone from the first frame.
+        musicVideoType = song.musicVideoType
     }
 
     /// Pre-warms artwork for the previous and upcoming songs so swiping the

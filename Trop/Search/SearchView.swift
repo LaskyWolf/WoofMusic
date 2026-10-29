@@ -25,11 +25,6 @@ struct SearchView: View {
 
     private let accountState = AccountState.shared
 
-    /// Sorting only reorders results, so the menu shows only while there are some.
-    private var showsSortMenu: Bool {
-        searchModel.phase == .loading || searchModel.phase == .results
-    }
-
     var body: some View {
         NavigationStack(path: $router.searchPath) {
             VStack(spacing: 0) {
@@ -40,14 +35,6 @@ struct SearchView: View {
                     onHistory: { router.searchPath.append(DetailRoute.history) },
                     onAccount: { router.searchPath.append(DetailRoute.settings) }
                 )
-
-                if showsSortMenu {
-                    HStack {
-                        Spacer()
-                        sortMenu
-                    }
-                    .padding(.horizontal, DesignTokens.screenHPadding)
-                }
 
                 SearchResultsView(viewModel: searchModel, fieldFocused: $fieldFocused)
             }
@@ -64,33 +51,11 @@ struct SearchView: View {
         .autocorrectionDisabled()
         .onSubmit(of: .search) { searchModel.submit() }
         .onChange(of: isSearching) { _, searching in
-            // System Cancel: back to recent searches, like the old Cancel button.
+            // System Cancel (which also leaves the tab, see ContentView): drop
+            // the query and results, so the next visit opens on recent searches.
             if !searching { searchModel.cancel() }
         }
         .coverZoomNamespace(coverZoom)
-    }
-
-    private var sortMenu: some View {
-        Menu {
-            ForEach(SearchSort.allCases, id: \.self) { option in
-                Button {
-                    searchModel.sort = option
-                } label: {
-                    if searchModel.sort == option {
-                        Label(option.title, systemImage: "checkmark")
-                    } else {
-                        Text(option.title)
-                    }
-                }
-            }
-        } label: {
-            Image(systemName: "arrow.up.arrow.down")
-                .font(.body)
-                .foregroundStyle(.primary)
-                .frame(width: DesignTokens.controlHeight, height: DesignTokens.controlHeight)
-                .background(Circle().fill(Color(.systemGray5).opacity(0.6)))
-        }
-        .accessibilityLabel("Sort results")
     }
 
     /// Home Screen "Search" quick action: open the field with the keyboard up.

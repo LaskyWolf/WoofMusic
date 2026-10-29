@@ -85,6 +85,7 @@ struct ExploreView: View {
                 pendingRoute: $pendingRoute,
                 newReleases: viewModel.newReleases
             )
+            .scrollsToTopOnTabReselect(2)
         }
         .scrollIndicators(.automatic)
         .miniPlayerTracksScroll()
@@ -287,7 +288,9 @@ private struct MoodRow: View {
 
     /// Only appended to, never read: observing it would redraw this view on every tab's navigation.
     private let router = AppRouter.shared
-    @State private var scrolledIndex: Int?
+    /// Set once the row has jumped to the middle copy, so coming back to the
+    /// row keeps the user's place.
+    @State private var centered = false
 
     /// The entries are repeated this many times and the row starts in the
     /// middle, so it never reaches an end in practice.
@@ -296,23 +299,31 @@ private struct MoodRow: View {
 
     init(entries: [MoodFamily.Entry]) {
         self.entries = entries
-        _scrolledIndex = State(initialValue: entries.count * Self.copies / 2)
     }
 
     var body: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            LazyHStack(spacing: DesignTokens.cardSpacing) {
-                ForEach(0..<entries.count * Self.copies, id: \.self) { index in
-                    card(entries[index % entries.count])
+        // A one-time scrollTo instead of `.scrollPosition(id:)`: that binding is
+        // written every time a card passes the middle of the row, and the row
+        // dropped a frame at each write.
+        ScrollViewReader { proxy in
+            ScrollView(.horizontal, showsIndicators: false) {
+                LazyHStack(spacing: DesignTokens.cardSpacing) {
+                    ForEach(0..<entries.count * Self.copies, id: \.self) { index in
+                        card(entries[index % entries.count])
+                    }
                 }
+                .scrollTargetLayout()
             }
-            .scrollTargetLayout()
+            .contentMargins(.horizontal, DesignTokens.screenHPadding, for: .scrollContent)
+            // The cards' glow reaches below the row.
+            .scrollClipDisabled()
+            .scrollTargetBehavior(.viewAligned)
+            .onAppear {
+                guard !centered else { return }
+                centered = true
+                proxy.scrollTo(entries.count * Self.copies / 2, anchor: .leading)
+            }
         }
-        .contentMargins(.horizontal, DesignTokens.screenHPadding, for: .scrollContent)
-        // The cards' glow reaches below the row.
-        .scrollClipDisabled()
-        .scrollPosition(id: $scrolledIndex, anchor: .leading)
-        .scrollTargetBehavior(.viewAligned)
     }
 
     @ViewBuilder

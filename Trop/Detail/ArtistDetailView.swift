@@ -281,20 +281,10 @@ struct ArtistDetailView: View {
     let browseId: String
     @State private var viewModel: ArtistDetailViewModel
 
-    /// 0...1 fade of the top bar. Clamped in the scroll-geometry transform, so
-    /// it only changes while the offset is inside the fade range. Only
-    /// `ArtistTopBar` reads it (through a binding), so the fade redraws the bar
-    /// and not the whole page.
-    @State private var barProgress: CGFloat = 0
     @State private var linkCopied = false
     /// "Rapper", "DJ"… from MusicBrainz; nil shows "Artist".
     @State private var artistKind: String?
-    /// Status bar height: the scroll view ignores it, so the header adds it back.
-    @State private var safeTop: CGFloat = 0
     @State private var linkResetTask: Task<Void, Never>?
-
-    private static let barFadeStart: CGFloat = 120
-    private static let barFadeDistance: CGFloat = 120
 
     init(browseId: String) {
         self.browseId = browseId
@@ -302,46 +292,34 @@ struct ArtistDetailView: View {
     }
 
     var body: some View {
-        ZStack(alignment: .top) {
-            ScrollView {
-                DetailStateContainer(
-                    isLoading: viewModel.isLoading,
-                    error: viewModel.error,
-                    data: viewModel.artist,
-                    noun: "artist",
-                    emptyIcon: "music.mic"
-                ) { artist in
-                    artistContent(for: artist)
-                }
+        ScrollView {
+            DetailStateContainer(
+                isLoading: viewModel.isLoading,
+                error: viewModel.error,
+                data: viewModel.artist,
+                noun: "artist",
+                emptyIcon: "music.mic"
+            ) { artist in
+                artistContent(for: artist)
             }
-            .scrollDisabled(viewModel.isLoading || viewModel.error != nil || viewModel.artist == nil)
-            .miniPlayerTracksScroll()
-            .onScrollGeometryChange(
-                for: CGFloat.self,
-                of: { min(max(($0.contentOffset.y - Self.barFadeStart) / Self.barFadeDistance, 0), 1) },
-                action: { _, newProgress in
-                    barProgress = newProgress
-                }
-            )
-            // Scrolls under the status bar, so the backdrop fills the top of the screen.
-            .ignoresSafeArea(edges: .top)
-            .toolbar(.hidden, for: .navigationBar)
-            .task {
-                guard viewModel.needsLoad else { return }
-                await viewModel.load()
-            }
-
-            ArtistTopBar(
-                barProgress: $barProgress,
-                artistName: viewModel.artist?.name,
-                linkCopied: linkCopied,
-                onCopyLink: copyArtistLink
-            )
         }
-        .onGeometryChange(for: CGFloat.self) { proxy in
-            proxy.safeAreaInsets.top
-        } action: { top in
-            safeTop = top
+        .scrollDisabled(viewModel.isLoading || viewModel.error != nil || viewModel.artist == nil)
+        .miniPlayerTracksScroll()
+        // System bar, as on the playlist and album pages: its back button is the only one.
+        .navigationTitle(viewModel.artist?.name ?? "")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button(
+                    linkCopied ? "Artist link copied" : "Copy artist link",
+                    systemImage: linkCopied ? "checkmark" : "link"
+                ) { copyArtistLink() }
+                .disabled(viewModel.artist == nil)
+            }
+        }
+        .task {
+            guard viewModel.needsLoad else { return }
+            await viewModel.load()
         }
         .onDisappear { linkResetTask?.cancel() }
     }
@@ -433,9 +411,7 @@ struct ArtistDetailView: View {
             .accessibilityLabel("Play songs")
             .disabled(artist.songs.isEmpty)
         }
-        // Room for the top bar's round buttons above the card.
-        .padding(.top, safeTop + Self.topBarHeight + 8)
-        .padding(.bottom, 16)
+        .padding(.vertical, 16)
         .frame(maxWidth: .infinity)
         .background(alignment: .top) {
             BlurredArtworkBackdrop(url: ArtworkURLs.sized(artist.thumbnailUrl, width: 1200, height: 1200))
@@ -444,9 +420,6 @@ struct ArtistDetailView: View {
             artistKind = await ArtistKindService.shared.kind(for: artist.name)
         }
     }
-
-    /// The top bar: 18pt top inset, 40pt buttons, 6pt bottom inset.
-    private static let topBarHeight: CGFloat = 64
 
     private func subscriberLabel(for count: String) -> String {
         count.localizedCaseInsensitiveContains("subscriber") ? count : "\(count) subscribers"
@@ -651,94 +624,5 @@ struct ArtistDetailView: View {
                 }
             }
         }
-    }
-}
-
-/// The artist page's top bar: back and copy-link buttons, and the name fading
-/// in with a background as the page scrolls past the header.
-private struct ArtistTopBar: View {
-    @Binding var barProgress: CGFloat
-    let artistName: String?
-    let linkCopied: Bool
-    let onCopyLink: () -> Void
-
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        HStack(spacing: 8) {
-            topBarBackButton
-
-            if let artistName {
-                Text(artistName)
-                    .font(.headline)
-                    .lineLimit(1)
-                    .opacity(barProgress)
-            }
-
-            Spacer(minLength: 0)
-
-            topBarCopyLinkButton
-        }
-        // Same inset pushed and in a sheet: in a sheet it keeps the round
-        // buttons clear of the sheet's top corners.
-        .padding(.horizontal, 20)
-        .padding(.top, 18)
-        .padding(.bottom, 6)
-        .background(
-            Color(.systemBackground)
-                .opacity(barProgress)
-                .ignoresSafeArea(edges: .top)
-                .allowsHitTesting(false)
-        )
-        .overlay(alignment: .bottom) {
-            Divider()
-                .opacity(barProgress)
-        }
-    }
-
-    private var topBarBackButton: some View {
-        topBarCircleButton(
-            systemName: "chevron.left",
-            accessibilityLabel: "Back",
-            action: { dismiss() }
-        )
-    }
-
-    private var topBarCopyLinkButton: some View {
-        topBarCircleButton(
-            systemName: linkCopied ? "checkmark" : "link",
-            fadedColor: linkCopied ? Color.accentColor : .primary,
-            accessibilityLabel: linkCopied ? "Artist link copied" : "Copy artist link",
-            action: onCopyLink
-        )
-        .disabled(artistName == nil)
-    }
-
-    /// Round top-bar button matching the back chevron: white with shadow over
-    /// the banner artwork, crossfading to `fadedColor` as the bar fills in.
-    private func topBarCircleButton(
-        systemName: String,
-        fadedColor: Color = .primary,
-        accessibilityLabel: String,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button(action: action, label: {
-            ZStack {
-                Image(systemName: systemName)
-                    .font(.body.weight(.semibold))
-                    .foregroundStyle(.white)
-                    .shadow(color: .black.opacity(0.5), radius: 3, y: 1)
-                    .opacity(1 - barProgress)
-                Image(systemName: systemName)
-                    .font(.body.weight(.semibold))
-                    .foregroundStyle(fadedColor)
-                    .opacity(barProgress)
-            }
-            .frame(width: 40, height: 40)
-            .glassEffect(.regular.interactive(), in: .circle)
-            .contentShape(Circle())
-        })
-        .buttonStyle(.plain)
-        .accessibilityLabel(accessibilityLabel)
     }
 }

@@ -52,6 +52,25 @@ final class AppRouter: ObservableObject {
         }
     }
 
+    /// Sends a tab's index when it is tapped again at its root page.
+    let tabReselected = PassthroughSubject<Int, Never>()
+
+    /// Tapping the selected tab again first pops its pushed pages; at the
+    /// root it asks the tab's feed to clear its filter and scroll to the top.
+    func reselectTab(_ tab: Int) {
+        guard tab == selectedTabIndex else { return }
+        guard activePathDepth > 0 else {
+            tabReselected.send(tab)
+            return
+        }
+        switch tab {
+        case 1: libraryPath = NavigationPath()
+        case 2: explorePath = NavigationPath()
+        case 3: searchPath = NavigationPath()
+        default: homePath = NavigationPath()
+        }
+    }
+
     func expandPlayer() {
         playerExpandToken += 1
     }
@@ -84,15 +103,8 @@ private struct RouterSheetModifier: ViewModifier {
                 DetailRouteDestinationView(route: route)
                     .detailRouteDestinations()
             }
-            .environment(\.isInRouterSheet, true)
         }
     }
-}
-
-extension EnvironmentValues {
-    /// True for pages shown by `routerSheet()`, so custom top bars can clear
-    /// the sheet's rounded corners.
-    @Entry var isInRouterSheet = false
 }
 
 extension View {

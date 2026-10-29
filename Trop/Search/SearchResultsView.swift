@@ -60,7 +60,10 @@ struct SearchResultsView: View {
     private var loadingView: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                ShimmerChips(count: 5)
+                HStack(spacing: 0) {
+                    ShimmerChips(count: 5)
+                    sortMenu
+                }
                 ShimmerSectionTitle(width: 90)
                     .padding(.bottom, DesignTokens.titleContentGap)
                 ForEach(0..<8, id: \.self) { _ in
@@ -130,12 +133,13 @@ struct SearchResultsView: View {
     private var searchResultsList: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
-                if !viewModel.availableFilters.isEmpty {
+                HStack(spacing: 0) {
                     filterChips
+                    sortMenu
                 }
 
                 if let hero = viewModel.heroArtist {
-                    artistHeroCard(hero, songs: viewModel.heroSongs)
+                    artistHeroCard(hero, songs: viewModel.heroSongs, detail: viewModel.heroDetail)
                         .padding(.horizontal, DesignTokens.screenHPadding)
                         .padding(.top, 8)
                         .padding(.bottom, DesignTokens.sectionGap)
@@ -149,6 +153,8 @@ struct SearchResultsView: View {
                         artistCarousel(items: section.items)
                     case "Albums":
                         albumCarousel(items: section.items)
+                    case "Podcasts":
+                        podcastCarousel(items: section.items)
                     default:
                         ForEach(section.items, id: \.id) { item in
                             resultRow(item)
@@ -194,22 +200,36 @@ struct SearchResultsView: View {
         .padding(.bottom, DesignTokens.titleContentGap)
     }
 
-    /// Artist-first hero: big circular artwork + name, then top songs.
-    private func artistHeroCard(_ artist: ArtistItem, songs: [SongItem]) -> some View {
+    /// Artist-first hero: medium circular artwork, then the kind, name and
+    /// audience lines styled like the artist page header, then top songs.
+    private func artistHeroCard(_ artist: ArtistItem, songs: [SongItem], detail: String?) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             Button {
                 router.searchPath.append(DetailRoute.artist(browseId: artist.browseId))
             } label: {
-                HStack(spacing: 12) {
+                HStack(spacing: 14) {
                     AsyncImageView(url: artist.thumbnailUrl)
-                        .frame(width: DesignTokens.artSmall, height: DesignTokens.artSmall)
+                        .frame(width: DesignTokens.artMedium, height: DesignTokens.artMedium)
                         .clipShape(Circle())
-                    Text(artist.name)
-                        .font(.title3)
-                        .fontWeight(.bold)
-                        .foregroundStyle(.primary)
-                        .lineLimit(1)
-                    Spacer()
+                    // Same fonts as `DetailHeaderCard`'s kind, title and secondary lines.
+                    VStack(alignment: .leading, spacing: 3) {
+                        ArtistKindLabel(name: artist.name)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                        Text(artist.name)
+                            .font(.title3.weight(.bold))
+                            .foregroundStyle(.primary)
+                            .lineLimit(2)
+                            .multilineTextAlignment(.leading)
+                        if let detail {
+                            Text(detail)
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
+                    }
+                    Spacer(minLength: 0)
                     Text("•••")
                         .font(.body.weight(.black))
                         .foregroundStyle(settings.accentColor)
@@ -312,6 +332,47 @@ struct SearchResultsView: View {
             }
             .padding(.horizontal, DesignTokens.screenHPadding)
         }
+    }
+
+    /// Podcast shows as radio-dial tiles, like Home's podcast shelves.
+    private func podcastCarousel(items: [YTItem]) -> some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            LazyHStack(alignment: .top, spacing: DesignTokens.cardSpacing) {
+                ForEach(items, id: \.id) { item in
+                    if case .podcast(let podcast) = item {
+                        RadioDialTile(podcast: podcast) { handleItemTap(item) }
+                    }
+                }
+            }
+            .padding(.horizontal, DesignTokens.screenHPadding)
+        }
+        // The tiles' glow falls outside the row.
+        .scrollClipDisabled()
+    }
+
+    /// Pinned at the trailing end of the filter row while the chips scroll.
+    private var sortMenu: some View {
+        Menu {
+            ForEach(SearchSort.allCases, id: \.self) { option in
+                Button {
+                    viewModel.sort = option
+                } label: {
+                    if viewModel.sort == option {
+                        Label(option.title, systemImage: "checkmark")
+                    } else {
+                        Text(option.title)
+                    }
+                }
+            }
+        } label: {
+            Image(systemName: "arrow.up.arrow.down")
+                .font(.body)
+                .foregroundStyle(.primary)
+                .frame(width: DesignTokens.controlHeight, height: DesignTokens.controlHeight)
+                .background(Circle().fill(Color(.systemGray5).opacity(0.6)))
+        }
+        .accessibilityLabel("Sort results")
+        .padding(.trailing, DesignTokens.screenHPadding)
     }
 
     private var filterChips: some View {

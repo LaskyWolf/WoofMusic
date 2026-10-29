@@ -161,6 +161,7 @@ struct LibraryView: View {
                     if !podcasts.isEmpty { podcastsSection }
                 }
             }
+            .scrollsToTopOnTabReselect(1) { selectedFilter = nil }
         }
         .scrollIndicators(.automatic)
         .miniPlayerTracksScroll()

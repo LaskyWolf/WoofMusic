@@ -74,16 +74,19 @@ struct FullPlayerView: View {
                         startPoint: .top,
                         endPoint: .bottom
                     )
+                    // An overlay, not a ZStack sibling: on a screen narrower than
+                    // 400 points the glow's fixed width would widen the player,
+                    // shift it right and show the previous cover at the left edge.
+                    .overlay {
+                        Circle()
+                            .fill(playerBackgroundColors.first ?? .blue)
+                            .frame(width: 400, height: 400)
+                            .blur(radius: 120)
+                            .opacity(0.45)
+                            .offset(y: -150)
+                    }
                     .ignoresSafeArea()
                     .animation(.easeInOut(duration: 0.8), value: playerBackgroundColors)
-
-                    Circle()
-                        .fill(playerBackgroundColors.first ?? .blue)
-                        .frame(width: 400, height: 400)
-                        .blur(radius: 120)
-                        .opacity(0.45)
-                        .offset(y: -150)
-                        .ignoresSafeArea()
                 }
 
                 if settings.playerStyle == .immersive {

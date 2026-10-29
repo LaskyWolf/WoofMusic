@@ -11,9 +11,15 @@ struct SearchSection: Identifiable {
     let id = UUID()
     var title: String
     var items: [YTItem]
+    /// The top result card's subtitle after its kind word, such as
+    /// "12.3M monthly audience" for an artist.
+    var subtitle: String?
 }
 
 enum SearchParser {
+
+    /// Shelves the app can't play or open; their results are dropped.
+    private static let unsupportedSections: Set<String> = ["Videos", "Episodes"]
 
     static func parseSearchResults(from json: [String: Any]) -> [SearchSection] {
         guard let contents = json["contents"] as? [String: Any] else { return [] }
@@ -64,7 +70,7 @@ enum SearchParser {
                 }
 
                 if !items.isEmpty {
-                    allSections.append(SearchSection(title: title, items: items))
+                    allSections.append(SearchSection(title: title, items: items, subtitle: topResultDetail(from: cardShelf)))
                 }
             }
 
@@ -108,17 +114,16 @@ enum SearchParser {
             "Songs",
             "Albums",
             "Artists",
-            "Videos",
             "Playlists",
             "Podcasts",
-            "Episodes",
             "Profiles"
         ]
 
-        let grouped = Dictionary(grouping: allSections, by: { $0.title })
+        let supported = allSections.filter { !unsupportedSections.contains($0.title) }
+        let grouped = Dictionary(grouping: supported, by: { $0.title })
 
         let merged = grouped.map { key, value in
-            SearchSection(title: key, items: value.flatMap { $0.items })
+            SearchSection(title: key, items: value.flatMap { $0.items }, subtitle: value.first?.subtitle)
         }
         .sorted {
             (sectionOrder.firstIndex(of: $0.title) ?? 999) <
@@ -147,7 +152,7 @@ enum SearchParser {
             groups[key, default: []].append(item)
         }
 
-        return ["Songs", "Albums", "Artists", "Videos", "Playlists", "Podcasts", "Episodes"].compactMap { name in
+        return ["Songs", "Albums", "Artists", "Playlists", "Podcasts"].compactMap { name in
             guard let items = groups[name], !items.isEmpty else { return nil }
             return SearchSection(title: name, items: items)
         }
@@ -255,6 +260,16 @@ enum SearchParser {
 
             return nil
         }
+    }
+
+    /// The card's subtitle runs ("Artist", " • ", "12.3M monthly audience")
+    /// without the leading kind word and the separators.
+    private static func topResultDetail(from cardShelf: [String: Any]) -> String? {
+        let runs = ((cardShelf["subtitle"] as? [String: Any])?["runs"] as? [[String: Any]]) ?? []
+        let details = runs.dropFirst()
+            .compactMap { $0["text"] as? String }
+            .filter { $0.trimmingCharacters(in: .whitespaces) != "•" }
+        return details.isEmpty ? nil : details.joined(separator: " • ")
     }
 
     private static func runsText(_ value: Any?) -> String? {

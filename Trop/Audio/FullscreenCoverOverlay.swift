@@ -2,9 +2,9 @@ import SwiftUI
 import UIKit
 
 /// The current cover over the whole screen, opened by pinching the full
-/// player's cover. It lifts off the player, grows to fill the screen and then
-/// slowly breathes under a few drifting motes. A pinch in or a swipe down
-/// shrinks it back onto the player's cover.
+/// player's cover. The whole square cover flies to the middle of the screen,
+/// tilted by a small random angle, over a blurred copy of itself and a soft
+/// breathing halo. A pinch in or a swipe down flies it back onto the player's cover.
 struct FullscreenCoverOverlay<Cover: View>: View {
     /// The player's cover on screen, in global coordinates.
     let source: CGRect
@@ -20,17 +20,17 @@ struct FullscreenCoverOverlay<Cover: View>: View {
     private let player = PlayerController.shared
     private let np = NowPlaying.shared
 
-    @State private var isLifted = false
     @State private var isExpanded = false
     @State private var hasLanded = false
     @State private var isBreathing = false
     @State private var isClosing = false
     @State private var openTrigger = 0
     @State private var idleTimerWasDisabled = false
+    /// Picked once per opening: 4° to 12° either way, never upright and never
+    /// enough to make the cover look upside down.
+    @State private var landingAngle = Double.random(in: 4...12) * (Bool.random() ? 1 : -1)
 
-    private var glowColor: Color {
-        (np.accentColor ?? Color(red: 0.6, green: 0.8, blue: 1)).mix(with: .white, by: 0.25)
-    }
+    private static let cornerRadius: CGFloat = 12
 
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
@@ -38,22 +38,22 @@ struct FullscreenCoverOverlay<Cover: View>: View {
                 let screen = proxy.frame(in: .global)
                 let start = source.offsetBy(dx: -screen.minX, dy: -screen.minY)
                 // Reduce Motion: no movement, the cover only fades in place over the screen.
-                let rect = isExpanded || reduceMotion ? CGRect(origin: .zero, size: proxy.size) : start
+                let rect = isExpanded || reduceMotion ? Self.landingFrame(in: proxy.size) : start
+                let angle = Angle.degrees(isExpanded && !reduceMotion ? landingAngle : 0)
 
                 ZStack {
-                    Color.black.opacity(isExpanded ? 1 : 0)
+                    backdrop
+                        .frame(width: proxy.size.width, height: proxy.size.height)
+                        .clipped()
+                        .opacity(isExpanded ? 1 : 0)
 
-                    coverCard(size: rect.size)
+                    halo(size: rect.size)
+                        .rotationEffect(angle)
                         .position(x: rect.midX, y: rect.midY)
 
-                    RadialGradient(
-                        colors: [.clear, .black.opacity(0.55)],
-                        center: .center,
-                        startRadius: min(proxy.size.width, proxy.size.height) * 0.35,
-                        endRadius: max(proxy.size.width, proxy.size.height) * 0.75
-                    )
-                    .opacity(isExpanded ? 1 : 0)
-                    .allowsHitTesting(false)
+                    coverCard(size: rect.size)
+                        .rotationEffect(angle)
+                        .position(x: rect.midX, y: rect.midY)
 
                     if hasLanded, !reduceMotion {
                         FloatingMotes()
@@ -102,12 +102,20 @@ struct FullscreenCoverOverlay<Cover: View>: View {
         }
     }
 
-    private func coverCard(size: CGSize) -> some View {
-        let shape = RoundedRectangle(cornerRadius: isExpanded ? 0 : sourceCornerRadius, style: .continuous)
-        // Breathing between 1.04 and 1.07 keeps the screen edges covered while it rises 6 pt.
-        let scale: CGFloat = isLifted ? 1.05 : isBreathing ? 1.07 : (hasLanded && !reduceMotion) ? 1.04 : 1
-        let rise: CGFloat = isLifted ? -18 : isBreathing ? -6 : 0
-        return ZStack {
+    /// A large square, centred and slightly above the middle of the screen.
+    private static func landingFrame(in size: CGSize) -> CGRect {
+        let side = max(0, min(size.width - 48, size.height * 0.5))
+        return CGRect(
+            x: (size.width - side) / 2,
+            y: size.height * 0.46 - side / 2,
+            width: side,
+            height: side
+        )
+    }
+
+    /// The current cover, crossfading when the song changes.
+    private var artwork: some View {
+        ZStack {
             if let song = np.currentSong {
                 cover(song)
                     .id(song.videoId)
@@ -115,38 +123,58 @@ struct FullscreenCoverOverlay<Cover: View>: View {
             }
         }
         .animation(.easeInOut(duration: 0.6), value: np.currentSong?.videoId)
-        .frame(width: size.width, height: size.height)
-        .mask {
-            // Same fade as the Immersive cover, filled in as the cover grows.
-            ZStack {
-                LinearGradient(
-                    stops: [
-                        .init(color: .white, location: 0),
-                        .init(color: .white, location: 0.62),
-                        .init(color: .clear, location: 1)
-                    ],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-                Color.white.opacity(fadesBottom && !isExpanded ? 0 : 1)
+    }
+
+    /// The cover blurred over the whole screen, dark enough for the white button.
+    private var backdrop: some View {
+        ZStack {
+            Color.black
+            artwork
+                .blur(radius: 60, opaque: true)
+                .saturation(1.3)
+            Color.black.opacity(0.3)
+        }
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+
+    /// The cover again, a little larger and heavily blurred, glowing behind the card.
+    private func halo(size: CGSize) -> some View {
+        artwork
+            .frame(width: size.width, height: size.height)
+            .clipShape(RoundedRectangle(cornerRadius: Self.cornerRadius, style: .continuous))
+            .scaleEffect(1.1 * (isBreathing ? 1.08 : 1))
+            .blur(radius: 40)
+            .opacity(isExpanded ? (isBreathing ? 0.85 : 0.55) : 0)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+    }
+
+    private func coverCard(size: CGSize) -> some View {
+        let shape = RoundedRectangle(
+            cornerRadius: isExpanded || reduceMotion ? Self.cornerRadius : sourceCornerRadius,
+            style: .continuous
+        )
+        return artwork
+            .frame(width: size.width, height: size.height)
+            .mask {
+                // Same fade as the Immersive cover, filled in as the cover grows.
+                ZStack {
+                    LinearGradient(
+                        stops: [
+                            .init(color: .white, location: 0),
+                            .init(color: .white, location: 0.62),
+                            .init(color: .clear, location: 1)
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                    Color.white.opacity(fadesBottom && !isExpanded ? 0 : 1)
+                }
             }
-        }
-        .clipShape(shape)
-        .background {
-            shape
-                .fill(glowColor)
-                .blur(radius: 28)
-                .opacity(isLifted ? 0.7 : 0)
-        }
-        .keyframeAnimator(initialValue: Double.zero, trigger: openTrigger) { content, angle in
-            content.rotationEffect(.degrees(reduceMotion ? 0 : angle))
-        } keyframes: { _ in
-            CubicKeyframe(Double(-3), duration: 0.2)
-            CubicKeyframe(Double(2), duration: 0.25)
-            SpringKeyframe(Double.zero, duration: 0.75, spring: .smooth)
-        }
-        .scaleEffect(scale)
-        .offset(y: rise)
+            .clipShape(shape)
+            .shadow(color: .black.opacity(isExpanded ? 0.4 : 0), radius: 30, y: 16)
+            .scaleEffect(isBreathing ? 1.025 : 1)
     }
 
     private func open() {
@@ -162,24 +190,15 @@ struct FullscreenCoverOverlay<Cover: View>: View {
             }
             return
         }
-        // Lift-off in place, then grow to the screen, then settle into the breathing loop.
-        withAnimation(.easeOut(duration: 0.45), completionCriteria: .logicallyComplete) {
-            isLifted = true
+        // Fly to the middle while tilting, then settle into the breathing loop.
+        withAnimation(.spring(duration: 0.6, bounce: 0.15), completionCriteria: .logicallyComplete) {
+            isExpanded = true
         } completion: {
             guard !isClosing else { return }
-            withAnimation(.smooth(duration: 0.75), completionCriteria: .logicallyComplete) {
-                isLifted = false
-                isExpanded = true
-            } completion: {
-                guard !isClosing else { return }
-                withAnimation(.easeInOut(duration: 0.8), completionCriteria: .logicallyComplete) {
-                    hasLanded = true
-                } completion: {
-                    guard !isClosing else { return }
-                    withAnimation(.easeInOut(duration: 3).repeatForever(autoreverses: true)) {
-                        isBreathing = true
-                    }
-                }
+            withAnimation(.easeOut(duration: 0.3)) { hasLanded = true }
+            // 3.5 s each way: one full breath every 7 s.
+            withAnimation(.easeInOut(duration: 3.5).repeatForever(autoreverses: true)) {
+                isBreathing = true
             }
         }
     }
@@ -191,7 +210,6 @@ struct FullscreenCoverOverlay<Cover: View>: View {
             reduceMotion ? .easeInOut(duration: 0.25) : .smooth(duration: 0.4),
             completionCriteria: .logicallyComplete
         ) {
-            isLifted = false
             isExpanded = false
             hasLanded = false
             isBreathing = false
@@ -201,10 +219,10 @@ struct FullscreenCoverOverlay<Cover: View>: View {
     }
 }
 
-/// Small glowing dots drifting up from the bottom of the screen and fading
-/// out, each on its own staggered loop. One Canvas redraws them all.
+/// A few tiny glowing dots drifting slowly up from the bottom of the screen
+/// and fading out, each on its own staggered loop. One Canvas redraws them all.
 private struct FloatingMotes: View {
-    private static let count = 7
+    private static let count = 4
     private static let tint = Color(red: 0.75, green: 0.88, blue: 1)
 
     var body: some View {
@@ -215,21 +233,21 @@ private struct FloatingMotes: View {
                 glow.addFilter(.blur(radius: 4))
                 for index in 0..<Self.count {
                     let i = Double(index)
-                    let period = 9 + i * 0.7
+                    let period = 14 + i * 1.5
                     // Staggered: each mote is at a different point of its rise.
                     let progress = (time + i / Double(Self.count) * period)
                         .truncatingRemainder(dividingBy: period) / period
-                    let column = 0.1 + (i * 0.37).truncatingRemainder(dividingBy: 0.8)
-                    let x = size.width * CGFloat(column) + CGFloat(10 * sin(time * 0.6 + i))
+                    let column = 0.15 + i * 0.23
+                    let x = size.width * CGFloat(column) + CGFloat(10 * sin(time * 0.4 + i))
                     let y = size.height * CGFloat(1.02 - progress * 0.55)
                     let opacity = sin(progress * .pi) * 0.8
                     let color = index.isMultiple(of: 2) ? Self.tint : .white
 
                     glow.fill(
-                        Path(ellipseIn: CGRect(x: x - 6, y: y - 6, width: 12, height: 12)),
+                        Path(ellipseIn: CGRect(x: x - 5, y: y - 5, width: 10, height: 10)),
                         with: .color(color.opacity(opacity * 0.6))
                     )
-                    context.fill(Path(ellipseIn: CGRect(x: x - 2, y: y - 2, width: 4, height: 4)), with: .color(color.opacity(opacity)))
+                    context.fill(Path(ellipseIn: CGRect(x: x - 1.5, y: y - 1.5, width: 3, height: 3)), with: .color(color.opacity(opacity)))
                 }
             }
         }

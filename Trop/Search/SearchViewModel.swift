@@ -92,6 +92,8 @@ final class SearchViewModel {
     /// Artist hero for artist queries (top result is an artist).
     private(set) var heroArtist: ArtistItem?
     private(set) var heroSongs: [SongItem] = []
+    /// The hero card's audience line, such as "12.3M monthly audience".
+    private(set) var heroDetail: String?
 
     /// Latest play timestamp per videoId, for Recently Played sorting.
     /// Shared across instances — the search view model is recreated on tab
@@ -129,8 +131,8 @@ final class SearchViewModel {
 
     // MARK: - Derived content
 
-    /// Canonical display order: songs first, then albums, artists, videos.
-    static let displayOrder = ["Songs", "Albums", "Artists", "Videos", "Playlists", "Podcasts", "Episodes"]
+    /// Canonical display order: songs first, then albums, artists, playlists, podcasts.
+    static let displayOrder = ["Songs", "Albums", "Artists", "Playlists", "Podcasts"]
 
     var availableFilters: [String] {
         var filters = ["Library"]
@@ -140,7 +142,7 @@ final class SearchViewModel {
     }
 
     /// Results ordered for display, with the active sort applied to
-    /// Songs/Videos (and Albums for Date Released).
+    /// Songs (and Albums for Date Released).
     var displaySections: [SearchSection] {
         let ordered = Self.displayOrder.compactMap { title in
             results.first { $0.title == title }
@@ -179,7 +181,7 @@ final class SearchViewModel {
 
     private func sortedItems(_ section: SearchSection) -> [YTItem] {
         switch section.title {
-        case "Songs", "Videos":
+        case "Songs":
             return sortSongs(section.items)
         case "Albums":
             // Only Date Released applies to albums (parsed release year).
@@ -282,6 +284,7 @@ final class SearchViewModel {
         isShowingLibrary = false
         heroArtist = nil
         heroSongs = []
+        heroDetail = nil
 
         updateHistory(query: query)
         cancelTasks()
@@ -325,31 +328,36 @@ final class SearchViewModel {
     }
 
     /// Artist-first layout: when the top result is an artist, lift it (plus
-    /// its top songs from the same card) into the hero and remove them from
-    /// the flat sections so nothing shows twice.
+    /// its top songs from the same card) into the hero. The card's songs leave
+    /// every other section too: the API often repeats them at the top of
+    /// Songs, and the card keeps them next to their artist.
     private func extractHero() {
         heroArtist = nil
         heroSongs = []
+        heroDetail = nil
         guard let index = results.firstIndex(where: { section in
             if case .artist = section.items.first { return true }
             return false
         }) else { return }
         guard case .artist(let artist) = results[index].items.first else { return }
         heroArtist = artist
+        heroDetail = results[index].subtitle
         heroSongs = results[index].items.dropFirst().compactMap { item in
             if case .song(let song) = item { return song }
             return nil
         }
-        let remaining = results[index].items.filter { item in
-            if case .artist = item { return false }
-            if case .song(let song) = item { return !heroSongs.contains(where: { $0.videoId == song.videoId }) }
-            return true
+        let heroSongIds = Set(heroSongs.map(\.videoId))
+        results[index].items.removeAll { item in
+            if case .artist = item { return true }
+            return false
         }
-        if remaining.isEmpty {
-            results.remove(at: index)
-        } else {
-            results[index].items = remaining
+        for i in results.indices {
+            results[i].items.removeAll { item in
+                if case .song(let song) = item { return heroSongIds.contains(song.videoId) }
+                return false
+            }
         }
+        results.removeAll { $0.items.isEmpty }
     }
 
     // MARK: - Field changes
@@ -384,6 +392,7 @@ final class SearchViewModel {
         isShowingLibrary = false
         heroArtist = nil
         heroSongs = []
+        heroDetail = nil
         error = nil
         phase = .idle
     }

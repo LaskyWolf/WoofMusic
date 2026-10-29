@@ -96,7 +96,11 @@ struct HomeScreenView: View {
                 }
 
                 if viewModel.isChipLoading {
-                    ShimmerLoadingView(isChipFeed: true)
+                    // YouTube localises chip titles; "Podcast" matches English and Italian.
+                    ShimmerLoadingView(
+                        isChipFeed: true,
+                        isPodcastFeed: viewModel.selectedChip?.title.localizedCaseInsensitiveContains("podcast") == true
+                    )
                 } else {
                     // Keyed by section id, so a new section fades in instead of popping in.
                     ForEach(viewModel.homeSections) { section in
@@ -127,6 +131,9 @@ struct HomeScreenView: View {
             }
             .animation(.smooth(duration: 0.4), value: viewModel.homeSections.map(\.id))
             .animation(.smooth(duration: 0.3), value: viewModel.isLoadingMore)
+            .scrollsToTopOnTabReselect(0) {
+                if viewModel.selectedChip != nil { viewModel.toggleChip(nil) }
+            }
         }
         .scrollIndicators(.automatic)
         .miniPlayerTracksScroll()

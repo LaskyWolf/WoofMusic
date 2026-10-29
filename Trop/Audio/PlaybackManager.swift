@@ -46,6 +46,7 @@ actor PlaybackManager {
                     artists: artists,
                     thumbnailUrl: song?.thumbnailUrl
                 )
+                await publishMusicVideoType(song?.musicVideoType)
             }
             return PlaybackResult(
                 streamUrl: localPath.absoluteString,

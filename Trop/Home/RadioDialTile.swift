@@ -19,8 +19,6 @@ struct RadioDialTile: View {
     /// Progress of the show's most recently listened episode.
     @State private var savedProgress: Double = 0
     @State private var isStarting = false
-    /// Turns on only once a start has taken longer than `PlayPauseGlyph.spinnerDelay`.
-    @State private var showsSpinner = false
 
     static let size = CGSize(width: 170, height: 258)
     static let radius: CGFloat = 18
@@ -42,23 +40,18 @@ struct RadioDialTile: View {
     }
 
     var body: some View {
-        let shape = RoundedRectangle(cornerRadius: Self.radius, style: .continuous)
         let current = isCurrent
 
         Button(action: onOpen) {
-            card(isCurrent: current)
-                .frame(width: Self.size.width, height: Self.size.height, alignment: .top)
-                .background(NewReleaseCard.backdrop(colors))
-                .clipShape(shape)
-                .shadow(color: NewReleaseCard.glowColor(colors).opacity(0.5), radius: 8, y: 5)
-                .contentShape(shape)
-                .contentShape(.contextMenuPreview, shape)
+            DialCard(colors: colors, size: Self.size, progress: current ? nil : savedProgress) {
+                content(isCurrent: current)
+            }
         }
         .buttonStyle(ZoomPressStyle())
         .cardMenu(for: .podcast(podcast))
         // On top of the card rather than inside its button, so its taps never open the page.
         .overlay(alignment: .bottomTrailing) {
-            playButton(isCurrent: current)
+            DialPlayButton(isCurrent: current, isStarting: isStarting, action: playTapped)
                 .padding(Self.inset)
         }
         // The fixed card height holds the text up to this size.
@@ -73,63 +66,30 @@ struct RadioDialTile: View {
 
     // MARK: Parts
 
-    private func card(isCurrent: Bool) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack {
-                if isCurrent && np.isPlaying { OnAirBadge() }
-            }
-            .frame(maxWidth: .infinity, minHeight: 16, alignment: .leading)
-            .padding(.bottom, 6)
-
-            AsyncImageView(url: podcast.thumbnailUrl)
-                .frame(width: Self.artSize, height: Self.artSize)
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                .coverZoomSource(YTItemRouter.detailRoute(for: .podcast(podcast)))
-                .shadow(color: .black.opacity(0.35), radius: 6, x: 2, y: 4)
-                .frame(maxWidth: .infinity)
-                .padding(.bottom, 8)
-
-            Text(podcast.title)
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.white)
-                .lineLimit(1)
-            Text(podcast.author ?? "Podcast")
-                .font(.caption)
-                .foregroundStyle(.white.opacity(0.75))
-                .lineLimit(1)
-
-            Spacer(minLength: 8)
-
-            HStack(spacing: 10) {
-                TuningScale(progress: isCurrent ? nil : savedProgress)
-                // Room for the play button, which sits on top of the card.
-                Color.clear
-                    .frame(width: NewReleaseCard.buttonSize, height: NewReleaseCard.buttonSize)
-            }
+    @ViewBuilder
+    private func content(isCurrent: Bool) -> some View {
+        HStack {
+            if isCurrent && np.isPlaying { OnAirBadge() }
         }
-        .padding(Self.inset)
-    }
+        .frame(maxWidth: .infinity, minHeight: 16, alignment: .leading)
+        .padding(.bottom, 6)
 
-    private func playButton(isCurrent: Bool) -> some View {
-        Button(action: playTapped) {
-            if isCurrent {
-                // The player's own glyph: a mic while playing, crossed out while paused.
-                PlayPauseGlyph(isPlaying: np.isPlaying, size: 16, color: .white)
-                    .frame(width: NewReleaseCard.buttonSize, height: NewReleaseCard.buttonSize)
-                    .background(Circle().fill(Color.accentColor))
-                    .contentShape(Circle())
-            } else {
-                NewReleaseCard.roundIcon("play.fill", fill: .accentColor, foreground: .white, isBusy: showsSpinner)
-            }
-        }
-        .buttonStyle(ZoomPressStyle(scale: 0.92))
-        .disabled(isStarting)
-        .task(id: isStarting) {
-            guard isStarting else { showsSpinner = false; return }
-            try? await Task.sleep(for: PlayPauseGlyph.spinnerDelay)
-            if !Task.isCancelled { showsSpinner = true }
-        }
-        .accessibilityLabel(isCurrent && np.isPlaying ? "Pause" : "Play")
+        AsyncImageView(url: podcast.thumbnailUrl)
+            .frame(width: Self.artSize, height: Self.artSize)
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .coverZoomSource(YTItemRouter.detailRoute(for: .podcast(podcast)))
+            .shadow(color: .black.opacity(0.35), radius: 6, x: 2, y: 4)
+            .frame(maxWidth: .infinity)
+            .padding(.bottom, 8)
+
+        Text(podcast.title)
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(.white)
+            .lineLimit(1)
+        Text(podcast.author ?? "Podcast")
+            .font(.caption)
+            .foregroundStyle(.white.opacity(0.75))
+            .lineLimit(1)
     }
 
     // MARK: Actions
@@ -180,11 +140,98 @@ struct RadioDialTile: View {
 
     private func loadColors() async {
         guard colors == nil,
-              let url = podcast.thumbnailUrl.flatMap({ URL(string: $0) }),
-              let image = try? await ArtworkLoader.image(for: url) else { return }
-        let extracted = await Task.detached(priority: .utility) { image.extractDominantColors() }.value
-        ReleaseColors.cache[podcast.browseId] = extracted
+              let extracted = await ReleaseColors.load(key: podcast.browseId, url: podcast.thumbnailUrl) else { return }
         withAnimation(.easeInOut(duration: 0.4)) { colors = extracted }
+    }
+}
+
+// MARK: - Shared dial chrome
+
+/// The radio dial card: artwork-coloured backdrop, rounded corners and glow,
+/// with the tuning scale at the bottom and room for a `DialPlayButton` laid on top.
+/// Shared by Home's show tiles and the podcast page's episode cards.
+struct DialCard<Content: View>: View {
+    let colors: [Color]?
+    /// Fixed card size; nil lets the content size the card.
+    var size: CGSize?
+    /// Needle position; nil follows the playing episode live.
+    let progress: Double?
+    @ViewBuilder let content: () -> Content
+
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: RadioDialTile.radius, style: .continuous)
+
+        VStack(alignment: .leading, spacing: 0) {
+            content()
+
+            Spacer(minLength: 8)
+
+            HStack(spacing: 10) {
+                TuningScale(progress: progress)
+                // Room for the play button, which sits on top of the card.
+                Color.clear
+                    .frame(width: NewReleaseCard.buttonSize, height: NewReleaseCard.buttonSize)
+            }
+        }
+        .padding(RadioDialTile.inset)
+        .frame(width: size?.width, height: size?.height, alignment: .top)
+        .background(NewReleaseCard.backdrop(colors))
+        .clipShape(shape)
+        .shadow(color: NewReleaseCard.glowColor(colors).opacity(0.5), radius: 8, y: 5)
+        .contentShape(shape)
+        .contentShape(.contextMenuPreview, shape)
+    }
+}
+
+/// The accent play button in a `DialCard`'s bottom corner. While its item is
+/// current it shows the player's own glyph: a mic while playing, crossed out while paused.
+struct DialPlayButton: View {
+    let isCurrent: Bool
+    /// The tile is loading what it will play; shows a spinner after `PlayPauseGlyph.spinnerDelay`.
+    let isStarting: Bool
+    let action: () -> Void
+
+    @State private var showsSpinner = false
+
+    init(isCurrent: Bool, isStarting: Bool = false, action: @escaping () -> Void) {
+        self.isCurrent = isCurrent
+        self.isStarting = isStarting
+        self.action = action
+    }
+
+    var body: some View {
+        let np = NowPlaying.shared
+
+        Button(action: action) {
+            if isCurrent {
+                PlayPauseGlyph(isPlaying: np.isPlaying, size: 16, color: .white)
+                    .frame(width: NewReleaseCard.buttonSize, height: NewReleaseCard.buttonSize)
+                    .background(Circle().fill(Color.accentColor))
+                    .contentShape(Circle())
+            } else {
+                NewReleaseCard.roundIcon("play.fill", fill: .accentColor, foreground: .white, isBusy: showsSpinner)
+            }
+        }
+        .buttonStyle(ZoomPressStyle(scale: 0.92))
+        .disabled(isStarting)
+        .task(id: isStarting) {
+            guard isStarting else { showsSpinner = false; return }
+            try? await Task.sleep(for: PlayPauseGlyph.spinnerDelay)
+            if !Task.isCancelled { showsSpinner = true }
+        }
+        .accessibilityLabel(isCurrent && np.isPlaying ? "Pause" : "Play")
+    }
+}
+
+extension ReleaseColors {
+    /// Artwork colours for `key`, extracted from `url` once and then cached.
+    static func load(key: String, url: String?) async -> [Color]? {
+        if let cached = cache[key] { return cached }
+        guard let url = url.flatMap({ URL(string: $0) }),
+              let image = try? await ArtworkLoader.image(for: url) else { return nil }
+        let extracted = await Task.detached(priority: .utility) { image.extractDominantColors() }.value
+        cache[key] = extracted
+        return extracted
     }
 }
 

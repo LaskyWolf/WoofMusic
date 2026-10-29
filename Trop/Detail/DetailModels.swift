@@ -70,17 +70,24 @@ struct PodcastDetailInfo {
     var episodes: [EpisodeItem]
 }
 
-/// Header fields of a shared playlist from its last network load. Lets the
-/// edit buttons and collaborator avatars show on reopen before the refresh.
+/// Header fields of a playlist from its last network load. Lets the edit
+/// buttons and the people chip show on reopen before the refresh.
 struct PlaylistHeaderSnapshot: Codable, Equatable {
     var isCollaborative: Bool
     var collaboratorAvatarUrls: [String]
     var collaboratorsPanelParams: String?
     var descriptionText: String?
+    var authorName: String?
+    var authorBrowseId: String?
+    var authorAvatarUrl: String?
+    /// Owner name and head count from the collaborators list, so a shared
+    /// playlist's chip opens with its final label.
+    var ownerName: String?
+    var peopleCount: Int?
 }
 
 /// Snapshots by playlist id, kept in memory and in UserDefaults.
-/// Only shared playlists are stored: ownership already lives in the playlist table.
+/// Stores shared playlists and playlists with an author.
 @MainActor
 enum PlaylistHeaderCache {
     private static let key = "playlistHeaderCache"
@@ -95,14 +102,33 @@ enum PlaylistHeaderCache {
 
     static func store(_ info: PlaylistDetailInfo, for playlistId: String) {
         let isShared = info.isCollaborative || !info.collaboratorAvatarUrls.isEmpty
-        let snapshot = isShared ? PlaylistHeaderSnapshot(
+        let snapshot = isShared || info.authorName != nil ? PlaylistHeaderSnapshot(
             isCollaborative: info.isCollaborative,
             collaboratorAvatarUrls: info.collaboratorAvatarUrls,
             collaboratorsPanelParams: info.collaboratorsPanelParams,
-            descriptionText: info.descriptionText
+            descriptionText: info.descriptionText,
+            authorName: info.authorName,
+            authorBrowseId: info.authorBrowseId,
+            authorAvatarUrl: info.authorAvatarUrl,
+            ownerName: entries[playlistId]?.ownerName,
+            peopleCount: entries[playlistId]?.peopleCount
         ) : nil
         guard entries[playlistId] != snapshot else { return }
         entries[playlistId] = snapshot
+        save()
+    }
+
+    /// Remembers the collaborators list's owner and head count for the chip label.
+    static func storePeople(owner: String, count: Int, for playlistId: String) {
+        guard var snapshot = entries[playlistId],
+              snapshot.ownerName != owner || snapshot.peopleCount != count else { return }
+        snapshot.ownerName = owner
+        snapshot.peopleCount = count
+        entries[playlistId] = snapshot
+        save()
+    }
+
+    private static func save() {
         if let data = try? JSONEncoder().encode(entries) {
             UserDefaults.standard.set(data, forKey: key)
         }
@@ -115,6 +141,9 @@ extension PlaylistDetailInfo {
         collaboratorAvatarUrls = snapshot.collaboratorAvatarUrls
         collaboratorsPanelParams = snapshot.collaboratorsPanelParams
         descriptionText = descriptionText ?? snapshot.descriptionText
+        authorName = authorName ?? snapshot.authorName
+        authorBrowseId = authorBrowseId ?? snapshot.authorBrowseId
+        authorAvatarUrl = authorAvatarUrl ?? snapshot.authorAvatarUrl
     }
 }
 

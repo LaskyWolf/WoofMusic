@@ -5,6 +5,7 @@
 //  Created by 686udjie on 13/09/2026.
 //
 
+import Combine
 import SwiftUI
 
 extension View {
@@ -12,6 +13,12 @@ extension View {
     /// collapsing when scrolled down and restoring when back at the top.
     func miniPlayerTracksScroll() -> some View {
         modifier(MiniPlayerInlineOnScrollModifier())
+    }
+
+    /// Tapping `tab` again at its root page runs `clearFilter` and scrolls
+    /// back to the top. Apply to the root view inside the tab's main ScrollView.
+    func scrollsToTopOnTabReselect(_ tab: Int, clearFilter: @escaping () -> Void = {}) -> some View {
+        modifier(TabReselectModifier(tab: tab, clearFilter: clearFilter))
     }
 
     /// Registers standard DetailRoute navigation. Playlist, album and Library
@@ -61,6 +68,22 @@ extension DetailRoute {
         switch self {
         case .playlist, .album, .autoPlaylist, .downloads: true
         default: false
+        }
+    }
+}
+
+private struct TabReselectModifier: ViewModifier {
+    let tab: Int
+    let clearFilter: () -> Void
+
+    func body(content: Content) -> some View {
+        ScrollViewReader { proxy in
+            content
+                .id("tabTop")
+                .onReceive(AppRouter.shared.tabReselected.filter { $0 == tab }) { _ in
+                    clearFilter()
+                    withAnimation(.smooth) { proxy.scrollTo("tabTop", anchor: .top) }
+                }
         }
     }
 }

@@ -38,7 +38,7 @@ final class LyricsState {
     var hasWordTiming = false
 
     /// UserDefaults key of the karaoke toggle in the lyrics menu.
-    static let karaokeEnabledKey = "settings.lyricsKaraoke"
+    nonisolated static let karaokeEnabledKey = "settings.lyricsKaraoke"
 
     private init() {}
 }
@@ -100,6 +100,7 @@ actor LyricsService {
             // since lyrics can be matched/published after playback starts.
             if !result.lines.isEmpty {
                 cache[videoId] = result.lines
+                upgradeToWordTiming(videoId: videoId, query: query, shown: result.lines, excluding: result.providerName)
             }
             await updateAvailability(videoId: videoId, available: !result.lines.isEmpty, providerName: result.providerName)
             return result.lines
@@ -170,11 +171,20 @@ actor LyricsService {
             Task { await MainActor.run { LyricsState.shared.refreshToken += 1 } }
         }
         guard let query = await resolveQuery(videoId: videoId),
-              let (fetchedLines, fetchedProvider) = try? await LyricsManager.shared.fetchLyricsReturningProvider(query: query),
-              !fetchedLines.isEmpty else {
+              let (foundLines, foundProvider) = try? await LyricsManager.shared.fetchLyricsReturningProvider(query: query),
+              !foundLines.isEmpty else {
             await updateAvailability(videoId: videoId, available: false)
             signalReload()
             return
+        }
+        var fetchedLines = foundLines
+        var fetchedProvider = foundProvider
+        // The result is stored as the song's own copy, which later fetches
+        // never replace, so word timing for karaoke is looked up now.
+        if Self.wantsWordTiming(fetchedLines),
+           let wordTimed = await LyricsManager.shared.fetchWordTimed(query: query, excluding: fetchedProvider) {
+            fetchedLines = wordTimed.0
+            fetchedProvider = wordTimed.providerName
         }
         cache[videoId] = fetchedLines
         let raw = LyricsParsing.serializeLines(fetchedLines)
@@ -184,6 +194,36 @@ actor LyricsService {
         UserDefaults.standard.set(provider, forKey: Self.customProviderKey(videoId))
         await updateAvailability(videoId: videoId, available: true, providerName: provider)
         signalReload()
+    }
+
+    /// Karaoke was turned on: looks for word timing for the provider lyrics
+    /// on screen. A song's own copy (edited or picked) is left alone.
+    func requestWordTiming(videoId: String) async {
+        guard customEntry(for: videoId) == nil, let shown = cache[videoId],
+              let query = await resolveQuery(videoId: videoId) else { return }
+        upgradeToWordTiming(videoId: videoId, query: query, shown: shown, excluding: nil)
+    }
+
+    private static func wantsWordTiming(_ lines: [LyricLine]) -> Bool {
+        UserDefaults.standard.bool(forKey: LyricsState.karaokeEnabledKey) && !lines.contains { $0.words != nil }
+    }
+
+    /// When karaoke is on and the shown lyrics are line-only, asks the other
+    /// providers for a word-timed copy in the background and swaps it in, so
+    /// the line-synced lyrics appear without waiting for it.
+    private func upgradeToWordTiming(videoId: String, query: LyricsQuery, shown: [LyricLine], excluding providerName: String?) {
+        guard Self.wantsWordTiming(shown) else { return }
+        let shownId = shown.first?.id
+        Task {
+            guard let wordTimed = await LyricsManager.shared.fetchWordTimed(query: query, excluding: providerName),
+                  // Other lyrics may have been picked or refetched meanwhile.
+                  customs[videoId] == nil, cache[videoId]?.first?.id == shownId else { return }
+            cache[videoId] = wordTimed.0
+            await updateAvailability(videoId: videoId, available: true, providerName: wordTimed.providerName)
+            await MainActor.run {
+                if NowPlaying.shared.videoId == videoId { LyricsState.shared.refreshToken += 1 }
+            }
+        }
     }
 
     private func customEntry(for videoId: String) -> (lines: [LyricLine], providerName: String)? {

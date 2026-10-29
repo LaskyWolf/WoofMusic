@@ -104,6 +104,7 @@ import UIKit
     @Published var selectedTabIndex = 0
     var activePathDepth = 0
     func popActiveRoute() {}
+    func reselectTab(_ tab: Int) {}
 }
 @MainActor enum QuickAction {
     static func performPending() {}

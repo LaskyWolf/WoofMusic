@@ -11,21 +11,11 @@ struct SettingsView: View {
     @Environment(SettingsStore.self) private var settings
     private let account = AccountState.shared
     @State private var isEditingPicture = false
-    /// Picture fetched after Studio closes. AccountState keeps its own fetch
-    /// private, so only this screen shows the new picture until next launch.
 
     var body: some View {
         List {
             Section {
                 accountRow
-                if account.isLoggedIn {
-                    Button {
-                        isEditingPicture = true
-                    } label: {
-                        Label("Change Profile Picture", systemImage: "camera")
-                    }
-                    .tint(settings.accentColor)
-                }
             }
 
             Section {
