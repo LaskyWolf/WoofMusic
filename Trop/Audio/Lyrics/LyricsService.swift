@@ -11,8 +11,18 @@ struct LyricLine: Identifiable, Equatable, Sendable {
     let id = UUID()
     let text: String
     let startTime: TimeInterval?
+    /// Word-level timing for karaoke; nil when the source has only line timing.
+    var words: [LyricWord]? = nil
 
     static let placeholder = LyricLine(text: "♪", startTime: nil)
+}
+
+/// One timed piece of a line (a word or a syllable), in song seconds.
+struct LyricWord: Equatable, Sendable {
+    var text: String
+    let startTime: TimeInterval
+    /// Nil when the source gives no end (a last Enhanced LRC word without a closing tag).
+    var endTime: TimeInterval?
 }
 
 @MainActor
@@ -24,6 +34,15 @@ final class LyricsState {
     var availableVideoIds: Set<String> = []
     var providerName: String?
     var refreshToken: Int = 0
+    /// The lyrics on screen have word-level timing, so karaoke can run.
+    var hasWordTiming = false
+    /// Bumped on each karaoke start or stop; the player's play button greets it.
+    var karaokeGreeting = 0
+    /// Karaoke after the last change: on plays the countdown, off the goodbye.
+    var karaokeGreetingIsOn = false
+
+    /// UserDefaults key of the karaoke toggle in the lyrics menu.
+    nonisolated static let karaokeEnabledKey = "settings.lyricsKaraoke"
 
     private init() {}
 }
@@ -33,7 +52,8 @@ actor LyricsService {
 
     private var cache: [String: [LyricLine]] = [:]
     private var customs: [String: (lines: [LyricLine], providerName: String)] = [:]
-    private var inFlight: [String: Task<FetchResult, Error>] = [:]
+    /// Nil result: no query could be built for the song (not cached as not found).
+    private var inFlight: [String: Task<FetchResult?, Error>] = [:]
     /// Songs no provider had lyrics for, so reopening or preloading them skips
     /// the providers for a while. Entries expire because lyrics can be
     /// published later.
@@ -48,9 +68,13 @@ actor LyricsService {
     private struct FetchResult: Sendable {
         let lines: [LyricLine]
         let providerName: String?
+        let query: LyricsQuery
     }
 
     func fetchLyrics(videoId: String) async throws -> [LyricLine] {
+        #if DEBUG
+        LyricsParsing.selfCheck()
+        #endif
         if let custom = customEntry(for: videoId) {
             await updateAvailability(videoId: videoId, available: true, providerName: custom.providerName)
             return custom.lines
@@ -64,37 +88,43 @@ actor LyricsService {
             throw LyricsError.notFound
         }
         if let flight = inFlight[videoId] {
-            return try await flight.value.lines
+            guard let result = try await flight.value else { throw LyricsError.notFound }
+            return result.lines
         }
-        guard let query = await resolveQuery(videoId: videoId) else {
-            await updateAvailability(videoId: videoId, available: false)
-            throw LyricsError.notFound
-        }
-        let flight = Task<FetchResult, Error> {
+        // Stored before the first await, so callers arriving meanwhile share it.
+        let flight = Task<FetchResult?, Error> {
+            guard let query = await resolveQuery(videoId: videoId) else { return nil }
             let (lines, providerName) = try await LyricsManager.shared.fetchLyricsReturningProvider(query: query)
-            return FetchResult(lines: lines, providerName: providerName)
+            return FetchResult(lines: lines, providerName: providerName, query: query)
         }
         inFlight[videoId] = flight
+        let fetched: FetchResult?
         do {
-            let result = try await flight.value
-            inFlight.removeValue(forKey: videoId)
-            // Only cache successful lookups — empty results should be retried later
-            // since lyrics can be matched/published after playback starts.
-            if !result.lines.isEmpty {
-                cache[videoId] = result.lines
-            }
-            await updateAvailability(videoId: videoId, available: !result.lines.isEmpty, providerName: result.providerName)
-            return result.lines
+            fetched = try await flight.value
         } catch {
             inFlight.removeValue(forKey: videoId)
+            // `.notFound` means the providers answered; network errors are retried.
             if case LyricsError.notFound = error {
                 notFoundUntil[videoId] = Date().addingTimeInterval(Self.notFoundTTL)
             }
-            if !(error is CancellationError) {
+            if !error.isCancellation {
                 await updateAvailability(videoId: videoId, available: false)
             }
             throw error
         }
+        inFlight.removeValue(forKey: videoId)
+        guard let result = fetched else {
+            await updateAvailability(videoId: videoId, available: false)
+            throw LyricsError.notFound
+        }
+        // Only cache successful lookups — empty results should be retried later
+        // since lyrics can be matched/published after playback starts.
+        if !result.lines.isEmpty {
+            cache[videoId] = result.lines
+            upgradeToWordTiming(videoId: videoId, query: result.query, shown: result.lines, excluding: result.providerName)
+        }
+        await updateAvailability(videoId: videoId, available: !result.lines.isEmpty, providerName: result.providerName)
+        return result.lines
     }
 
     // MARK: - Manual Manipulations (edit / refetch / search selection / copy)
@@ -152,11 +182,20 @@ actor LyricsService {
             Task { await MainActor.run { LyricsState.shared.refreshToken += 1 } }
         }
         guard let query = await resolveQuery(videoId: videoId),
-              let (fetchedLines, fetchedProvider) = try? await LyricsManager.shared.fetchLyricsReturningProvider(query: query),
-              !fetchedLines.isEmpty else {
+              let (foundLines, foundProvider) = try? await LyricsManager.shared.fetchLyricsReturningProvider(query: query),
+              !foundLines.isEmpty else {
             await updateAvailability(videoId: videoId, available: false)
             signalReload()
             return
+        }
+        var fetchedLines = foundLines
+        var fetchedProvider = foundProvider
+        // The result is stored as the song's own copy, which later fetches
+        // never replace, so word timing for karaoke is looked up now.
+        if Self.wantsWordTiming(fetchedLines),
+           let wordTimed = await LyricsManager.shared.fetchWordTimed(query: query, excluding: fetchedProvider) {
+            fetchedLines = wordTimed.0
+            fetchedProvider = wordTimed.providerName
         }
         cache[videoId] = fetchedLines
         let raw = LyricsParsing.serializeLines(fetchedLines)
@@ -166,6 +205,36 @@ actor LyricsService {
         UserDefaults.standard.set(provider, forKey: Self.customProviderKey(videoId))
         await updateAvailability(videoId: videoId, available: true, providerName: provider)
         signalReload()
+    }
+
+    /// Karaoke was turned on: looks for word timing for the provider lyrics
+    /// on screen. A song's own copy (edited or picked) is left alone.
+    func requestWordTiming(videoId: String) async {
+        guard customEntry(for: videoId) == nil, let shown = cache[videoId],
+              let query = await resolveQuery(videoId: videoId) else { return }
+        upgradeToWordTiming(videoId: videoId, query: query, shown: shown, excluding: nil)
+    }
+
+    private static func wantsWordTiming(_ lines: [LyricLine]) -> Bool {
+        UserDefaults.standard.bool(forKey: LyricsState.karaokeEnabledKey) && !lines.contains { $0.words != nil }
+    }
+
+    /// When karaoke is on and the shown lyrics are line-only, asks the other
+    /// providers for a word-timed copy in the background and swaps it in, so
+    /// the line-synced lyrics appear without waiting for it.
+    private func upgradeToWordTiming(videoId: String, query: LyricsQuery, shown: [LyricLine], excluding providerName: String?) {
+        guard Self.wantsWordTiming(shown) else { return }
+        let shownId = shown.first?.id
+        Task {
+            guard let wordTimed = await LyricsManager.shared.fetchWordTimed(query: query, excluding: providerName),
+                  // Other lyrics may have been picked or refetched meanwhile.
+                  customs[videoId] == nil, cache[videoId]?.first?.id == shownId else { return }
+            cache[videoId] = wordTimed.0
+            await updateAvailability(videoId: videoId, available: true, providerName: wordTimed.providerName)
+            await MainActor.run {
+                if NowPlaying.shared.videoId == videoId { LyricsState.shared.refreshToken += 1 }
+            }
+        }
     }
 
     private func customEntry(for videoId: String) -> (lines: [LyricLine], providerName: String)? {
@@ -190,14 +259,10 @@ actor LyricsService {
         await MainActor.run {
             if available {
                 LyricsState.shared.availableVideoIds.insert(videoId)
+                if NowPlaying.shared.videoId == videoId { LyricsState.shared.providerName = providerName }
             } else {
                 LyricsState.shared.availableVideoIds.remove(videoId)
             }
-        }
-        let currentId = await MainActor.run { NowPlaying.shared.videoId }
-        guard currentId == videoId else { return }
-        await MainActor.run {
-            if available { LyricsState.shared.providerName = providerName }
         }
     }
 

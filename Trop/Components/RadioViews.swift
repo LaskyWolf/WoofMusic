@@ -44,30 +44,19 @@ struct RadioOptionsSheet: View {
                 } header: {
                     Text("Queue")
                 }
-
-                Section {
-                    Button {
-                        start()
-                    } label: {
-                        HStack {
-                            Spacer()
-                            if isStarting {
-                                ProgressView()
-                            } else {
-                                Text("Start Radio")
-                                    .fontWeight(.semibold)
-                            }
-                            Spacer()
-                        }
-                    }
-                    .disabled(isStarting)
-                }
             }
             .navigationTitle("Customize Radio")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
+                }
+                // In the bar, like Done in Edit Playlist: at the medium height a
+                // button under the form was cut off.
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Start") { start() }
+                        .fontWeight(.semibold)
+                        .disabled(isStarting)
                 }
             }
         }

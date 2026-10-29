@@ -91,7 +91,8 @@ final class SearchViewModel {
 
     /// Artist hero for artist queries (top result is an artist).
     private(set) var heroArtist: ArtistItem?
-    private(set) var heroSongs: [SongItem] = []
+    /// The hero card's audience line, such as "12.3M monthly audience".
+    private(set) var heroDetail: String?
 
     /// Latest play timestamp per videoId, for Recently Played sorting.
     /// Shared across instances — the search view model is recreated on tab
@@ -129,8 +130,8 @@ final class SearchViewModel {
 
     // MARK: - Derived content
 
-    /// Canonical display order: songs first, then albums, artists, videos.
-    static let displayOrder = ["Songs", "Albums", "Artists", "Videos", "Playlists", "Podcasts", "Episodes"]
+    /// Canonical display order: songs first, then albums, artists, playlists, podcasts.
+    static let displayOrder = ["Songs", "Albums", "Artists", "Playlists", "Podcasts"]
 
     var availableFilters: [String] {
         var filters = ["Library"]
@@ -140,7 +141,7 @@ final class SearchViewModel {
     }
 
     /// Results ordered for display, with the active sort applied to
-    /// Songs/Videos (and Albums for Date Released).
+    /// Songs (and Albums for Date Released).
     var displaySections: [SearchSection] {
         let ordered = Self.displayOrder.compactMap { title in
             results.first { $0.title == title }
@@ -179,7 +180,7 @@ final class SearchViewModel {
 
     private func sortedItems(_ section: SearchSection) -> [YTItem] {
         switch section.title {
-        case "Songs", "Videos":
+        case "Songs":
             return sortSongs(section.items)
         case "Albums":
             // Only Date Released applies to albums (parsed release year).
@@ -281,7 +282,7 @@ final class SearchViewModel {
         selectedSectionFilter = nil
         isShowingLibrary = false
         heroArtist = nil
-        heroSongs = []
+        heroDetail = nil
 
         updateHistory(query: query)
         cancelTasks()
@@ -312,11 +313,11 @@ final class SearchViewModel {
             isShowingLibrary = false
             extractHero()
             let summary = results.map { "\($0.title):\($0.items.count)" }.joined(separator: ", ")
-            Log.search.debug("Results for '\(query)': [\(summary)] hero=\(heroArtist?.name ?? "none") heroSongs=\(heroSongs.count)")
+            Log.search.debug("Results for '\(query)': [\(summary)] hero=\(heroArtist?.name ?? "none")")
             phase = results.isEmpty && heroArtist == nil ? .noResults : .results
         } catch {
             guard query == submittedQuery else { return }
-            if !Self.isCancellation(error) {
+            if !error.isCancellation {
                 Log.search.error("Submit failed: \(error)")
                 self.error = error
                 phase = .failed
@@ -324,32 +325,38 @@ final class SearchViewModel {
         }
     }
 
-    /// Artist-first layout: when the top result is an artist, lift it (plus
-    /// its top songs from the same card) into the hero and remove them from
-    /// the flat sections so nothing shows twice.
+    /// Artist-first layout: when the top result is an artist, lift it into the
+    /// hero card. The card's songs move to the top of Songs; the API often
+    /// repeats them there, so a song already in Songs is not added twice.
     private func extractHero() {
         heroArtist = nil
-        heroSongs = []
+        heroDetail = nil
         guard let index = results.firstIndex(where: { section in
             if case .artist = section.items.first { return true }
             return false
         }) else { return }
         guard case .artist(let artist) = results[index].items.first else { return }
         heroArtist = artist
-        heroSongs = results[index].items.dropFirst().compactMap { item in
-            if case .song(let song) = item { return song }
-            return nil
+        heroDetail = results[index].subtitle
+        let cardSongs = results[index].items.filter { item in
+            if case .song = item { return true }
+            return false
         }
-        let remaining = results[index].items.filter { item in
-            if case .artist = item { return false }
-            if case .song(let song) = item { return !heroSongs.contains(where: { $0.videoId == song.videoId }) }
-            return true
+        results[index].items.removeAll { item in
+            switch item {
+            case .artist, .song: return true
+            default: return false
+            }
         }
-        if remaining.isEmpty {
-            results.remove(at: index)
-        } else {
-            results[index].items = remaining
+        if !cardSongs.isEmpty {
+            if let songsIndex = results.firstIndex(where: { $0.title == "Songs" }) {
+                var seen = Set<String>()
+                results[songsIndex].items = (cardSongs + results[songsIndex].items).filter { seen.insert($0.id).inserted }
+            } else {
+                results.append(SearchSection(title: "Songs", items: cardSongs))
+            }
         }
+        results.removeAll { $0.items.isEmpty }
     }
 
     // MARK: - Field changes
@@ -383,7 +390,7 @@ final class SearchViewModel {
         selectedSectionFilter = nil
         isShowingLibrary = false
         heroArtist = nil
-        heroSongs = []
+        heroDetail = nil
         error = nil
         phase = .idle
     }
@@ -438,9 +445,5 @@ final class SearchViewModel {
 
     private func cancelTasks() {
         fetchTask?.cancel()
-    }
-
-    private static func isCancellation(_ error: Error) -> Bool {
-        (error as? URLError)?.code == .cancelled || error is CancellationError
     }
 }

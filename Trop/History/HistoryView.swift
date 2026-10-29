@@ -22,23 +22,7 @@ struct HistoryScreenView: View {
     }
 
     private var allDisplayableSongs: [SongItem] {
-        displayableSections.flatMap(\.entries).map { entry in
-            if let entity = entry.song {
-                return SongItem(entity: entity)
-            } else {
-                return SongItem(
-                    videoId: entry.event.songId,
-                    title: entry.event.songId,
-                    artists: [],
-                    album: nil,
-                    albumId: nil,
-                    duration: 0,
-                    thumbnailUrl: ArtworkURLs.fallback(for: entry.event.songId),
-                    isExplicit: false,
-                    playlistId: nil
-                )
-            }
-        }
+        displayableSections.flatMap(\.entries).map(SongItem.init(historyEntry:))
     }
 
     var body: some View {
@@ -142,8 +126,8 @@ struct HistoryScreenView: View {
 
     private var localList: some View {
         List {
-            ForEach(displayableSections.indices, id: \.self) { sectionIndex in
-                let section = displayableSections[sectionIndex]
+            // One section per day, so titles are unique.
+            ForEach(displayableSections, id: \.title) { section in
                 Section {
                     ForEach(section.entries, id: \.event) { entry in
                         localRow(entry)
@@ -166,23 +150,7 @@ struct HistoryScreenView: View {
 
     @ViewBuilder
     private func localRow(_ entry: DatabaseService.HistoryEntry) -> some View {
-        let song: SongItem = {
-            if let entity = entry.song {
-                return SongItem(entity: entity)
-            } else {
-                return SongItem(
-                    videoId: entry.event.songId,
-                    title: entry.event.songId,
-                    artists: [],
-                    album: nil,
-                    albumId: nil,
-                    duration: 0,
-                    thumbnailUrl: ArtworkURLs.fallback(for: entry.event.songId),
-                    isExplicit: false,
-                    playlistId: nil
-                )
-            }
-        }()
+        let song = SongItem(historyEntry: entry)
         let isSelected = selectedEvents.contains(entry.event)
         HStack(spacing: 0) {
             if isSelecting {
@@ -274,4 +242,25 @@ struct HistoryScreenView: View {
         .miniPlayerTracksScroll()
     }
 
+}
+
+private extension SongItem {
+    /// The saved song, or a placeholder named after its id when the song row is gone.
+    init(historyEntry entry: DatabaseService.HistoryEntry) {
+        if let entity = entry.song {
+            self.init(entity: entity)
+        } else {
+            self.init(
+                videoId: entry.event.songId,
+                title: entry.event.songId,
+                artists: [],
+                album: nil,
+                albumId: nil,
+                duration: 0,
+                thumbnailUrl: ArtworkURLs.fallback(for: entry.event.songId),
+                isExplicit: false,
+                playlistId: nil
+            )
+        }
+    }
 }

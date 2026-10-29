@@ -99,7 +99,7 @@ struct SongRowView: View {
         .accessibilityAddTraits(isSelected ? .isSelected : [])
         .onTapGesture(perform: onTap)
         .rowPressFeedback()
-        .task { await durations.resolve(videoId: song.videoId, knownDuration: song.duration) }
+        .task(id: song.videoId) { await durations.resolve(videoId: song.videoId, knownDuration: song.duration) }
         .onReceive(NotificationCenter.default.publisher(for: .durationDidUpdate)) { notification in
             durations.handleUpdate(notification, videoId: song.videoId)
         }

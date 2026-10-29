@@ -27,7 +27,7 @@ struct SongActionsMenu<MenuLabel: View>: View {
     @ViewBuilder var label: () -> MenuLabel
 
     private enum Sheet: Identifiable {
-        case playlist, radio, details, similar, artists, sleepTimer
+        case playlist, radio, details, similar, artists, sleepTimer, shareCard, shareSong
         var id: Self { self }
     }
 
@@ -45,11 +45,7 @@ struct SongActionsMenu<MenuLabel: View>: View {
             ControlGroup {
                 LikeMenuButton(song: song)
                 Button("Add to Playlist", systemImage: "text.badge.plus") { sheet = .playlist }
-                if let url = URL(string: song.webUrl) {
-                    ShareLink(item: url) {
-                        Label("Share", systemImage: "square.and.arrow.up")
-                    }
-                }
+                Button("Share", systemImage: "square.and.arrow.up") { sheet = .shareSong }
             }
             .controlGroupStyle(.compactMenu)
 
@@ -78,6 +74,7 @@ struct SongActionsMenu<MenuLabel: View>: View {
             Menu("More", systemImage: "ellipsis.circle") {
                 Button("Start Radio…", systemImage: "dot.radiowaves.left.and.right") { sheet = .radio }
                 PinMenuButton(song: song, pin: pin)
+                ShareCardMenuButton(videoId: song.videoId) { sheet = .shareCard }
                 if let onSelect {
                     Button("Select", systemImage: "checkmark.circle", action: onSelect)
                 }
@@ -154,6 +151,10 @@ struct SongActionsMenu<MenuLabel: View>: View {
                 }
             case .sleepTimer:
                 SleepTimerSheet()
+            case .shareCard:
+                LyricShareComposer(videoId: song.videoId)
+            case .shareSong:
+                SongShareSheet(song: song)
             }
         }
     }
@@ -178,9 +179,7 @@ struct SongActionsMenu<MenuLabel: View>: View {
     }
 
     private func addToQueue() {
-        let np = NowPlaying.shared
-        np.queueSongs.append(song)
-        np.persistQueueState()
+        NowPlaying.shared.appendToQueue([song])
     }
 
     private func navigate(_ route: DetailRoute) {
@@ -311,6 +310,19 @@ private struct PinMenuButton: View {
             Task { await pin.toggle(song: song) }
         }
         .task(id: song.videoId) { await pin.load(videoId: song.videoId) }
+    }
+}
+
+/// Only for the song playing now with its lyrics loaded, so the composer
+/// reads them from the lyrics cache.
+private struct ShareCardMenuButton: View {
+    let videoId: String
+    let action: () -> Void
+
+    var body: some View {
+        if NowPlaying.shared.videoId == videoId, LyricsState.shared.availableVideoIds.contains(videoId) {
+            Button("Share Lyrics Card…", systemImage: "quote.bubble", action: action)
+        }
     }
 }
 
@@ -558,19 +570,12 @@ private struct SleepTimerSheet: View {
         .appSheetChrome([.height(contentHeight), .large])
     }
 
-    /// Inline title with Done, in place of a navigation bar, so the measured
-    /// height covers the whole sheet.
+    /// Inline title, in place of a navigation bar, so the measured height covers
+    /// the whole sheet. No Done: picking a time closes it, and so does a swipe down.
     private var header: some View {
-        ZStack {
-            Text("Sleep Timer")
-                .font(.headline)
-                .accessibilityAddTraits(.isHeader)
-            HStack {
-                Spacer()
-                Button("Done") { dismiss() }
-                    .fontWeight(.semibold)
-            }
-        }
+        Text("Sleep Timer")
+            .font(.headline)
+            .accessibilityAddTraits(.isHeader)
     }
 }
 
@@ -583,7 +588,7 @@ private struct SleepTimerStatus: View {
             if let endsAt = timer.endsAt {
                 TimelineView(.periodic(from: .now, by: 1)) { context in
                     Label {
-                        Text("\(Self.countdown(endsAt.timeIntervalSince(context.date))) left · pauses at \(endsAt.formatted(date: .omitted, time: .shortened))")
+                        Text("\(DurationFormat.playbackTime(endsAt.timeIntervalSince(context.date).rounded(.up))) left · pauses at \(endsAt.formatted(date: .omitted, time: .shortened))")
                             .monospacedDigit()
                     } icon: {
                         Image(systemName: "moon.zzz.fill")
@@ -595,17 +600,6 @@ private struct SleepTimerStatus: View {
         }
         .font(.subheadline.weight(.medium))
         .foregroundStyle(.tint)
-    }
-
-    /// "12:34" or "1:05:00".
-    private static func countdown(_ seconds: TimeInterval) -> String {
-        let total = max(Int(seconds.rounded(.up)), 0)
-        let hours = total / 3600
-        let minutes = total / 60 % 60
-        let secs = total % 60
-        return hours > 0
-            ? String(format: "%d:%02d:%02d", hours, minutes, secs)
-            : String(format: "%d:%02d", minutes, secs)
     }
 }
 

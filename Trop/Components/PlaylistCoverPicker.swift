@@ -7,61 +7,6 @@ import ImageIO
 import PhotosUI
 import SwiftUI
 
-/// Large cover preview with a photo picker, used by the New Playlist sheet. `image` is the picked photo, cropped square; nil
-/// keeps `currentUrl`. With `onRemove`, a Remove Cover button shows.
-struct PlaylistCoverPicker: View {
-    var currentUrl: String?
-    @Binding var image: UIImage?
-    var onRemove: (() -> Void)?
-    @State private var item: PhotosPickerItem?
-
-    private var title: String {
-        image == nil && currentUrl == nil ? "Add Cover" : "Change Cover"
-    }
-
-    var body: some View {
-        VStack(spacing: 12) {
-            PhotosPicker(selection: $item, matching: .images) {
-                cover
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(title)
-
-            HStack(spacing: 24) {
-                PhotosPicker(title, selection: $item, matching: .images)
-                if let onRemove {
-                    Button("Remove Cover", role: .destructive, action: onRemove)
-                }
-            }
-            .font(.subheadline.weight(.semibold))
-            .buttonStyle(.borderless)
-        }
-        .frame(maxWidth: .infinity)
-        .loadsPickedCover(item: $item, into: $image)
-    }
-
-    private var cover: some View {
-        Group {
-            if let image {
-                Image(uiImage: image)
-                    .resizable()
-                    .scaledToFill()
-            } else if let currentUrl {
-                AsyncImageView(url: currentUrl)
-            } else {
-                ZStack {
-                    Rectangle().fill(.quaternary)
-                    Image(systemName: "photo.badge.plus")
-                        .font(.system(size: 36))
-                        .foregroundStyle(.secondary)
-                }
-            }
-        }
-        .frame(width: 160, height: 160)
-        .clipShape(RoundedRectangle(cornerRadius: DesignTokens.tileRadius))
-    }
-}
-
 extension View {
     /// Loads the photo picked in `item`, shrunk, lets the user crop and flip it
     /// in a sheet, and puts the square result in `image`.
@@ -254,111 +199,24 @@ private struct CoverCropSheet: View {
     }
 }
 
+/// The Edit and New Playlist sheets' header, like the playlist page's: a large
+/// cover, a name you tap to edit, and cover buttons.
+struct PlaylistEditHeader: View {
+    @Binding var name: String
+    @Binding var coverImage: UIImage?
+    let currentUrl: String?
+    let canRemoveCover: Bool
+    let onRemoveCover: () -> Void
+    /// A new playlist opens with the name field focused.
+    var startsEditing = false
 
-/// Edit Playlist: a header like the playlist page's (large cover, a title you
-/// tap to rename, cover buttons) and the sync switch, saved together with Done.
-struct PlaylistEditSheet: View {
-    let playlist: PlaylistDetailInfo
-    var onSaved: () -> Void
-    /// Called after a local playlist moved to YouTube Music: its id no longer exists.
-    var onUploaded: (() -> Void)?
-
-    @Environment(\.dismiss) private var dismiss
-    /// Whether the playlist synced when the sheet opened; nil until read.
-    @State private var wasSynced: Bool?
-    @State private var syncs = true
-    @State private var name: String
     @State private var isEditingName = false
     @FocusState private var nameFocused: Bool
-    @State private var coverImage: UIImage?
     @State private var pickerItem: PhotosPickerItem?
-    @State private var removesCover = false
-    @State private var isSaving = false
-    @State private var error: String?
-
-    init(playlist: PlaylistDetailInfo, onSaved: @escaping () -> Void, onUploaded: (() -> Void)? = nil) {
-        self.playlist = playlist
-        self.onSaved = onSaved
-        self.onUploaded = onUploaded
-        _name = State(initialValue: playlist.title)
-    }
 
     private var trimmedName: String { name.trimmingCharacters(in: .whitespacesAndNewlines) }
 
-    /// Playlists made on this iPhone have a UUID id. A playlist you stopped
-    /// syncing keeps its YouTube id, so turning sync back on reconnects it
-    /// instead of creating a second copy online.
-    private var madeOnThisPhone: Bool { UUID(uuidString: playlist.playlistId) != nil }
-
-    private var currentUrl: String? { removesCover ? nil : playlist.thumbnailUrl }
-
-    /// Only covers kept on this iPhone can be removed: YouTube Music has no
-    /// known way to remove a custom cover.
-    private var hasLocalCover: Bool {
-        playlist.thumbnailUrl.flatMap(LocalPlaylistCover.fileURL) != nil
-    }
-
-    private var canRemoveCover: Bool {
-        coverImage != nil || (hasLocalCover && !removesCover)
-    }
-
     var body: some View {
-        NavigationStack {
-            VStack(spacing: 0) {
-                headerCard
-                    .fixedSize(horizontal: false, vertical: true)
-                Form {
-                    if let wasSynced {
-                        Section {
-                            Toggle("Sync with YouTube Music", isOn: $syncs)
-                        } footer: {
-                            Text(syncFooter(wasSynced: wasSynced))
-                        }
-                    }
-
-                    if let error {
-                        Section {
-                            Label(error, systemImage: "exclamationmark.circle")
-                                .foregroundStyle(.red)
-                        }
-                    }
-                }
-                .scrollContentBackground(.hidden)
-            }
-            .background(alignment: .top) { backdrop }
-            .background(Color(.systemGroupedBackground))
-            .navigationTitle("Edit Playlist")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
-                        .disabled(isSaving)
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    if isSaving {
-                        ProgressView()
-                    } else {
-                        Button("Done", action: save)
-                            .disabled(trimmedName.isEmpty)
-                    }
-                }
-            }
-        }
-        .presentationDetents([.medium, .large])
-        .presentationDragIndicator(.visible)
-        .interactiveDismissDisabled(isSaving)
-        .loadsPickedCover(item: $pickerItem, into: $coverImage)
-        .task {
-            if let stored = try? await SyncBridge.store.fetchPlaylist(id: playlist.playlistId) {
-                wasSynced = stored.browseId != nil
-                syncs = stored.browseId != nil
-            }
-        }
-    }
-
-    // MARK: Header card
-
-    private var headerCard: some View {
         HStack(alignment: .top, spacing: 14) {
             cover
             VStack(alignment: .leading, spacing: 3) {
@@ -374,10 +232,7 @@ struct PlaylistEditSheet: View {
                     }
                     .accessibilityLabel(coverImage == nil && currentUrl == nil ? "Add Cover" : "Change Cover")
                     if canRemoveCover {
-                        Button {
-                            coverImage = nil
-                            removesCover = hasLocalCover
-                        } label: {
+                        Button(action: onRemoveCover) {
                             HeaderRoundIcon(systemImage: "trash")
                         }
                         .accessibilityLabel("Remove Cover")
@@ -389,6 +244,8 @@ struct PlaylistEditSheet: View {
         }
         .padding(.horizontal, DesignTokens.screenHPadding)
         .padding(.vertical, 16)
+        .loadsPickedCover(item: $pickerItem, into: $coverImage)
+        .onAppear { if startsEditing { isEditingName = true } }
     }
 
     /// The name as text with a pencil right after it; a tap turns the text into a
@@ -446,10 +303,16 @@ struct PlaylistEditSheet: View {
         .clipShape(RoundedRectangle(cornerRadius: DesignTokens.tileRadius, style: .continuous))
         .shadow(color: .black.opacity(0.18), radius: 8, y: 3)
     }
+}
+
+/// The sheets' blurred cover behind the header.
+struct PlaylistEditBackdrop: View {
+    let coverImage: UIImage?
+    let currentUrl: String?
 
     /// A picked photo has no URL yet, so it gets the same blur by hand.
     @ViewBuilder
-    private var backdrop: some View {
+    var body: some View {
         if let coverImage {
             Image(uiImage: coverImage)
                 .resizable()
@@ -459,6 +322,112 @@ struct PlaylistEditSheet: View {
                 .accessibilityHidden(true)
         } else if currentUrl != nil {
             BlurredArtworkBackdrop(url: currentUrl)
+        }
+    }
+}
+
+/// Edit Playlist: the shared header and the sync switch, saved together with Done.
+struct PlaylistEditSheet: View {
+    let playlist: PlaylistDetailInfo
+    var onSaved: () -> Void
+    /// Called after a local playlist moved to YouTube Music: its id no longer exists.
+    var onUploaded: (() -> Void)?
+
+    @Environment(\.dismiss) private var dismiss
+    /// Whether the playlist synced when the sheet opened; nil until read.
+    @State private var wasSynced: Bool?
+    @State private var syncs = true
+    @State private var name: String
+    @State private var coverImage: UIImage?
+    @State private var removesCover = false
+    @State private var isSaving = false
+    @State private var error: String?
+
+    init(playlist: PlaylistDetailInfo, onSaved: @escaping () -> Void, onUploaded: (() -> Void)? = nil) {
+        self.playlist = playlist
+        self.onSaved = onSaved
+        self.onUploaded = onUploaded
+        _name = State(initialValue: playlist.title)
+    }
+
+    private var trimmedName: String { name.trimmingCharacters(in: .whitespacesAndNewlines) }
+
+    /// Playlists made on this iPhone have a UUID id. A playlist you stopped
+    /// syncing keeps its YouTube id, so turning sync back on reconnects it
+    /// instead of creating a second copy online.
+    private var madeOnThisPhone: Bool { UUID(uuidString: playlist.playlistId) != nil }
+
+    private var currentUrl: String? { removesCover ? nil : playlist.thumbnailUrl }
+
+    /// Only covers kept on this iPhone can be removed: YouTube Music has no
+    /// known way to remove a custom cover.
+    private var hasLocalCover: Bool {
+        playlist.thumbnailUrl.flatMap(LocalPlaylistCover.fileURL) != nil
+    }
+
+    private var canRemoveCover: Bool {
+        coverImage != nil || (hasLocalCover && !removesCover)
+    }
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 0) {
+                PlaylistEditHeader(
+                    name: $name,
+                    coverImage: $coverImage,
+                    currentUrl: currentUrl,
+                    canRemoveCover: canRemoveCover,
+                    onRemoveCover: {
+                        coverImage = nil
+                        removesCover = hasLocalCover
+                    }
+                )
+                .fixedSize(horizontal: false, vertical: true)
+                Form {
+                    if let wasSynced {
+                        Section {
+                            Toggle("Sync with YouTube Music", isOn: $syncs)
+                        } footer: {
+                            Text(syncFooter(wasSynced: wasSynced))
+                        }
+                    }
+
+                    if let error {
+                        Section {
+                            Label(error, systemImage: "exclamationmark.circle")
+                                .foregroundStyle(.red)
+                        }
+                    }
+                }
+                .scrollContentBackground(.hidden)
+            }
+            .background(alignment: .top) { PlaylistEditBackdrop(coverImage: coverImage, currentUrl: currentUrl) }
+            .background(Color(.systemGroupedBackground))
+            .navigationTitle("Edit Playlist")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                        .disabled(isSaving)
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    if isSaving {
+                        ProgressView()
+                    } else {
+                        Button("Done", action: save)
+                            .disabled(trimmedName.isEmpty)
+                    }
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+        .interactiveDismissDisabled(isSaving)
+        .task {
+            if let stored = try? await SyncBridge.store.fetchPlaylist(id: playlist.playlistId) {
+                wasSynced = stored.browseId != nil
+                syncs = stored.browseId != nil
+            }
         }
     }
 

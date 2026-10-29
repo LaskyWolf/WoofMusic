@@ -9,7 +9,21 @@
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
-		<false/>
+		<true/>
+		<key>UISceneConfigurations</key>
+		<dict>
+			<key>CPTemplateApplicationSceneSessionRoleApplication</key>
+			<array>
+				<dict>
+					<key>UISceneClassName</key>
+					<string>CPTemplateApplicationScene</string>
+					<key>UISceneConfigurationName</key>
+					<string>CarPlay</string>
+					<key>UISceneDelegateClassName</key>
+					<string>$(PRODUCT_MODULE_NAME).CarPlaySceneDelegate</string>
+				</dict>
+			</array>
+		</dict>
 	</dict>
 	<key>UIApplicationShortcutItems</key>
 	<array>
@@ -77,6 +91,14 @@
 				<string>tropdiscord</string>
 			</array>
 		</dict>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.laskywolf.Music.widgets</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>woofmusic</string>
+			</array>
+		</dict>
 	</array>
 	<key>INAlternativeAppNames</key>
 	<array>
@@ -89,5 +111,9 @@
 			<string>Woof</string>
 		</dict>
 	</array>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Save lyric share cards to your photos.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Take a new profile picture in YouTube Studio.</string>
 </dict>
 </plist>

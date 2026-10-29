@@ -33,7 +33,7 @@ enum DiscordDefaults {
     static let button2Url = "https://github.com/LaskyWolf/WoofMusic"
     static let stateTemplate = "{artist.name}"
     static let detailsTemplate = "{song.name}"
-    static let activityType = "2"
+    static let activityType = String(ActivityType.listening.rawValue)
     static let activityName = ""
     static let userStatus = "online"
     static let unknownArtist = "Unknown Artist"

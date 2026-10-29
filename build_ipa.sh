@@ -117,7 +117,7 @@ DERIVED_DATA_PATH="$CASE_SENSITIVE_MOUNT/DerivedDataApp"
 STAGE_DIR="$CASE_SENSITIVE_MOUNT/stage"
 OUTPUT_APP_PATH="$STAGE_DIR/$APPLICATION_NAME.app"
 PAYLOAD_DIR="$STAGE_DIR/Payload"
-# Named after the app version, e.g. WoofMusic-1.3.0.ipa.
+# Named after the app version, e.g. WoofMusic-1.4.0.ipa.
 MARKETING_VERSION="${MARKETING_VERSION:-$(sed -n 's/.*MARKETING_VERSION = \(.*\);/\1/p' "$WORKING_LOCATION/Trop.xcodeproj/project.pbxproj" | head -1)}"
 IPA_PATH="$BUILD_DIR/WoofMusic-$MARKETING_VERSION.ipa"
 FFMPEG_KIT_DIR="$BUILD_DIR/ffmpeg-kit-next"
@@ -174,23 +174,6 @@ fi
 # Idempotent: only runs while the pristine lowercase xcframeworks are present
 if [ -d "$FFMPEG_KIT_XCF/libavcodec.xcframework" ]; then
     rename_ffmpegkit_frameworks
-fi
-
-# Update the Xcode project references to the renamed xcframeworks. Runs only
-# while the project still references the pristine lowercase names; once renamed
-# (fk_*), the guard prevents a re-run from double-prefixing
-local_pbx="$WORKING_LOCATION/$PROJECT_NAME.xcodeproj/project.pbxproj"
-if ! grep -q "fk_libavcodec.xcframework" "$local_pbx"; then
-    echo "Updating project references to renamed ffmpeg-kit xcframeworks..."
-    sed -i '' \
-        -e 's/libavcodec\.xcframework/fk_libavcodec.xcframework/g' \
-        -e 's/libavdevice\.xcframework/fk_libavdevice.xcframework/g' \
-        -e 's/libavfilter\.xcframework/fk_libavfilter.xcframework/g' \
-        -e 's/libavformat\.xcframework/fk_libavformat.xcframework/g' \
-        -e 's/libavutil\.xcframework/fk_libavutil.xcframework/g' \
-        -e 's/libswresample\.xcframework/fk_libswresample.xcframework/g' \
-        -e 's/libswscale\.xcframework/fk_libswscale.xcframework/g' \
-        "$local_pbx"
 fi
 
 cd "$BUILD_DIR"
@@ -307,9 +290,26 @@ if [ -f "$PAYLOAD_DIR/$APPLICATION_NAME.app/$APPLICATION_NAME" ]; then
     strip "$PAYLOAD_DIR/$APPLICATION_NAME.app/$APPLICATION_NAME"
 fi
 
+# Ad-hoc sign with the entitlements files, after strip (strip breaks a signature).
+# Sideloading tools read the App Group from this signature and register it,
+# so the widgets can read what the app writes. A failure only loses that.
+sign_with_entitlements() {
+    local app="$PAYLOAD_DIR/$APPLICATION_NAME.app"
+    local widget="$app/PlugIns/WoofWidgets.appex"
+    find "$app/Frameworks" -maxdepth 1 \( -name "*.framework" -o -name "*.dylib" \) \
+        -exec codesign -f -s - {} \; 2>/dev/null || true
+    if [ -d "$widget" ]; then
+        codesign -f -s - --entitlements "$WORKING_LOCATION/WoofWidgets/WoofWidgets.entitlements" "$widget" || return 1
+    fi
+    codesign -f -s - --entitlements "$WORKING_LOCATION/Trop/Trop.entitlements" "$app"
+}
+if ! sign_with_entitlements; then
+    echo "Warning: ad-hoc signing failed; widgets will show their placeholder after sideloading."
+fi
+
 cd "$STAGE_DIR"
 rm -f "$IPA_PATH"
-zip -vr "$IPA_PATH" "Payload"
+zip -qr "$IPA_PATH" "Payload"
 
 rm -rf "$PAYLOAD_DIR"
 

@@ -12,37 +12,63 @@ import SwiftUI
 struct ShimmerFill: View {
     var radius: CGFloat = 8
 
+    /// Set by `shimmerClock()` on a skeleton's root.
+    @Environment(\.shimmerPhase) private var sharedPhase
+
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1 / 30)) { timeline in
-            let sweep = (shimmerPhase(at: timeline.date) * 2 - 1)
-            Color(.systemGray5)
-                .overlay(
-                    GeometryReader { geo in
-                        let w = max(geo.size.width, 1)
-                        let h = max(geo.size.height, 1)
-                        LinearGradient(
-                            stops: [
-                                .init(color: .clear, location: 0),
-                                .init(color: .white.opacity(0.5), location: 0.5),
-                                .init(color: .clear, location: 1)
-                            ],
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        )
-                        .frame(width: w * 1.5, height: h)
-                        .offset(x: sweep * w)
-                    }
-                )
-                .clipShape(RoundedRectangle(cornerRadius: radius))
+        // A fill outside a clocked skeleton runs its own timeline.
+        if let sharedPhase {
+            fill(phase: sharedPhase)
+        } else {
+            TimelineView(.animation(minimumInterval: 1 / 30)) { timeline in
+                fill(phase: shimmerPhase(at: timeline.date))
+            }
         }
-        .allowsHitTesting(false)
-        .accessibilityHidden(true)
+    }
+
+    private func fill(phase: CGFloat) -> some View {
+        let sweep = phase * 2 - 1
+        return Color(.systemGray5)
+            .overlay(
+                GeometryReader { geo in
+                    let w = max(geo.size.width, 1)
+                    let h = max(geo.size.height, 1)
+                    LinearGradient(
+                        stops: [
+                            .init(color: .clear, location: 0),
+                            .init(color: .white.opacity(0.5), location: 0.5),
+                            .init(color: .clear, location: 1)
+                        ],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                    .frame(width: w * 1.5, height: h)
+                    .offset(x: sweep * w)
+                }
+            )
+            .clipShape(RoundedRectangle(cornerRadius: radius))
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
     }
 }
 
 private func shimmerPhase(at date: Date) -> CGFloat {
     let period: TimeInterval = 1.6
     return CGFloat(date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: period) / period)
+}
+
+extension EnvironmentValues {
+    /// 0...1 through the shimmer sweep, shared by every fill under `shimmerClock()`.
+    @Entry var shimmerPhase: CGFloat?
+}
+
+extension View {
+    /// Drives every `ShimmerFill` inside from one timeline, instead of one per block.
+    func shimmerClock() -> some View {
+        TimelineView(.animation(minimumInterval: 1 / 30)) { timeline in
+            self.environment(\.shimmerPhase, shimmerPhase(at: timeline.date))
+        }
+    }
 }
 
 // MARK: - Placeholder primitive
@@ -167,13 +193,16 @@ struct ShimmerChips: View {
 /// Home's loading placeholder, in the order `HomeViewModel` sorts sections:
 /// Keep Listening, Quick Picks, then card carousels and song columns.
 struct ShimmerLoadingView: View {
-    private enum Section: Hashable { case keepListening, quickPicks, squares, list }
+    private enum Section: Hashable { case keepListening, quickPicks, squares, list, dials }
 
     /// A mood chip's feed: the real chips are already on screen above, and
     /// the feed has none of the local sections (Keep Listening, Quick Picks).
     var isChipFeed = false
+    /// The Podcasts chip's feed: shelves of `RadioDialTile` shows.
+    var isPodcastFeed = false
 
     private var sections: [Section] {
+        if isPodcastFeed { return [.dials, .dials, .dials] }
         let local: [Section] = isChipFeed
             ? []
             : [.keepListening] + (SettingsStore.shared.showQuickPicks ? [.quickPicks] : [])
@@ -190,12 +219,14 @@ struct ShimmerLoadingView: View {
                     case .quickPicks: quickPicksSection
                     case .squares: squaresSection
                     case .list: listSection
+                    case .dials: dialsSection
                     }
                 }
             }
         }
         .scrollIndicators(.hidden)
         .allowsHitTesting(false)
+        .shimmerClock()
     }
 
     /// Same box as `HorizontalSection`: title, content, then the section gap.
@@ -274,6 +305,50 @@ struct ShimmerLoadingView: View {
                 .padding(.horizontal, DesignTokens.screenHPadding)
             }
         }
+    }
+
+    private var dialsSection: some View {
+        section {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(alignment: .top, spacing: DesignTokens.cardSpacing) {
+                    ForEach(0..<3, id: \.self) { _ in dialTile }
+                }
+                .padding(.horizontal, DesignTokens.screenHPadding)
+            }
+        }
+    }
+
+    /// `RadioDialTile`'s card: the empty ON AIR row, centred artwork, title and
+    /// author lines, then the tuning scale beside the play button.
+    private var dialTile: some View {
+        typealias Tile = RadioDialTile
+        let button = NewReleaseCard.buttonSize
+        return VStack(alignment: .leading, spacing: 0) {
+            ShimmerBlock(width: Tile.artSize, height: Tile.artSize, radius: 10)
+                .frame(maxWidth: .infinity)
+                // The ON AIR row: 16pt tall plus its 6pt gap.
+                .padding(.top, 22)
+                .padding(.bottom, 8)
+            ShimmerBlock(width: 110, height: 14, radius: 4)
+            ShimmerBlock(width: 80, height: 12, radius: 4)
+                .padding(.top, 6)
+
+            Spacer(minLength: 8)
+
+            HStack(spacing: 10) {
+                // Thin bar at the foot of the 22pt tuning scale.
+                ShimmerFill(radius: 2)
+                    .frame(height: 4)
+                    .frame(height: 22, alignment: .bottom)
+                ShimmerBlock(width: button, height: button, radius: button / 2)
+            }
+        }
+        .padding(Tile.inset)
+        .frame(width: Tile.size.width, height: Tile.size.height, alignment: .top)
+        .background(
+            KeepListeningStrip.cardColor,
+            in: RoundedRectangle(cornerRadius: Tile.radius, style: .continuous)
+        )
     }
 
     /// Song columns like `songsSection`: four 64pt rows each, a column as wide

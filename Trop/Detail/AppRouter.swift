@@ -22,6 +22,8 @@ final class AppRouter: ObservableObject {
     @Published var selectedTabIndex = 0
     /// Set by the "Search" quick action; SearchView opens its field and clears it.
     @Published var focusSearchField = false
+    /// Set by Siri's search; SearchView submits it and clears it.
+    @Published var pendingSearchQuery: String?
 
     /// Last route opened from an overlay; ContentView listens to collapse the player.
     @Published private(set) var activeRoute: DetailRoute?
@@ -49,6 +51,25 @@ final class AppRouter: ObservableObject {
         case 2: explorePath.removeLast()
         case 3: searchPath.removeLast()
         default: homePath.removeLast()
+        }
+    }
+
+    /// Sends a tab's index when it is tapped again at its root page.
+    let tabReselected = PassthroughSubject<Int, Never>()
+
+    /// Tapping the selected tab again first pops its pushed pages; at the
+    /// root it asks the tab's feed to clear its filter and scroll to the top.
+    func reselectTab(_ tab: Int) {
+        guard tab == selectedTabIndex else { return }
+        guard activePathDepth > 0 else {
+            tabReselected.send(tab)
+            return
+        }
+        switch tab {
+        case 1: libraryPath = NavigationPath()
+        case 2: explorePath = NavigationPath()
+        case 3: searchPath = NavigationPath()
+        default: homePath = NavigationPath()
         }
     }
 
@@ -84,15 +105,8 @@ private struct RouterSheetModifier: ViewModifier {
                 DetailRouteDestinationView(route: route)
                     .detailRouteDestinations()
             }
-            .environment(\.isInRouterSheet, true)
         }
     }
-}
-
-extension EnvironmentValues {
-    /// True for pages shown by `routerSheet()`, so custom top bars can clear
-    /// the sheet's rounded corners.
-    @Entry var isInRouterSheet = false
 }
 
 extension View {

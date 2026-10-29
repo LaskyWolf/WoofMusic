@@ -88,6 +88,15 @@ struct PlayPauseGlyph: View {
         color.map { AnyShapeStyle($0) } ?? AnyShapeStyle(.tint)
     }
 
+    /// Every caller shows the now-playing item, so a podcast episode swaps
+    /// play/pause for a microphone: on while playing, crossed out while paused.
+    private func symbol(playing: Bool) -> String {
+        if NowPlaying.shared.musicVideoType == "MUSIC_VIDEO_TYPE_PODCAST_EPISODE" {
+            return playing ? "mic.fill" : "mic.slash.fill"
+        }
+        return playing ? "pause.fill" : "play.fill"
+    }
+
     var body: some View {
         let isLoading = NowPlaying.shared.isLoadingTrack
         ZStack {
@@ -100,7 +109,7 @@ struct PlayPauseGlyph: View {
                     .transition(.opacity)
             } else {
                 // A moon replaces the button while the sleep timer animation plays.
-                Image(systemName: SleepTimer.shared.isCelebrating ? "moon.fill" : ((playingBeforeLoad ?? isPlaying) ? "pause.fill" : "play.fill"))
+                Image(systemName: SleepTimer.shared.isCelebrating ? "moon.fill" : symbol(playing: playingBeforeLoad ?? isPlaying))
                     .font(.system(size: size))
                     .foregroundStyle(style)
                     .contentTransition(.symbolEffect(.replace))
@@ -146,6 +155,8 @@ struct PlaybackControlsRow: View {
     let onPrevious: () -> Void
     let onPlayPause: () -> Void
     let onNext: () -> Void
+    /// The karaoke mascot or the radio antenna stands in its place.
+    var hidesPlayPause = false
     @State private var previousAnimation = 0
     @State private var nextAnimation = 0
 
@@ -165,6 +176,10 @@ struct PlaybackControlsRow: View {
             .accessibilityLabel("Previous")
 
             PlayerPlayPauseButton(isPlaying: isPlaying, action: onPlayPause)
+                // Turns edge-on, like a coin, while the stand-in turns face-up in its place.
+                .rotation3DEffect(.degrees(hidesPlayPause ? -90 : 0), axis: (x: 0, y: 1, z: 0), perspective: 0.5)
+                .opacity(hidesPlayPause ? 0 : 1)
+                .allowsHitTesting(!hidesPlayPause)
 
             Button {
                 nextAnimation &+= 1

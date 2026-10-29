@@ -16,12 +16,19 @@ struct GeniusProvider: LyricsProvider {
     private let searchBase = "https://genius.com/api/search/song"
 
     func fetch(query: LyricsQuery) async throws -> [LyricLine] {
+        // A network error is passed on, so being offline is not taken for "no lyrics".
+        var networkError: (any Error)?
         for title in titleVariants(query.title) {
-            if let lines = try? await fetchOnce(artist: query.artist, title: title), !lines.isEmpty {
-                return lines
+            do {
+                let lines = try await fetchOnce(artist: query.artist, title: title)
+                if !lines.isEmpty { return lines }
+            } catch is LyricsError {
+                continue
+            } catch {
+                networkError = error
             }
         }
-        throw LyricsError.notFound
+        throw networkError ?? LyricsError.notFound
     }
 
     // MARK: - Search + scrape

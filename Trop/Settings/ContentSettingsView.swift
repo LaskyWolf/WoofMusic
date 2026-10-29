@@ -29,6 +29,7 @@ struct ContentSettingsView: View {
                 } label: {
                     Label("Size", systemImage: "square.grid.3x3")
                 }
+                .disabled(!settings.showQuickPicks)
             } header: {
                 Text("Home Feed")
             }

@@ -4,6 +4,7 @@
 //
 
 import AppIntents
+import SwiftUI
 
 // Siri and Shortcuts actions. Phrases must contain the app's name; the
 // Info.plist adds "Woof Music" and "Woof" as alternative names so they don't
@@ -63,6 +64,10 @@ struct PlayMusicIntent: AudioPlaybackIntent {
         let sections: [SearchSection]
         do {
             sections = SearchParser.parseSearchResults(from: try await SearchService.shared.search(query: text))
+        } catch let error as URLError {
+            // Usually offline.
+            if error.code != .cancelled { Log.search.notice("Siri search failed: \(error)") }
+            return .result(dialog: "I couldn't search Woof Music right now.")
         } catch {
             Log.search.error("Siri search failed: \(error)")
             return .result(dialog: "I couldn't search Woof Music right now.")
@@ -79,27 +84,26 @@ struct PlayMusicIntent: AudioPlaybackIntent {
     }
 }
 
-struct PlayPauseIntent: AudioPlaybackIntent {
-    static var title: LocalizedStringResource = "Play or Pause"
-    static var description = IntentDescription("Pauses the song that's playing, or resumes the last one.")
+/// "Search in Woof Music", or "Search Woof Music for …": opens the Search tab
+/// with the results. The system search schema lets Siri and Spotlight pass
+/// the words spoken after "for" as the search term.
+@AppIntent(schema: .system.search)
+struct SearchMusicIntent: ShowInAppSearchResultsIntent {
+    static var searchScopes: [StringSearchScope] = [.general]
+    var criteria: StringSearchCriteria
 
     @MainActor
     func perform() async throws -> some IntentResult {
-        PlayerController.shared.setPaused(NowPlaying.shared.isPlaying)
+        let router = AppRouter.shared
+        router.selectedTabIndex = 3
+        router.searchPath = NavigationPath()
+        router.pendingSearchQuery = criteria.term
         return .result()
     }
 }
 
-struct NextSongIntent: AudioPlaybackIntent {
-    static var title: LocalizedStringResource = "Next Song"
-    static var description = IntentDescription("Skips to the next song in the queue.")
-
-    @MainActor
-    func perform() async throws -> some IntentResult {
-        NowPlaying.shared.playNext()
-        return .result()
-    }
-}
+// PlayPauseIntent and NextSongIntent live in Shared/NowPlayingShared.swift:
+// the widget extension compiles them too.
 
 struct WoofMusicShortcuts: AppShortcutsProvider {
     static var appShortcuts: [AppShortcut] {
@@ -129,6 +133,15 @@ struct WoofMusicShortcuts: AppShortcutsProvider {
                 "Search and play in \(.applicationName)"
             ],
             shortTitle: "Play a Song or Artist",
+            systemImageName: "magnifyingglass"
+        )
+        AppShortcut(
+            intent: SearchMusicIntent(),
+            phrases: [
+                "Search in \(.applicationName)",
+                "Search \(.applicationName)"
+            ],
+            shortTitle: "Search",
             systemImageName: "magnifyingglass"
         )
         AppShortcut(

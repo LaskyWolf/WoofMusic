@@ -85,6 +85,7 @@ struct ExploreView: View {
                 pendingRoute: $pendingRoute,
                 newReleases: viewModel.newReleases
             )
+            .scrollsToTopOnTabReselect(2)
         }
         .scrollIndicators(.automatic)
         .miniPlayerTracksScroll()
@@ -287,7 +288,9 @@ private struct MoodRow: View {
 
     /// Only appended to, never read: observing it would redraw this view on every tab's navigation.
     private let router = AppRouter.shared
-    @State private var scrolledIndex: Int?
+    /// Set once the row has jumped to the middle copy, so coming back to the
+    /// row keeps the user's place.
+    @State private var centered = false
 
     /// The entries are repeated this many times and the row starts in the
     /// middle, so it never reaches an end in practice.
@@ -296,23 +299,31 @@ private struct MoodRow: View {
 
     init(entries: [MoodFamily.Entry]) {
         self.entries = entries
-        _scrolledIndex = State(initialValue: entries.count * Self.copies / 2)
     }
 
     var body: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            LazyHStack(spacing: DesignTokens.cardSpacing) {
-                ForEach(0..<entries.count * Self.copies, id: \.self) { index in
-                    card(entries[index % entries.count])
+        // A one-time scrollTo instead of `.scrollPosition(id:)`: that binding is
+        // written every time a card passes the middle of the row, and the row
+        // dropped a frame at each write.
+        ScrollViewReader { proxy in
+            ScrollView(.horizontal, showsIndicators: false) {
+                LazyHStack(spacing: DesignTokens.cardSpacing) {
+                    ForEach(0..<entries.count * Self.copies, id: \.self) { index in
+                        card(entries[index % entries.count])
+                    }
                 }
+                .scrollTargetLayout()
             }
-            .scrollTargetLayout()
+            .contentMargins(.horizontal, DesignTokens.screenHPadding, for: .scrollContent)
+            // The cards' glow reaches below the row.
+            .scrollClipDisabled()
+            .scrollTargetBehavior(.viewAligned)
+            .onAppear {
+                guard !centered else { return }
+                centered = true
+                proxy.scrollTo(entries.count * Self.copies / 2, anchor: .leading)
+            }
         }
-        .contentMargins(.horizontal, DesignTokens.screenHPadding, for: .scrollContent)
-        // The cards' glow reaches below the row.
-        .scrollClipDisabled()
-        .scrollPosition(id: $scrolledIndex, anchor: .leading)
-        .scrollTargetBehavior(.viewAligned)
     }
 
     @ViewBuilder
@@ -406,66 +417,80 @@ private struct MoodCard: View {
         .frame(width: size.width, height: size.height)
         .clipShape(shape)
         .shadow(color: color.opacity(0.4), radius: 6, y: 4)
+        // One bitmap per card, glow included: scrolling moves it instead of
+        // recompositing the gradients, symbol, clip and two shadows each frame.
+        // The padding keeps the glow inside the bitmap; the negative padding
+        // and the content shape keep the card's size and tap area.
+        .padding(Self.glowInset)
+        .drawingGroup()
+        .padding(-Self.glowInset)
+        .contentShape(shape)
     }
+
+    /// Room around the card for the glow (radius 6, 4 pt down).
+    private static let glowInset: CGFloat = 16
 
     /// An SF Symbol for the category, matched on words in its title. The
     /// more specific words come first ("K-Pop" before "Pop").
     fileprivate static func symbol(for title: String) -> String {
         let title = title.lowercased()
-        let symbols: [(words: [String], symbol: String)] = [
-            // Styles and places inside a family come first, so sub-genres differ.
-            (["brazil", "brasil", "samba", "bossa", "sertanejo", "funk"], "sun.max.fill"),
-            (["latin", "reggaeton", "salsa", "bachata", "tango"], "figure.dance"),
-            (["korean"], "sparkles"),
-            (["japanese", "j-rock", "anime"], "moon.stars.fill"),
-            (["old school", "oldies", "classic", "retro", "90s", "80s", "70s", "60s"], "clock.arrow.circlepath"),
-            (["trap", "drill", "grime"], "bolt.fill"),
-            (["gangsta", "hardcore", "punk", "grunge"], "flame.fill"),
-            (["underground", "lo-fi", "lofi", "bedroom"], "headphones"),
-            (["conscious", "boom bap", "spoken"], "text.book.closed.fill"),
-            (["house", "techno", "trance", "club"], "waveform"),
-            (["singer", "songwriter", "unplugged"], "guitars"),
-            (["opera", "orchestra", "baroque", "symphon"], "pianokeys"),
-            (["swing", "bebop", "smooth"], "music.quarternote.3"),
-            (["dancehall", "ska", "dub"], "beach.umbrella.fill"),
-            (["western", "bluegrass", "honky"], "sun.horizon.fill"),
-            (["african", "afro"], "globe.africa.fill"),
-            (["arab", "middle east"], "globe.europe.africa.fill"),
-            (["indian", "bollywood"], "globe.asia.australia.fill"),
-            (["k-pop", "j-pop", "mandopop", "cantopop"], "sparkles"),
-            (["hip-hop", "hip hop", "rap"], "music.mic"),
-            (["r&b", "soul"], "music.mic.circle.fill"),
-            (["dance", "electronic", "edm"], "waveform"),
-            (["metal"], "flame.fill"),
-            (["rock"], "guitars.fill"),
-            (["folk", "acoustic"], "guitars"),
-            (["classical", "piano"], "pianokeys"),
-            (["jazz", "blues"], "music.quarternote.3"),
-            (["country"], "sun.horizon.fill"),
-            (["latin"], "figure.dance"),
-            (["reggae", "caribbean"], "beach.umbrella.fill"),
-            (["indie", "alternative"], "headphones"),
-            (["soundtrack", "musical", "film"], "film.fill"),
-            (["christian", "gospel"], "hands.sparkles.fill"),
-            (["family", "kids", "children"], "figure.2.and.child.holdinghands"),
-            (["holiday", "christmas"], "gift.fill"),
-            (["decade", "0s", "throwback"], "clock.arrow.circlepath"),
-            (["chill", "relax"], "leaf.fill"),
-            (["commut", "travel", "drive"], "car.fill"),
-            (["energy", "boost"], "bolt.fill"),
-            (["feel good", "happy"], "sun.max.fill"),
-            (["focus", "study"], "scope"),
-            (["gaming"], "gamecontroller.fill"),
-            (["party"], "party.popper.fill"),
-            (["romance", "love"], "heart.fill"),
-            (["sad"], "cloud.rain.fill"),
-            (["sleep"], "moon.zzz.fill"),
-            (["workout", "fitness", "running"], "figure.run"),
-            (["african", "arabic", "indian", "bollywood", "korean", "japanese", "world"], "globe"),
-            (["pop"], "star.fill")
-        ]
         return symbols.first { entry in entry.words.contains { title.contains($0) } }?.symbol ?? "music.note"
     }
+
+    /// Built once: a local array would be rebuilt for every card render and
+    /// for every genre of a family's menu.
+    private static let symbols: [(words: [String], symbol: String)] = [
+        // Styles and places inside a family come first, so sub-genres differ.
+        (["brazil", "brasil", "samba", "bossa", "sertanejo", "funk"], "sun.max.fill"),
+        (["latin", "reggaeton", "salsa", "bachata", "tango"], "figure.dance"),
+        (["korean"], "sparkles"),
+        (["japanese", "j-rock", "anime"], "moon.stars.fill"),
+        (["old school", "oldies", "classic", "retro", "90s", "80s", "70s", "60s"], "clock.arrow.circlepath"),
+        (["trap", "drill", "grime"], "bolt.fill"),
+        (["gangsta", "hardcore", "punk", "grunge"], "flame.fill"),
+        (["underground", "lo-fi", "lofi", "bedroom"], "headphones"),
+        (["conscious", "boom bap", "spoken"], "text.book.closed.fill"),
+        (["house", "techno", "trance", "club"], "waveform"),
+        (["singer", "songwriter", "unplugged"], "guitars"),
+        (["opera", "orchestra", "baroque", "symphon"], "pianokeys"),
+        (["swing", "bebop", "smooth"], "music.quarternote.3"),
+        (["dancehall", "ska", "dub"], "beach.umbrella.fill"),
+        (["western", "bluegrass", "honky"], "sun.horizon.fill"),
+        (["african", "afro"], "globe.africa.fill"),
+        (["arab", "middle east"], "globe.europe.africa.fill"),
+        (["indian", "bollywood"], "globe.asia.australia.fill"),
+        (["k-pop", "j-pop", "mandopop", "cantopop"], "sparkles"),
+        (["hip-hop", "hip hop", "rap"], "music.mic"),
+        (["r&b", "soul"], "music.mic.circle.fill"),
+        (["dance", "electronic", "edm"], "waveform"),
+        (["metal"], "flame.fill"),
+        (["rock"], "guitars.fill"),
+        (["folk", "acoustic"], "guitars"),
+        (["classical", "piano"], "pianokeys"),
+        (["jazz", "blues"], "music.quarternote.3"),
+        (["country"], "sun.horizon.fill"),
+        (["latin"], "figure.dance"),
+        (["reggae", "caribbean"], "beach.umbrella.fill"),
+        (["indie", "alternative"], "headphones"),
+        (["soundtrack", "musical", "film"], "film.fill"),
+        (["christian", "gospel"], "hands.sparkles.fill"),
+        (["family", "kids", "children"], "figure.2.and.child.holdinghands"),
+        (["holiday", "christmas"], "gift.fill"),
+        (["decade", "0s", "throwback"], "clock.arrow.circlepath"),
+        (["chill", "relax"], "leaf.fill"),
+        (["commut", "travel", "drive"], "car.fill"),
+        (["energy", "boost"], "bolt.fill"),
+        (["feel good", "happy"], "sun.max.fill"),
+        (["focus", "study"], "scope"),
+        (["gaming"], "gamecontroller.fill"),
+        (["party"], "party.popper.fill"),
+        (["romance", "love"], "heart.fill"),
+        (["sad"], "cloud.rain.fill"),
+        (["sleep"], "moon.zzz.fill"),
+        (["workout", "fitness", "running"], "figure.run"),
+        (["african", "arabic", "indian", "bollywood", "korean", "japanese", "world"], "globe"),
+        (["pop"], "star.fill")
+    ]
 
     /// Pantone colors (name, code, sRGB value as published by Pantone).
     private static let pantone: [(name: String, code: String, rgb: Int)] = [
@@ -492,7 +517,7 @@ private struct MoodCard: View {
         let index = key.flatMap { MoodFamily.names.firstIndex(of: $0) }
             ?? title.unicodeScalars.reduce(0) { $0 &+ Int($1.value) &* 31 }
         let rgb = pantone[(index % pantone.count + pantone.count) % pantone.count].rgb
-        return Color(red: Double((rgb >> 16) & 0xFF) / 255, green: Double((rgb >> 8) & 0xFF) / 255, blue: Double(rgb & 0xFF) / 255)
+        return Color(hex: UInt32(rgb))
     }
 }
 
@@ -591,6 +616,7 @@ private struct ExploreSkeletonView: View {
         }
         .scrollIndicators(.hidden)
         .allowsHitTesting(false)
+        .shimmerClock()
     }
 
     /// Card carousel: square cover, title and subtitle, like the real cards.
@@ -651,5 +677,6 @@ private struct MoodDetailSkeletonView: View {
         }
         .scrollIndicators(.hidden)
         .allowsHitTesting(false)
+        .shimmerClock()
     }
 }

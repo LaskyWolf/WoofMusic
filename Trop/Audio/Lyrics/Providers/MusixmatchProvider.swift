@@ -35,6 +35,9 @@ struct MusixmatchProvider: LyricsProvider {
             URLQueryItem(name: "q_duration", value: String(dur)),
             URLQueryItem(name: "f_subtitle_length", value: String(dur)),
             URLQueryItem(name: "usertoken", value: token),
+            // Adds word timing ("track.richsync.get") to the same macro response.
+            URLQueryItem(name: "optional_calls", value: "track.richsync"),
+            URLQueryItem(name: "richsync_compact_type", value: "words"),
             URLQueryItem(name: "part", value: "track_lyrics_translation_status,track_structure,track_performer_tagging")
         ]
 
@@ -94,6 +97,18 @@ struct MusixmatchProvider: LyricsProvider {
            let lyrics = lBody["lyrics"] as? [String: Any],
            (lyrics["restricted"] as? Bool) == true {
             throw LyricsError.notFound
+        }
+
+        // Word-synced
+        if let richCall = macro["track.richsync.get"] as? [String: Any],
+           let rMessage = richCall["message"] as? [String: Any],
+           let rHeader = rMessage["header"] as? [String: Any],
+           (rHeader["status_code"] as? Int) == 200,
+           let rBody = rMessage["body"] as? [String: Any],
+           let richsync = rBody["richsync"] as? [String: Any],
+           let richBody = richsync["richsync_body"] as? String {
+            let lines = LyricsParsing.parseRichsync(richBody)
+            if !lines.isEmpty { return lines }
         }
 
         // Synced

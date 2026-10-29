@@ -555,16 +555,6 @@ struct EpisodeItem {
             viewsText: viewsText
         )
     }
-
-    /// "17k views • 4 hr ago • 1 hr 23 mins" meta line under each episode.
-    var metaLine: String {
-        var parts: [String] = []
-        if let views = viewsText, !views.isEmpty { parts.append(views) }
-        if let date = publishDate, !date.isEmpty { parts.append(date) }
-        let durationStr = duration.wordsDuration
-        if !durationStr.isEmpty { parts.append(durationStr) }
-        return parts.joined(separator: " • ")
-    }
 }
 
 // MARK: - Web URL
@@ -637,7 +627,10 @@ extension EpisodeItem {
             thumbnailUrl: thumbnailUrl,
             isExplicit: false,
             playlistId: nil,
-            likeStatus: nil
+            likeStatus: nil,
+            // The player response rarely names the type: the first clients
+            // tried are not YouTube Music ones. The queue item carries it instead.
+            musicVideoType: "MUSIC_VIDEO_TYPE_PODCAST_EPISODE"
         )
     }
 }
@@ -656,6 +649,7 @@ extension SongItem {
         self.isExplicit = false
         self.playlistId = nil
         self.likeStatus = nil
+        self.musicVideoType = entity.isEpisode ? "MUSIC_VIDEO_TYPE_PODCAST_EPISODE" : nil
     }
 
     init(entity: DownloadedTrackEntity) {

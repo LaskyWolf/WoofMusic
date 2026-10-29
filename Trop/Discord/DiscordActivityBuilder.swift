@@ -18,7 +18,7 @@ enum DiscordActivityBuilder {
         startTimestamp: Int64,
         endTimestamp: Int64?,
         advancedMode: Bool,
-        activityType: Int = DiscordActivity.typeListening,
+        activityType: Int = ActivityType.listening.rawValue,
         activityName: String? = nil,
         stateTemplate: String = DiscordDefaults.stateTemplate,
         detailsTemplate: String = DiscordDefaults.detailsTemplate,

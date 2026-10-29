@@ -5,7 +5,6 @@
 //  Created by 686udjie on 06/07/2026.
 //
 
-import Combine
 import SwiftUI
 
 // MARK: - View Model
@@ -48,11 +47,18 @@ final class PodcastDetailViewModel {
                 parsed.episodes, podcastId: browseId, podcastName: parsed.title
             )
             if SettingsStore.shared.autoDownloadNewEpisodes, !fresh.isEmpty {
-                for episode in fresh.prefix(10) {
-                    await DownloadManager.shared.download(song: episode.toSongItem())
+                // Not tied to the view: the episodes are already marked as known,
+                // so leaving the page must not cancel the rest of the downloads.
+                let songs = fresh.prefix(10).map { $0.toSongItem() }
+                Task {
+                    for song in songs {
+                        await DownloadManager.shared.download(song: song)
+                    }
                 }
             }
         } catch {
+            // Leaving the page cancels the load: keep isLoading so the next appear retries.
+            if error.isCancellation { return }
             self.error = error
             isLoading = false
         }
@@ -416,9 +422,6 @@ extension PodcastDetailViewModel {
 struct PodcastDetailView: View {
     let browseId: String
     @State private var viewModel: PodcastDetailViewModel
-    @State private var showMoreSheet = false
-
-    @Environment(\.dismiss) private var dismiss
 
     init(browseId: String) {
         self.browseId = browseId
@@ -445,16 +448,6 @@ struct PodcastDetailView: View {
             guard viewModel.isLoading else { return }
             await viewModel.load()
         }
-        .sheet(isPresented: $showMoreSheet) {
-            if let podcast = viewModel.podcast {
-                PodcastMoreSheet(
-                    podcast: podcast,
-                    isSubscribed: viewModel.isSubscribed,
-                    onToggleSubscribe: { Task { await viewModel.toggleSubscribe() } },
-                    onPlayAll: { playAll(podcast) }
-                )
-            }
-        }
     }
 
     @ViewBuilder
@@ -462,6 +455,8 @@ struct PodcastDetailView: View {
         LazyVStack(spacing: 0) {
             header(for: podcast)
                 .padding(.bottom, 8)
+
+            CurrentEpisodeCard(episodes: podcast.episodes) { playEpisode($0, in: podcast) }
 
             if podcast.episodes.isEmpty {
                 VStack(spacing: 8) {
@@ -471,89 +466,118 @@ struct PodcastDetailView: View {
                         .foregroundColor(.secondary)
                 }
             } else {
-                episodeList(for: podcast)
+                // Episodes come newest first.
+                episodeRow("Latest", podcast.episodes.prefix(Self.latestCount), in: podcast)
+                if podcast.episodes.count > Self.latestCount {
+                    episodeRow("Earlier", podcast.episodes.dropFirst(Self.latestCount), in: podcast)
+                }
             }
         }
     }
 
     @ViewBuilder
     private func header(for podcast: PodcastDetailInfo) -> some View {
-        // YouTube Music-style podcast header: artwork on top, show details
-        // stacked underneath, then a Subscribe pill + playlist-style ⋮
-        // overflow button. No big play button — playback starts per-episode.
         VStack(spacing: 10) {
-            HeroArtworkView(url: podcast.thumbnailUrl)
+            DetailHeaderCard(meta: kindLine(for: podcast), title: podcast.title) {
+                AsyncImageView(url: podcast.thumbnailUrl)
+                    .clipShape(RoundedRectangle(cornerRadius: DesignTokens.cardRadius, style: .continuous))
+            } secondary: {
+                if let author = podcast.author, !author.isEmpty {
+                    authorChip(author)
+                        .padding(.top, 4)
+                }
+            } buttons: {
+                Menu {
+                    Button(
+                        viewModel.isSubscribed ? "Unsubscribe" : "Subscribe",
+                        systemImage: viewModel.isSubscribed ? "minus.circle" : "plus.circle"
+                    ) { Task { await viewModel.toggleSubscribe() } }
+                    if let url = URL(string: "https://music.youtube.com/browse/\(podcast.browseId)") {
+                        ShareLink(item: url) {
+                            Label("Share", systemImage: "square.and.arrow.up")
+                        }
+                    }
+                    Section {
+                        Button("Play All", systemImage: "play.fill") { playAll(podcast) }
+                        SongsMenuActions(songs: podcast.episodes.map { $0.toSongItem() })
+                    }
+                    .disabled(podcast.episodes.isEmpty)
+                } label: {
+                    HeaderRoundIcon(systemImage: "ellipsis")
+                        .accessibilityLabel("More options")
+                }
+                .menuOrder(.fixed)
 
-            Text(podcast.title)
-                .font(.title2)
-                .fontWeight(.bold)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 24)
-
-            if let author = podcast.author, !author.isEmpty {
-                Text(author)
-                    .font(.subheadline)
-                    .fontWeight(.medium)
-                    .foregroundColor(.secondary)
-            }
-
-            if !podcast.episodes.isEmpty {
-                Text("\(podcast.episodes.count) episode\(podcast.episodes.count != 1 ? "s" : "")")
-                    .font(.subheadline)
-                    .foregroundStyle(.tertiary)
-            }
-
-            if let desc = podcast.descriptionText, !desc.isEmpty {
-                ExpandableDescriptionText(text: desc, collapsedLimit: 160, alignment: .center)
-                    .padding(.horizontal, 32)
-                    .padding(.top, 2)
-            }
-
-            // Subscribe + overflow, matching the playlist header controls.
-            HStack(spacing: 16) {
                 Button(action: {
                     Task { await viewModel.toggleSubscribe() }
                 }, label: {
-                    Label(
-                        viewModel.isSubscribed ? "Subscribed" : "Subscribe",
-                        systemImage: viewModel.isSubscribed ? "bookmark.fill" : "bookmark"
-                    )
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(viewModel.isSubscribed ? Color.accentColor : Color.primary)
-                    .padding(.horizontal, 20)
-                    .frame(height: 44)
-                    .background(
-                        Capsule()
-                            .fill(Color(.secondarySystemGroupedBackground))
+                    HeaderRoundIcon(
+                        systemImage: viewModel.isSubscribed ? "bookmark.fill" : "bookmark",
+                        tint: viewModel.isSubscribed ? SettingsStore.shared.accentColor : .primary
                     )
                 })
-                .buttonStyle(.plain)
                 .accessibilityLabel(viewModel.isSubscribed ? "Unsubscribe from podcast" : "Subscribe to podcast")
 
-                Button(action: { showMoreSheet = true }, label: {
-                    Text("⋮")
-                        .font(.title3)
-                        .foregroundStyle(.primary)
-                        .frame(width: 48, height: 48)
-                        .background(Circle().fill(Color(.secondarySystemGroupedBackground)))
-                })
-                .buttonStyle(.plain)
-                .accessibilityLabel("More options")
+                if !podcast.episodes.isEmpty {
+                    Button(action: { playOrResume(podcast) }, label: {
+                        HeaderRoundIcon(systemImage: "play.fill", primary: SettingsStore.shared.accentColor)
+                    })
+                    .accessibilityLabel("Play")
+                }
             }
-            .padding(.top, 4)
+
+            if let desc = podcast.descriptionText, !desc.isEmpty {
+                ExpandableDescriptionText(text: desc, collapsedLimit: 110)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, DesignTokens.screenHPadding + 4)
+            }
         }
         .padding(.vertical, 16)
+        .frame(maxWidth: .infinity)
+        // Same backdrop as the playlist and album headers.
+        .background(alignment: .top) {
+            BlurredArtworkBackdrop(url: podcast.thumbnailUrl)
+        }
     }
 
-    @ViewBuilder
-    private func episodeList(for podcast: PodcastDetailInfo) -> some View {
-        // No VStack wrapper: the ForEach must sit directly in the parent LazyVStack to stay lazy.
-        ForEach(Array(podcast.episodes.enumerated()), id: \.offset) { _, episode in
-            EpisodeRowView(
-                episode: episode,
-                onTap: { playEpisode(episode, in: podcast) },
-                onNavigate: { AppRouter.shared.open($0) }
-            )
+    private func kindLine(for podcast: PodcastDetailInfo) -> String {
+        let count = podcast.episodes.count
+        guard count > 0 else { return "Podcast" }
+        return "Podcast · \(count) episode\(count == 1 ? "" : "s")"
+    }
+
+    /// The show's author in a glass capsule, styled like the playlist people chip.
+    /// Podcasts carry no author picture, so the initial stands in for the avatar.
+    private func authorChip(_ author: String) -> some View {
+        HStack(spacing: 6) {
+            Text(author.prefix(1).uppercased())
+                .font(.system(size: 10, weight: .bold))
+                .foregroundStyle(.white)
+                .frame(width: 20, height: 20)
+                .background(Circle().fill(SettingsStore.shared.accentColor))
+                .accessibilityHidden(true)
+            Text(author)
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+        }
+        .padding(.leading, 4)
+        .padding(.trailing, 10)
+        .padding(.vertical, 4)
+        .glassEffect(.regular, in: Capsule())
+    }
+
+    /// Episodes in the "Latest" row; the rest go to "Earlier".
+    static let latestCount = 6
+
+    /// A horizontal row of episode tiles. The tiles' glow reaches below the row, so it doesn't clip.
+    private func episodeRow(_ title: String, _ episodes: ArraySlice<EpisodeItem>, in podcast: PodcastDetailInfo) -> some View {
+        HorizontalSection(title: title, clipsContent: false) {
+            LazyHStack(alignment: .top, spacing: DesignTokens.cardSpacing) {
+                ForEach(episodes, id: \.videoId) { episode in
+                    EpisodeDialTile(episode: episode) { playEpisode(episode, in: podcast) }
+                }
+            }
         }
     }
 
@@ -561,6 +585,17 @@ struct PodcastDetailView: View {
 
     private func playAll(_ podcast: PodcastDetailInfo) {
         PlaybackQueue.play(podcast.episodes.map { $0.toSongItem() }, log: Log.podcastDetail, context: "playAll")
+    }
+
+    /// Resumes the most recently listened unfinished episode, else plays the show from the top.
+    private func playOrResume(_ podcast: PodcastDetailInfo) {
+        Task {
+            if let resume = await CurrentEpisodeCard.latestInProgress(in: podcast.episodes) {
+                playEpisode(resume.episode, in: podcast)
+            } else {
+                playAll(podcast)
+            }
+        }
     }
 
     private func playEpisode(_ episode: EpisodeItem, in podcast: PodcastDetailInfo) {
@@ -588,85 +623,247 @@ struct PodcastDetailView: View {
     }
 }
 
-// MARK: - Podcast More Sheet
+// MARK: - Current episode card
 
-/// Overflow menu matching PlaylistMoreSheet, with Subscribe as the
-/// first row (mirrors podcast.subscribed_at).
-struct PodcastMoreSheet: View {
-    let podcast: PodcastDetailInfo
-    let isSubscribed: Bool
-    var onToggleSubscribe: (() -> Void)?
-    var onPlayAll: (() -> Void)?
+/// Wide dial card over the episode rows: the episode the player holds when it
+/// is from this show, else the most recently listened unfinished one.
+/// Hidden when neither exists.
+private struct CurrentEpisodeCard: View {
+    let episodes: [EpisodeItem]
+    var onPlay: (EpisodeItem) -> Void
 
-    @Environment(\.dismiss) private var dismiss
+    @State private var resume: (episode: EpisodeItem, saved: EpisodePosition)?
+    @State private var colors: [Color]?
+
+    static let artSize: CGFloat = 70
+
+    /// Most recently updated saved position past 10 s and not finished: the
+    /// same threshold `playEpisode` uses to resume.
+    static func latestInProgress(in episodes: [EpisodeItem]) async -> (episode: EpisodeItem, saved: EpisodePosition)? {
+        var latest: (episode: EpisodeItem, saved: EpisodePosition)?
+        for episode in episodes {
+            guard let saved = await EpisodePlaybackStore.shared.position(for: episode.videoId),
+                  saved.position > 10, !saved.isFinished,
+                  saved.updatedAt > (latest?.saved.updatedAt ?? .distantPast) else { continue }
+            latest = (episode: episode, saved: saved)
+        }
+        return latest
+    }
 
     var body: some View {
-        SheetChrome {
-            MenuCard {
-                MenuRow(
-                    icon: isSubscribed ? "checkmark.circle.fill" : "plus.circle",
-                    title: isSubscribed ? "Subscribed" : "Subscribe",
-                    subtitle: isSubscribed ? "Unsubscribe from this podcast" : "Get new episodes in your library"
-                ) {
-                    onToggleSubscribe?()
-                    dismiss()
-                }
-                Divider()
-                MenuRow(
-                    icon: "play.fill",
-                    title: "Play All",
-                    subtitle: "Play episodes from the top"
-                ) {
-                    onPlayAll?()
-                    dismiss()
-                }
-                Divider()
-                MenuRow(
-                    icon: "list.bullet",
-                    title: "Add to Queue",
-                    subtitle: "Add to the end of the queue"
-                ) {
-                    addToQueue()
-                    dismiss()
-                }
-                Divider()
-                MenuRow(
-                    icon: "square.and.arrow.down",
-                    title: "Download",
-                    subtitle: "Download episodes for offline playback"
-                ) {
-                    downloadAll()
-                    dismiss()
-                }
-                Divider()
-                MenuRow(
-                    icon: "square.and.arrow.up",
-                    title: "Share",
-                    subtitle: "Share this podcast with others"
-                ) {
-                    share()
-                    dismiss()
-                }
+        let np = NowPlaying.shared
+        // The player's item, playing or paused, when it is one of this show's episodes.
+        let current = episodes.first { $0.videoId == np.videoId }
+        let shown = current ?? resume?.episode
+
+        // A VStack rather than a Group: an empty Group never runs its task.
+        VStack(spacing: 0) {
+            if let shown {
+                card(shown, isCurrent: current != nil, saved: current == nil ? resume?.saved : nil)
             }
         }
-    }
-
-    private func addToQueue() {
-        let np = NowPlaying.shared
-        np.queueSongs.append(contentsOf: podcast.episodes.map { $0.toSongItem() })
-        np.persistQueueState()
-    }
-
-    private func downloadAll() {
-        for episode in podcast.episodes {
-            Task { await DownloadManager.shared.download(song: episode.toSongItem()) }
+        // Pausing or changing episode saves a position: reload it then.
+        .task(id: "\(episodes.count)|\(np.videoId ?? "")|\(np.isPlaying)") {
+            resume = await Self.latestInProgress(in: episodes)
+        }
+        .task(id: shown?.videoId) {
+            guard let shown else { return }
+            let loaded = await ReleaseColors.load(key: shown.videoId, url: shown.thumbnailUrl)
+            withAnimation(.easeInOut(duration: 0.4)) { colors = loaded }
         }
     }
 
-    private func share() {
-        guard let url = URL(string: "https://music.youtube.com/browse/\(podcast.browseId)") else { return }
-        presentShareSheet(items: [url])
-        dismiss()
+    private func card(_ episode: EpisodeItem, isCurrent: Bool, saved: EpisodePosition?) -> some View {
+        DialCard(colors: colors, progress: isCurrent ? nil : (saved?.progress ?? 0)) {
+            HStack(alignment: .top, spacing: 12) {
+                AsyncImageView(url: episode.thumbnailUrl)
+                    .frame(width: Self.artSize, height: Self.artSize)
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .shadow(color: .black.opacity(0.35), radius: 6, x: 2, y: 4)
+
+                VStack(alignment: .leading, spacing: 6) {
+                    EpisodeStatusTag(isCurrent: isCurrent, saved: saved)
+                    Text(episode.title)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .lineLimit(2)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.bottom, 8)
+
+            if let desc = episode.descriptionText, !desc.isEmpty {
+                Text(desc)
+                    .font(.caption)
+                    .foregroundStyle(.white.opacity(0.75))
+                    .lineLimit(2)
+                    .padding(.bottom, 4)
+            }
+            Text(episode.dateAndLength)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.white.opacity(0.6))
+                .lineLimit(1)
+        }
+        .overlay(alignment: .bottomTrailing) {
+            DialPlayButton(isCurrent: isCurrent) { play(episode, isCurrent: isCurrent) }
+                .padding(RadioDialTile.inset)
+        }
+        .padding(.horizontal, DesignTokens.screenHPadding)
+        .padding(.bottom, DesignTokens.sectionGap)
+    }
+
+    private func play(_ episode: EpisodeItem, isCurrent: Bool) {
+        if isCurrent {
+            PlayerController.shared.togglePlayPause()
+        } else {
+            onPlay(episode)
+        }
+    }
+}
+
+// MARK: - Episode tile
+
+/// One episode in a "Latest" / "Earlier" row, in the look of Home's `RadioDialTile`.
+/// Tap plays or resumes it (pause/resume while it is the current one);
+/// long press opens the song menu (queue, download, share…).
+private struct EpisodeDialTile: View {
+    let episode: EpisodeItem
+    var onPlay: () -> Void
+
+    @State private var colors: [Color]?
+    /// Saved listening position; reloaded when the episode stops being current.
+    @State private var saved: EpisodePosition?
+
+    static let size = CGSize(width: 160, height: 286)
+    static let artSize: CGFloat = 118
+
+    init(episode: EpisodeItem, onPlay: @escaping () -> Void) {
+        self.episode = episode
+        self.onPlay = onPlay
+        _colors = State(initialValue: ReleaseColors.cache[episode.videoId])
+    }
+
+    var body: some View {
+        // This episode is the player's current item, playing or paused.
+        let isCurrent = NowPlaying.shared.videoId == episode.videoId
+
+        SongActionsMenu(song: episode.toSongItem(), onNavigate: { AppRouter.shared.open($0) }, asContextMenu: true) {
+            Button { play(isCurrent: isCurrent) } label: {
+                DialCard(colors: colors, size: Self.size, progress: isCurrent ? nil : (saved?.progress ?? 0)) {
+                    content(isCurrent: isCurrent)
+                }
+            }
+            .buttonStyle(ZoomPressStyle())
+        }
+        // On top of the card rather than inside its button, like `RadioDialTile`.
+        .overlay(alignment: .bottomTrailing) {
+            DialPlayButton(isCurrent: isCurrent) { play(isCurrent: isCurrent) }
+                .padding(RadioDialTile.inset)
+        }
+        // The fixed card height holds the text up to this size.
+        .dynamicTypeSize(...DynamicTypeSize.xLarge)
+        .task(id: episode.videoId) {
+            guard colors == nil,
+                  let extracted = await ReleaseColors.load(key: episode.videoId, url: episode.thumbnailUrl) else { return }
+            withAnimation(.easeInOut(duration: 0.4)) { colors = extracted }
+        }
+        // Reloads when the episode stops being current, so the needle keeps the position it reached.
+        .task(id: isCurrent ? nil : episode.videoId) {
+            guard !isCurrent else { return }
+            saved = await EpisodePlaybackStore.shared.position(for: episode.videoId)
+        }
+    }
+
+    @ViewBuilder
+    private func content(isCurrent: Bool) -> some View {
+        HStack(spacing: 4) {
+            EpisodeStatusTag(isCurrent: isCurrent, saved: saved)
+            Spacer(minLength: 0)
+            if episode.duration > 0 {
+                Text(episode.duration.formattedDuration)
+                    .font(.caption2.weight(.semibold))
+                    .monospacedDigit()
+                    .foregroundStyle(.white.opacity(0.75))
+            }
+        }
+        .frame(maxWidth: .infinity, minHeight: 16, alignment: .leading)
+        .padding(.bottom, 6)
+
+        AsyncImageView(url: episode.thumbnailUrl)
+            .frame(width: Self.artSize, height: Self.artSize)
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .shadow(color: .black.opacity(0.35), radius: 6, x: 2, y: 4)
+            .frame(maxWidth: .infinity)
+            .padding(.bottom, 8)
+
+        Text(episode.title)
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(.white)
+            .lineLimit(2, reservesSpace: true)
+        if let date = episode.publishDate, !date.isEmpty {
+            Text(date)
+                .font(.caption)
+                .foregroundStyle(.white.opacity(0.75))
+                .lineLimit(1)
+        }
+    }
+
+    private func play(isCurrent: Bool) {
+        if isCurrent {
+            PlayerController.shared.togglePlayPause()
+        } else {
+            onPlay()
+        }
+    }
+}
+
+// MARK: - Status tag
+
+/// ON AIR while the episode plays, minutes left while paused or in progress,
+/// PLAYED once finished (per `EpisodePosition.isFinished`), else nothing.
+private struct EpisodeStatusTag: View {
+    let isCurrent: Bool
+    let saved: EpisodePosition?
+
+    var body: some View {
+        let np = NowPlaying.shared
+        if isCurrent && np.isPlaying {
+            OnAirBadge()
+        } else if isCurrent, np.duration > 0 {
+            // Paused: the player's live position, newer than the saved one.
+            EpisodeTag(text: Self.minutesLeft(np.duration - np.currentTime))
+        } else if let saved, saved.isFinished {
+            EpisodeTag(text: "PLAYED")
+        } else if let saved, saved.position > 10 {
+            EpisodeTag(text: Self.minutesLeft(saved.remaining))
+        }
+    }
+
+    static func minutesLeft(_ seconds: Double) -> String {
+        "\(max(1, Int((seconds / 60).rounded()))) MIN LEFT"
+    }
+}
+
+/// Small white capsule label for the coloured dial cards, sized like `OnAirBadge`.
+private struct EpisodeTag: View {
+    let text: String
+
+    var body: some View {
+        Text(text)
+            .font(.system(size: 9, weight: .heavy))
+            .tracking(0.8)
+            .foregroundStyle(.white)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 3)
+            .background(Capsule().fill(Color.white.opacity(0.2)))
+            .lineLimit(1)
+    }
+}
+
+private extension EpisodeItem {
+    /// "4 hr ago · 1 hr 23 mins", leaving out whichever is missing.
+    var dateAndLength: String {
+        [publishDate ?? "", duration.wordsDuration].filter { !$0.isEmpty }.joined(separator: " · ")
     }
 }
 
@@ -678,9 +875,6 @@ struct PodcastMoreSheet: View {
 private struct ExpandableDescriptionText: View {
     let text: String
     var collapsedLimit: Int = 140
-    var alignment: TextAlignment = .leading
-    /// Tapping non-truncated text falls through here (e.g. play the episode).
-    var onInactiveTap: (() -> Void)?
 
     @State private var expanded = false
 
@@ -690,13 +884,8 @@ private struct ExpandableDescriptionText: View {
         Text(styledText)
             .font(.caption)
             .foregroundStyle(.secondary)
-            .multilineTextAlignment(alignment)
             .onTapGesture {
-                if isTruncated {
-                    expanded.toggle()
-                } else {
-                    onInactiveTap?()
-                }
+                if isTruncated { expanded.toggle() }
             }
             .accessibilityLabel(isTruncated ? (expanded ? "Show less" : "Show more") : "Description")
     }
@@ -705,7 +894,7 @@ private struct ExpandableDescriptionText: View {
         var str = AttributedString(displayText)
         guard isTruncated else { return str }
         var toggle = AttributedString(toggleLabel)
-        toggle.foregroundColor = .accentColor
+        toggle.foregroundColor = SettingsStore.shared.accentColor
         toggle.font = .caption.weight(.semibold)
         str.append(toggle)
         return str
@@ -719,102 +908,5 @@ private struct ExpandableDescriptionText: View {
     private var toggleLabel: String {
         guard isTruncated else { return "" }
         return expanded ? " Less" : "More"
-    }
-}
-
-// MARK: - Episode row matching YouTube Music: thumbnail + title +
-// description snippet + "views • date • duration" meta line.
-
-private struct EpisodeRowView: View {
-    let episode: EpisodeItem
-    var onTap: () -> Void
-    var onNavigate: ((DetailRoute) -> Void)?
-
-    /// Only this episode's downloaded flag: observing the whole manager would
-    /// redraw every visible row at each progress step of any download.
-    @State private var isDownloaded = false
-    @State private var progress: Double = 0
-    @State private var hasResume = false
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(alignment: .top, spacing: 12) {
-                AsyncImageView(url: episode.thumbnailUrl)
-                    .frame(width: DesignTokens.artSmall, height: DesignTokens.artSmall)
-                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                    .onTapGesture(perform: onTap)
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(episode.title)
-                        .font(.subheadline)
-                        .fontWeight(.semibold)
-                        .foregroundColor(.primary)
-                        .lineLimit(2)
-                        .onTapGesture(perform: onTap)
-
-                    if let desc = episode.descriptionText, !desc.isEmpty {
-                        // Own tap handling (expand/collapse) so toggling More
-                        // never starts playback; short text still plays.
-                        ExpandableDescriptionText(
-                            text: desc,
-                            collapsedLimit: 110,
-                            alignment: .leading,
-                            onInactiveTap: onTap
-                        )
-                    }
-
-                    HStack(spacing: 4) {
-                        if isDownloaded {
-                            Image(systemName: "arrow.down.circle.fill")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .accessibilityLabel("Downloaded")
-                        }
-                        Text(episode.metaLine)
-                            .font(.caption)
-                            .foregroundStyle(.tertiary)
-                            .lineLimit(1)
-                    }
-                    .onTapGesture(perform: onTap)
-                }
-
-                Spacer(minLength: 0)
-
-                SongActionsMenu(song: episode.toSongItem(), onNavigate: { onNavigate?($0) }) {
-                    MoreGlyph()
-                }
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 8)
-
-            if hasResume {
-                GeometryReader { geo in
-                    ZStack(alignment: .leading) {
-                        Capsule().fill(Color(.systemGray5))
-                        Capsule().fill(Color.accentColor)
-                            .frame(width: max(4, geo.size.width * progress))
-                    }
-                }
-                .frame(height: 3)
-                .padding(.leading, 100)
-                .padding(.trailing, 16)
-                .padding(.bottom, 6)
-            }
-        }
-        .onReceive(DownloadManager.shared.$tracks.map { [videoId = episode.videoId] in
-            $0.contains { $0.id == videoId }
-        }.removeDuplicates()) {
-            isDownloaded = $0
-        }
-        .task(id: episode.videoId) {
-            // Tracked progress drives the bar and auto-resume on tap.
-            if let saved = await EpisodePlaybackStore.shared.position(for: episode.videoId),
-               !saved.isFinished, saved.position > 10 {
-                progress = saved.progress
-                hasResume = true
-            } else {
-                hasResume = false
-            }
-        }
     }
 }

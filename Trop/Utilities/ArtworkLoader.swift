@@ -21,6 +21,12 @@ enum ArtworkLoader {
         ImagePipeline.shared.cache.cachedImage(for: ImageRequest(url: url), caches: .all)?.image
     }
 
+    /// Memory-cache hit only: no disk read or decode, so views can call it on
+    /// every redraw.
+    static func memoryImage(for url: URL) -> UIImage? {
+        ImagePipeline.shared.cache.cachedImage(for: ImageRequest(url: url), caches: .memory)?.image
+    }
+
     /// Cached image when present, otherwise fetches (and caches) it.
     static func image(for url: URL) async throws -> UIImage {
         try await ImagePipeline.shared.image(for: url)
@@ -29,43 +35,5 @@ enum ArtworkLoader {
     /// Best-effort cache warm, never throws.
     static func warm(_ url: URL) {
         Task { _ = try? await ImagePipeline.shared.image(for: url) }
-    }
-}
-
-/// App-side artwork helpers. CDN size rewriting lives in SwiftyTube's
-/// `ArtworkURLs`; this is only what the app adds on top.
-enum ArtworkURLs {
-    /// i.ytimg fallback artwork for a video id.
-    static func fallback(for videoId: String) -> String {
-        SwiftyTube.ArtworkURLs.fallback(for: videoId)
-    }
-
-    /// Rewrites a `w<N>-h<N>` thumbnail URL to the requested square size.
-    static func sized(_ url: String?, width: Int, height: Int) -> String? {
-        SwiftyTube.ArtworkURLs.sized(url, width: width, height: height)
-    }
-
-    // MARK: - Size ladder
-
-    /// Smallest ladder rung covering `pixels` (never below the row rung).
-    static func rung(for pixels: CGFloat) -> Int {
-        SwiftyTube.ArtworkURLs.rung(for: pixels)
-    }
-
-    // MARK: - CDN upgrade
-
-    /// Convenience: artwork at the player rung.
-    static func highRes(_ url: String?) -> String? {
-        SwiftyTube.ArtworkURLs.highRes(url)
-    }
-
-    /// 1280px variant of a ytimg thumbnail URL.
-    static func maxResVariant(_ url: String?) -> String? {
-        SwiftyTube.ArtworkURLs.maxResVariant(url)
-    }
-
-    /// 640px variant. Exists far more often than maxres, beats hqdefault.
-    static func sdVariant(_ url: String?) -> String? {
-        SwiftyTube.ArtworkURLs.sdVariant(url)
     }
 }

@@ -11,6 +11,7 @@ import MediaPlayer
 import Combine
 import AVFoundation
 import UIKit
+import os
 
 // MARK: - PlayerController
 
@@ -34,9 +35,23 @@ final class PlayerController {
     nonisolated(unsafe) private var eventLoopThread: Thread?
 
     nonisolated(unsafe) var isRunning = false
-    nonisolated(unsafe) var currentVideoId: String?
-    nonisolated(unsafe) var pendingVideoId: String?
+    /// Read on the mpv event thread and written on the main actor; Strings
+    /// can tear when raced, so both sit behind a lock.
+    nonisolated private let videoIds = OSAllocatedUnfairLock<(current: String?, pending: String?)>(
+        initialState: (nil, nil)
+    )
+    nonisolated var currentVideoId: String? {
+        get { videoIds.withLock { $0.current } }
+        set { videoIds.withLock { $0.current = newValue } }
+    }
+    nonisolated var pendingVideoId: String? {
+        get { videoIds.withLock { $0.pending } }
+        set { videoIds.withLock { $0.pending = newValue } }
+    }
     var currentLoudnessDb: Double?
+    /// False once mpv rejects the AutoMix bass filter; see `applyPlaybackSettings`.
+    private(set) var hasBassFilter = true
+    private var hasLoggedChainFailure = false
     var pendingURL: String?
     nonisolated(unsafe) var desiredPlaying = false
     private var wasPlayingBeforeInterruption = false
@@ -56,19 +71,19 @@ final class PlayerController {
     /// Position, time and queue length of the last progress sent to the lock
     /// screen, which counts forward from there by itself while playing.
     private var lastProgressPush: (position: TimeInterval, at: Date, queueCount: Int)?
+    /// Position written by the last progress update and when, so the lyrics
+    /// can count forward from it instead of asking mpv every frame.
+    private(set) var lastProgress: (position: TimeInterval, at: Date)?
 
-    var currentTime: TimeInterval {
+    var currentTime: TimeInterval { doubleProperty("time-pos") }
+
+    var duration: TimeInterval { doubleProperty("duration") }
+
+    /// A number property of the playing deck; 0 when unset or not ready.
+    private func doubleProperty(_ name: String) -> Double {
         withMpv { mpv in
             var val = Double(0)
-            mpv_get_property(mpv, "time-pos", MPV_FORMAT_DOUBLE, &val)
-            return val
-        } ?? 0
-    }
-
-    var duration: TimeInterval {
-        withMpv { mpv in
-            var val = Double(0)
-            mpv_get_property(mpv, "duration", MPV_FORMAT_DOUBLE, &val)
+            mpv_get_property(mpv, name, MPV_FORMAT_DOUBLE, &val)
             return val
         } ?? 0
     }
@@ -140,6 +155,9 @@ extension PlayerController {
             await PlaybackStateService.shared.startTracking(videoId: videoId)
             guard generation == playGeneration else { return }
         }
+        let podcastId = await PlaybackSpeed.show(ofEpisode: videoId)
+        guard generation == playGeneration else { return }
+        let speedValue = Self.fmt(PlaybackSpeed.shared.select(videoId: videoId, podcastId: podcastId))
 
         let isReady = withMpv { _ in true } ?? false
         guard isReady else {
@@ -162,7 +180,7 @@ extension PlayerController {
             mpv_set_property_string(mpv, "pause", pauseValue)
             // A cancelled crossfade can leave the deck faded or sped up.
             mpv_set_property_string(mpv, "volume", "100")
-            mpv_set_property_string(mpv, "speed", "1")
+            mpv_set_property_string(mpv, "speed", speedValue)
             return loadArguments.withUnsafeCArg { mpv_command(mpv, $0) }
         } ?? -1
         if cmdResult != 0 {
@@ -179,10 +197,12 @@ extension PlayerController {
         Crossfade.shared.finishNow()
         pendingSeek = (time, Date().addingTimeInterval(1.5))
         NowPlaying.shared.currentTime = time
+        // With nothing loaded the seek fails by design; the position is kept for `setPaused`.
+        let isLoaded = playState.value != .stopped
         withMpv { mpv in
             var val = time
             let result = mpv_set_property(mpv, "time-pos", MPV_FORMAT_DOUBLE, &val)
-            if result < 0 { Log.player.error("seek failed: mpv error \(result)") }
+            if result < 0, isLoaded { Log.player.error("seek failed: mpv error \(result)") }
         }
         // The progress timer is stopped while paused.
         updateNowPlayingProgress()
@@ -220,13 +240,40 @@ extension PlayerController {
         setPaused(playState.value == .playing)
     }
 
+    /// mpv keeps the pitch at any speed (its default scaletempo filter).
+    /// Called by `PlaybackSpeed`, which owns the chosen speed.
+    func setSpeed(_ rate: Double) {
+        // A running mix sets the speed itself; end it like a seek does.
+        Crossfade.shared.finishNow()
+        Crossfade.shared.stopSpeedEase()
+        let value = Self.fmt(rate)
+        withMpv { mpv in _ = mpv_set_property_string(mpv, "speed", value) }
+        updateNowPlayingProgress()
+    }
+
+    /// Sets the filter chain. mpv rejects the whole chain (error -9, "property
+    /// format") when its FFmpeg build lacks the `bass` filter, which would take
+    /// the equalizer and loudness filters down with it on every song: then the
+    /// chain is set again without it, and mixes skip their bass dip.
     func applyPlaybackSettings() {
-        let chain = filterChain(loudness: currentLoudnessDb)
+        let withBass = filterChain(loudness: currentLoudnessDb)
+        let withoutBass = filterChain(loudness: currentLoudnessDb, includesBass: false)
+        let tryBass = hasBassFilter
         let gapless = SettingsStore.shared.gaplessPlayback
-        withMpv { mpv in
+        let result = withMpv { mpv -> (bassAccepted: Bool, error: Int32) in
             mpv_set_property_string(mpv, "gapless-audio", gapless ? "yes" : "no")
-            let result = mpv_set_property_string(mpv, "af", chain.isEmpty ? "" : chain)
-            if result < 0 { Log.player.error("Failed to set af chain '\(chain)': mpv error \(result)") }
+            if tryBass, mpv_set_property_string(mpv, "af", withBass) >= 0 { return (true, 0) }
+            return (false, mpv_set_property_string(mpv, "af", withoutBass))
+        }
+        guard let result else { return }
+        if hasBassFilter, !result.bassAccepted {
+            hasBassFilter = false
+            Log.player.notice("mpv has no bass filter; AutoMix mixes without the bass dip")
+        }
+        // Logged once: the same settings fail the same way on every song.
+        if result.error < 0, !hasLoggedChainFailure {
+            hasLoggedChainFailure = true
+            Log.player.error("Failed to set af chain '\(withoutBass)': mpv error \(result.error)")
         }
     }
 
@@ -236,7 +283,7 @@ extension PlayerController {
     /// Equalizer and loudness-normalization filters for a song with
     /// `loudness`, after a bass filter that a mix changes live with
     /// `af-command` (flat unless `bassGain` is set).
-    func filterChain(loudness: Double?, bassGain: Double? = nil) -> String {
+    func filterChain(loudness: Double?, bassGain: Double? = nil, includesBass: Bool? = nil) -> String {
         let settings = SettingsStore.shared
         let eqEnabled = settings.equalizerEnabled
         let eqGains = settings.equalizerGains
@@ -245,25 +292,27 @@ extension PlayerController {
         // rebuilds the filters of the playing song.
         let bass = bassGain ?? 0
 
-        return {
-            var filters = ["@\(Self.bassFilterLabel):bass=f=180:g=\(Self.fmt(bass))"]
-            if eqEnabled {
-                let entries = zip(equalizerFrequencies, eqGains)
-                    .map { "entry(\(Self.fmt($0.0)),\(Self.fmt($0.1)))" }
-                    .joined(separator: ";")
-                if !entries.isEmpty {
-                    filters.append("firequalizer=gain_entry=\"\(entries)\"")
-                }
+        var filters: [String] = []
+        if includesBass ?? hasBassFilter {
+            filters.append("@\(Self.bassFilterLabel):bass=f=180:g=\(Self.fmt(bass))")
+        }
+        if eqEnabled {
+            let entries = zip(equalizerFrequencies, eqGains)
+                .map { "entry(\(Self.fmt($0.0)),\(Self.fmt($0.1)))" }
+                .joined(separator: ";")
+            if !entries.isEmpty {
+                filters.append("firequalizer=gain_entry=\"\(entries)\"")
             }
-            if norm, let loudness, loudness.isFinite {
-                let gain = max(-12, min(12, -14 - loudness))
-                filters.append("volume=\(Self.fmt(gain))dB")
-            }
-            return filters.joined(separator: ",")
-        }()
+        }
+        if norm, let loudness, loudness.isFinite {
+            let gain = max(-12, min(12, -14 - loudness))
+            filters.append("volume=\(Self.fmt(gain))dB")
+        }
+        return filters.joined(separator: ",")
     }
 
-    private static func fmt(_ value: Double) -> String {
+    /// Numbers as mpv properties and filter arguments take them.
+    nonisolated static func fmt(_ value: Double) -> String {
         String(format: "%.4f", value)
     }
 }
@@ -286,8 +335,10 @@ extension PlayerController {
                     self.pendingURL = nil
                     Log.player.info("mpv ready: loading deferred stream")
                     let pauseValue = self.desiredPlaying ? "no" : "yes"
+                    let speedValue = Self.fmt(PlaybackSpeed.shared.rate)
                     _ = self.withMpv { mpv in
                         mpv_set_property_string(mpv, "pause", pauseValue)
+                        mpv_set_property_string(mpv, "speed", speedValue)
                         return ["loadfile", url, "replace"].withUnsafeCArg { mpv_command(mpv, $0) }
                     }
                 }
@@ -385,6 +436,10 @@ extension PlayerController {
                 Log.player.debug("TRANSITION START_FILE")
             case MPV_EVENT_END_FILE:
                 handleEndFile(event)
+            case MPV_EVENT_IDLE where isCrossfading:
+                // The outgoing song ended before the mix swapped decks: going
+                // idle closed the audio session under the incoming deck.
+                Task { @MainActor in self.restoreAudioOutput() }
             default:
                 break
             }
@@ -563,6 +618,8 @@ extension PlayerController {
         currentVideoId = videoId
         pendingVideoId = nil
         currentLoudnessDb = loudness
+        // The mix eases the new deck to 1×.
+        PlaybackSpeed.shared.select(videoId: videoId, podcastId: nil)
         let generation = playGeneration
         Task {
             await PlaybackStateService.shared.stopTracking()
@@ -687,29 +744,22 @@ extension PlayerController {
 
 extension PlayerController {
     func setNowPlayingMetadata() {
-        assertAudioSession()
+        // Activating the session while paused would interrupt other apps' audio.
+        if desiredPlaying { assertAudioSession() }
         let np = NowPlaying.shared
         nowPlayingInfo.removeAll()
 
-        let liveDur = withMpv { mpv in
-            var val = Double(0)
-            mpv_get_property(mpv, "duration", MPV_FORMAT_DOUBLE, &val)
-            return val
-        } ?? 0
+        let liveDur = self.duration
         let duration = liveDur > 0 ? liveDur : np.duration
         if duration > 0 { np.duration = duration }
 
-        let livePos = withMpv { mpv in
-            var val = Double(0)
-            mpv_get_property(mpv, "time-pos", MPV_FORMAT_DOUBLE, &val)
-            return val
-        } ?? 0
+        let livePos = self.currentTime
         let elapsed = livePos > 0 ? livePos : np.currentTime
 
         nowPlayingInfo[MPMediaItemPropertyTitle] = np.title
         nowPlayingInfo[MPMediaItemPropertyArtist] = np.artist
         nowPlayingInfo[MPMediaItemPropertyAlbumTitle] = np.albumTitle
-        nowPlayingInfo[MPNowPlayingInfoPropertyPlaybackRate] = np.isPlaying ? 1 : 0
+        nowPlayingInfo[MPNowPlayingInfoPropertyPlaybackRate] = np.isPlaying ? PlaybackSpeed.shared.rate : 0
         nowPlayingInfo[MPNowPlayingInfoPropertyMediaType] = MPNowPlayingInfoMediaType.audio.rawValue
         nowPlayingInfo[MPNowPlayingInfoPropertyDefaultPlaybackRate] = 1
         if duration > 0 { nowPlayingInfo[MPMediaItemPropertyPlaybackDuration] = duration }
@@ -727,6 +777,7 @@ extension PlayerController {
             "duration=\(duration) rate=\(nowPlayingInfo[MPNowPlayingInfoPropertyPlaybackRate] ?? 0) " +
             "artwork=\(np.thumbnailUIImage != nil) keys=\(nowPlayingInfo.keys.count)"
         )
+        WidgetSync.shared.refresh()
     }
 
     func updateNowPlayingArtwork() {
@@ -735,12 +786,15 @@ extension PlayerController {
             nowPlayingInfo[MPMediaItemPropertyArtwork] = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
         }
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nowPlayingInfo
+        WidgetSync.shared.refresh()
     }
 
     /// `onlyIfDrifted`: the 0.25 s progress timer passes true, so the lock
     /// screen is only updated when its own clock is off by a second or more
     /// (seek, stall, song change) or the queue length changed.
     func updateNowPlayingProgress(onlyIfDrifted: Bool = false) {
+        // Pause, seek and the end of the queue land here; the widget shows no progress.
+        if !onlyIfDrifted { WidgetSync.shared.refresh() }
         let props: (dur: Double, pos: Double)? = withMpv { mpv in
             var dur = Double(0)
             mpv_get_property(mpv, "duration", MPV_FORMAT_DOUBLE, &dur)
@@ -765,13 +819,14 @@ extension PlayerController {
         if np.duration != props.dur { np.duration = props.dur }
         info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = props.pos
         np.currentTime = props.pos
-        info[MPNowPlayingInfoPropertyPlaybackRate] = np.isPlaying ? 1 : 0
+        lastProgress = (props.pos, Date())
+        info[MPNowPlayingInfoPropertyPlaybackRate] = np.isPlaying ? PlaybackSpeed.shared.rate : 0
         info[MPNowPlayingInfoPropertyPlaybackQueueIndex] = np.queueIndex
         info[MPNowPlayingInfoPropertyPlaybackQueueCount] = np.queueSongs.count
         nowPlayingInfo = info
         let now = Date()
         if onlyIfDrifted, np.isPlaying, let last = lastProgressPush, last.queueCount == np.queueSongs.count,
-           abs(props.pos - last.position - now.timeIntervalSince(last.at)) < 1 {
+           abs(props.pos - last.position - now.timeIntervalSince(last.at) * PlaybackSpeed.shared.rate) < 1 {
             return
         }
         lastProgressPush = (props.pos, now, np.queueSongs.count)

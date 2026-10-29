@@ -16,57 +16,64 @@ struct DiscordUser: Equatable {
     let avatar: String?
 }
 
-extension DiscordRpcManager: DiscordSocialBridgeDelegate {
-    func discordSocialAuthorizationSucceeded(
+// DiscordSocialBridge calls its delegate on the main queue, so the
+// nonisolated witnesses can assume the main actor.
+extension DiscordRpcManager: nonisolated DiscordSocialBridgeDelegate {
+    nonisolated func discordSocialAuthorizationSucceeded(
         withAccessToken accessToken: String,
         refreshToken: String,
         expiresIn: Int,
         scope: String
     ) {
-        log("Social SDK authorization succeeded scope=\(scope) expiresIn=\(expiresIn)s hasRefresh=\(!refreshToken.isEmpty)")
-        self.accessToken = accessToken
-        accessTokenSubject.value = accessToken
-        _authorized = true
-        statusSubject.value = .authorizing
-        DiscordTokenStore.shared.storeFull(
-            accessToken: accessToken,
-            refreshToken: refreshToken,
-            expiresInSec: Int64(expiresIn)
-        )
-    }
-
-    func discordSocialAuthorizationFailed(_ message: String) {
-        log("Social SDK authorization failed: \(message)")
-        lastErrorSubject.value = "discord_error_invalid_scope"
-        statusSubject.value = .disconnected
-        _authorized = false
-        _ready = false
-        finishAuthorization(false)
-    }
-
-    func discordSocialStatusChanged(_ status: Int) {
-        log("Social SDK status=\(status)")
-        if status == 3 {
-            _ready = true
+        MainActor.assumeIsolated {
+            log("Social SDK authorization succeeded scope=\(scope) expiresIn=\(expiresIn)s hasRefresh=\(!refreshToken.isEmpty)")
+            self.accessToken = accessToken
             _authorized = true
-            statusSubject.value = .connected
-            lastErrorSubject.value = nil
-            finishAuthorization(true)
-            if let token = accessToken {
-                Task.detached { [weak self] in
-                    guard let self else { return }
-                    let user = await self.fetchCurrentUserAsync2(token: token)
-                    await MainActor.run { self.currentUserSubject.value = user }
-                }
-            }
-        } else if status == 0 {
-            _ready = false
+            statusSubject.value = .authorizing
+            DiscordTokenStore.shared.storeFull(
+                accessToken: accessToken,
+                refreshToken: refreshToken,
+                expiresInSec: Int64(expiresIn)
+            )
+        }
+    }
+
+    nonisolated func discordSocialAuthorizationFailed(_ message: String) {
+        MainActor.assumeIsolated {
+            log("Social SDK authorization failed: \(message)")
+            lastErrorSubject.value = "discord_error_invalid_scope"
             statusSubject.value = .disconnected
+            _authorized = false
+            _ready = false
+            finishAuthorization(false)
+        }
+    }
+
+    nonisolated func discordSocialStatusChanged(_ status: Int) {
+        MainActor.assumeIsolated {
+            log("Social SDK status=\(status)")
+            if status == 3 {
+                _ready = true
+                _authorized = true
+                statusSubject.value = .connected
+                lastErrorSubject.value = nil
+                finishAuthorization(true)
+                if let token = accessToken {
+                    Task { [weak self] in
+                        let user = await self?.fetchCurrentUserAsync2(token: token)
+                        self?.currentUserSubject.value = user
+                    }
+                }
+            } else if status == 0 {
+                _ready = false
+                statusSubject.value = .disconnected
+            }
         }
     }
 }
 
-final class DiscordRpcManager: NSObject, @unchecked Sendable {
+@MainActor
+final class DiscordRpcManager: NSObject {
     static let shared = DiscordRpcManager()
 
     enum Status: String { case disconnected, authorizing, connected }
@@ -83,8 +90,6 @@ final class DiscordRpcManager: NSObject, @unchecked Sendable {
     private let currentUserSubject = CurrentValueSubject<DiscordUser?, Never>(nil)
     var currentUser: AnyPublisher<DiscordUser?, Never> { currentUserSubject.eraseToAnyPublisher() }
     var currentUserValue: DiscordUser? { currentUserSubject.value }
-
-    private let accessTokenSubject = CurrentValueSubject<String?, Never>(nil)
 
     private let settingsChangedSubject = CurrentValueSubject<Int, Never>(0)
     var settingsChanged: AnyPublisher<Int, Never> { settingsChangedSubject.eraseToAnyPublisher() }
@@ -134,7 +139,6 @@ final class DiscordRpcManager: NSObject, @unchecked Sendable {
 
     // MARK: - Auth
 
-    @MainActor
     func authorize(presentingAnchor: UIWindow? = nil, onComplete: @escaping (Bool) -> Void) {
         if authorizeInProgress { onComplete(false); return }
         if _ready && _authorized { onComplete(true); return }
@@ -179,41 +183,10 @@ final class DiscordRpcManager: NSObject, @unchecked Sendable {
         return DiscordUser(id: id, username: username, name: name, avatar: avatar)
     }
 
-    // MARK: - fetchCurrentUser
-
-    func fetchCurrentUser(token: String) -> DiscordUser? {
-        guard let url = URL(string: "https://discord.com/api/v10/users/@me") else { return nil }
-        var req = URLRequest(url: url)
-        req.httpMethod = "GET"
-        req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        req.setValue("application/json", forHTTPHeaderField: "Accept")
-        req.timeoutInterval = 10
-        var result: DiscordUser?
-        let sem = DispatchSemaphore(value: 0)
-        URLSession.shared.dataTask(with: req) { data, response, _ in
-            defer { sem.signal() }
-            guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode),
-                  let data = data,
-                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let id = json["id"] as? String,
-                  let username = json["username"] as? String else { return }
-            let gName = json["global_name"] as? String
-            let name = (gName?.isEmpty == false) ? (gName ?? username) : username
-            let avatarHash = json["avatar"] as? String
-            let avatar: String?
-            if let hash = avatarHash, !hash.isEmpty, hash != "null" {
-                avatar = "https://cdn.discordapp.com/avatars/\(id)/\(hash).png"
-            } else { avatar = nil }
-            result = DiscordUser(id: id, username: username, name: name, avatar: avatar)
-        }.resume()
-        sem.wait()
-        return result
-    }
-
     // MARK: - setActivity / clear
 
     func setActivity(activity: DiscordActivity, songId: String?, isPlaying: Bool = true, status: PresenceStatus = .online) {
-        guard _ready else { log("setActivity skipping not ready songId=\(songId ?? "-") status=\(status.rawValue)"); return }
+        guard _ready else { Log.discord.debug("setActivity skipping not ready songId=\(songId ?? "-") status=\(status.rawValue)"); return }
         let largeChanged = activity.largeImage != nil
             && activity.largeImage != lastActivity?.largeImage
         let smallChanged = activity.smallImage != nil
@@ -221,7 +194,7 @@ final class DiscordRpcManager: NSObject, @unchecked Sendable {
         let stateChanged = songId != currentSongId
             || isPlaying != currentIsPlaying || largeChanged || smallChanged
         let now = Int64(Date().timeIntervalSince1970 * 1000)
-        if !stateChanged, lastActivitySentAtMs > 0, (now - lastActivitySentAtMs) < 2000 { log("setActivity debounced"); return }
+        if !stateChanged, lastActivitySentAtMs > 0, (now - lastActivitySentAtMs) < 2000 { Log.discord.debug("setActivity debounced"); return }
         lastActivitySentAtMs = now
         currentSongId = songId; currentIsPlaying = isPlaying
 
@@ -244,7 +217,7 @@ final class DiscordRpcManager: NSObject, @unchecked Sendable {
             buttons: buttons
         )
         lastActivity = payloadNoImages
-        log(
+        Log.discord.debug(
             "Sending activity songId=\(songId ?? "-") playing=\(isPlaying) "
                 + "type=\(payloadNoImages.type) hasLarge=\(activity.largeImage != nil) "
                 + "hasSmall=\(activity.smallImage != nil) buttons=\(buttons.count)"
@@ -277,9 +250,7 @@ final class DiscordRpcManager: NSObject, @unchecked Sendable {
     func reconnectWithToken(_ token: String) {
         guard initialized else { return }
         Task {
-            // mutex via NSLock quick
             self.accessToken = token
-            self.accessTokenSubject.value = token
             DiscordTokenStore.shared.storeAccessToken(token)
             self.statusSubject.value = .authorizing
             // proactive refresh
@@ -291,7 +262,6 @@ final class DiscordRpcManager: NSObject, @unchecked Sendable {
                 do {
                     let refreshed = try await self.auth.refresh(refreshToken: rt)
                     self.accessToken = refreshed.accessToken
-                    self.accessTokenSubject.value = refreshed.accessToken
                     DiscordTokenStore.shared.storeFull(
                         accessToken: refreshed.accessToken,
                         refreshToken: refreshed.refreshToken,
@@ -307,24 +277,6 @@ final class DiscordRpcManager: NSObject, @unchecked Sendable {
         }
     }
 
-    private func refreshAndReconnect() async {
-        guard let rt = DiscordTokenStore.shared.getRefreshToken(), !rt.isEmpty else {
-            lastErrorSubject.value = "discord_error_token_refresh_failed"; logout(); return
-        }
-        do {
-            let refreshed = try await auth.refresh(refreshToken: rt)
-            DiscordTokenStore.shared.storeFull(
-                accessToken: refreshed.accessToken,
-                refreshToken: refreshed.refreshToken,
-                expiresInSec: refreshed.expiresInSec)
-            reconnectWithToken(refreshed.accessToken)
-        } catch DiscordAuthError.invalidGrant {
-            lastErrorSubject.value = "discord_error_token_refresh_failed"; logout()
-        } catch {
-            lastErrorSubject.value = "discord_error_token_refresh_failed"
-        }
-    }
-
     // MARK: - disconnect / logout
 
     func disconnect() {
@@ -333,16 +285,9 @@ final class DiscordRpcManager: NSObject, @unchecked Sendable {
         currentSongId = nil; currentIsPlaying = false
     }
 
-    func destroy() {
-        socialSDK.disconnect()
-        _ready = false; _authorized = false; initialized = false
-        statusSubject.value = .disconnected
-        lastActivity = nil; currentSongId = nil; currentIsPlaying = false
-    }
-
     func logout() {
         disconnect()
-        accessToken = nil; accessTokenSubject.value = nil
+        accessToken = nil
         currentUserSubject.value = nil
         DiscordTokenStore.shared.clear()
         lastErrorSubject.value = nil
@@ -353,14 +298,11 @@ final class DiscordRpcManager: NSObject, @unchecked Sendable {
 
     func isReady() -> Bool { _ready }
     func getAccessToken() -> String? { accessToken }
-    func shouldRefreshActivityTiming() -> Bool {
-        let now = Int64(Date().timeIntervalSince1970 * 1000)
-        return lastActivitySentAtMs == 0 || now - lastActivitySentAtMs >= 5_000
-    }
-    func isShowingSong(songId: String, isPlaying: Bool) -> Bool {
-        if currentSongId != songId || currentIsPlaying != isPlaying { return false }
-        if lastActivity == nil { return false }
-        return true
+    /// A playing song's start time moves only on a seek, so a start within
+    /// a few seconds of the sent one means the presence is still accurate.
+    func isShowingSong(songId: String, isPlaying: Bool, startMs: Int64) -> Bool {
+        guard currentSongId == songId, currentIsPlaying == isPlaying, let lastActivity else { return false }
+        return abs(startMs - (lastActivity.startMs ?? 0)) < 3_000
     }
 
 }

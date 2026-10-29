@@ -53,9 +53,12 @@ struct AppearanceSettingsView: View {
             }
 
             Section {
+                SettingsPickerRow("Player Style", icon: "play.rectangle", selection: $settings.playerStyle)
                 SettingsPickerRow("Player Background", icon: "photo", selection: $settings.playerBackgroundStyle)
             } header: {
                 Text("Player")
+            } footer: {
+                Text("Immersive spreads the cover behind the controls. Card shows it as a square on one colour from the cover.")
             }
 
             Section {
@@ -66,9 +69,6 @@ struct AppearanceSettingsView: View {
 
             Section {
                 SettingsPickerRow("Lyrics Alignment", icon: settings.lyricsAlignment.iconName, selection: $settings.lyricsAlignment)
-                Stepper(value: $settings.lyricsFontSize, in: 12...28) {
-                    Label("Lyrics Font Size: \(Int(settings.lyricsFontSize))", systemImage: "textformat.size")
-                }
             } header: {
                 Text("Lyrics")
             }

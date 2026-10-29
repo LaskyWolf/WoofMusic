@@ -83,11 +83,12 @@ enum NewReleasePlayback {
     }
 }
 
-/// Artwork colours per album browseId, kept for the session so scrolling back
-/// doesn't flash the neutral background again.
+/// Artwork colours per browseId (albums here, podcasts on Home's radio dial
+/// tiles), kept for the session so scrolling back doesn't flash the neutral
+/// background again.
 @MainActor
-private enum ReleaseColors {
-    // ponytail: unbounded, fine for one shelf; add eviction if other shelves use it.
+enum ReleaseColors {
+    // ponytail: unbounded, fine for two small shelves; add eviction if more shelves use it.
     static var cache: [String: [Color]] = [:]
 }
 
@@ -130,7 +131,9 @@ struct NewReleaseCard: View {
     private var np: NowPlaying { NowPlaying.shared }
 
     /// The colour at the bottom of the card gradient, where the glow sits.
-    private var glowColor: Color {
+    private var glowColor: Color { Self.glowColor(colors) }
+
+    static func glowColor(_ colors: [Color]?) -> Color {
         guard let last = colors?.last else { return Color(white: 0.22) }
         return last.mix(with: .black, by: 0.45)
     }
@@ -157,7 +160,7 @@ struct NewReleaseCard: View {
         }
         .padding(Self.inset)
         .frame(width: Self.size.width, height: Self.size.height, alignment: .topLeading)
-        .background(background)
+        .background(Self.backdrop(colors))
         .clipShape(shape)
         // Same glow as the Library shortcuts, in the card's bottom colour (the darkened one).
         .shadow(color: glowColor.opacity(0.5), radius: 8, y: 5)
@@ -234,14 +237,14 @@ struct NewReleaseCard: View {
             Button {
                 Task { await toggleSave() }
             } label: {
-                roundIcon(model.isSaved ? "bookmark.fill" : "bookmark",
-                          fill: .white.opacity(0.18), foreground: .white, isBusy: false)
+                Self.roundIcon(model.isSaved ? "bookmark.fill" : "bookmark",
+                               fill: .white.opacity(0.18), foreground: .white, isBusy: false)
             }
             .accessibilityLabel(model.isSaved ? "Remove from Library" : "Save to Library")
 
             Button(action: playTapped) {
-                roundIcon(isPlaying ? "pause.fill" : "play.fill",
-                          fill: .accentColor, foreground: .white, isBusy: showsSpinner)
+                Self.roundIcon(isPlaying ? "pause.fill" : "play.fill",
+                               fill: SettingsStore.shared.accentColor, foreground: .white, isBusy: showsSpinner)
             }
             .disabled(isStarting)
             .task(id: isStarting) {
@@ -256,7 +259,7 @@ struct NewReleaseCard: View {
 
     static let buttonSize: CGFloat = 38
 
-    private func roundIcon(_ systemImage: String, fill: Color, foreground: Color, isBusy: Bool) -> some View {
+    static func roundIcon(_ systemImage: String, fill: Color, foreground: Color, isBusy: Bool) -> some View {
         ZStack {
             if isBusy {
                 ProgressView()
@@ -276,7 +279,7 @@ struct NewReleaseCard: View {
 
     /// Neutral grey until the artwork colours are ready, then the album's
     /// gradient fades in. The bottom shade keeps white text legible on light art.
-    private var background: some View {
+    static func backdrop(_ colors: [Color]?) -> some View {
         ZStack {
             Color(white: 0.22)
             if let colors, let first = colors.first, let last = colors.last {

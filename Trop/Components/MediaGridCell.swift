@@ -22,11 +22,54 @@ private struct OpensPageBadge: ViewModifier {
     }
 }
 
+/// A playlist's mark everywhere: two narrower cards peeking out above the
+/// cover, like a stack. The caller leaves `2 * step` of room above the cover.
+private struct PlaylistEdges: ViewModifier {
+    let step: CGFloat
+    let inset: CGFloat
+    let cornerRadius: CGFloat
+
+    func body(content: Content) -> some View {
+        content.background {
+            ZStack {
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .fill(Color(.systemGray4))
+                    .padding(.horizontal, inset * 2)
+                    .offset(y: -2 * step)
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .fill(Color(.systemGray2))
+                    .padding(.horizontal, inset)
+                    .offset(y: -step)
+            }
+            .accessibilityHidden(true)
+        }
+    }
+}
+
+/// Edge sizes for a cover of `DesignTokens.artLarge`; Keep Listening's small covers pass their own.
+enum PlaylistEdgeMetrics {
+    static let step: CGFloat = 4
+    static let inset: CGFloat = 12
+    /// Room above a cover for both edges.
+    static var lift: CGFloat { step * 2 }
+}
+
 extension View {
-    /// Marks an album or playlist cover as a link to its page.
+    /// Marks an album cover as a link to its page.
     @ViewBuilder
     func opensPageBadge(_ isOn: Bool = true) -> some View {
         if isOn { modifier(OpensPageBadge()) } else { self }
+    }
+
+    /// Stacks two cards behind a playlist cover.
+    @ViewBuilder
+    func playlistEdges(
+        _ isOn: Bool = true,
+        step: CGFloat = PlaylistEdgeMetrics.step,
+        inset: CGFloat = PlaylistEdgeMetrics.inset,
+        cornerRadius: CGFloat = DesignTokens.cardRadius
+    ) -> some View {
+        if isOn { modifier(PlaylistEdges(step: step, inset: inset, cornerRadius: cornerRadius)) } else { self }
     }
 }
 
@@ -41,6 +84,8 @@ struct MediaGridCell: View {
     var size: CGFloat? = DesignTokens.artLarge
     /// Shows the ">" badge: the card opens a page.
     var opensPage = true
+    /// Shows the playlist's stacked edges instead of the ">" badge.
+    var isPlaylist = false
     /// The route this card pushes; its page zooms out of the cover.
     var zoomRoute: DetailRoute? = nil
 
@@ -52,7 +97,9 @@ struct MediaGridCell: View {
                 .overlay { AsyncImageView(url: thumbnailUrl) }
                 .clipShape(RoundedRectangle(cornerRadius: DesignTokens.cardRadius))
                 .coverZoomSource(zoomRoute)
-                .opensPageBadge(opensPage)
+                .opensPageBadge(opensPage && !isPlaylist)
+                .playlistEdges(isPlaylist)
+                .padding(.top, isPlaylist ? PlaylistEdgeMetrics.lift : 0)
 
             Text(title)
                 .font(.caption)
@@ -98,19 +145,5 @@ struct ArtistCircleCell: View {
                 .lineLimit(1)
         }
         .frame(width: size)
-    }
-}
-
-/// Large centered artwork for detail headers (album/playlist/podcast),
-/// replacing the copy-pasted 200pt framed/clipped/shadowed blocks.
-struct HeroArtworkView: View {
-    var url: String?
-    var size: CGFloat = DesignTokens.heroArtwork
-
-    var body: some View {
-        AsyncImageView(url: url)
-            .frame(width: size, height: size)
-            .clipShape(RoundedRectangle(cornerRadius: DesignTokens.tileRadius))
-            .shadow(color: .black.opacity(0.2), radius: 12, y: 4)
     }
 }

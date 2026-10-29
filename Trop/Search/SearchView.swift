@@ -7,22 +7,23 @@
 
 import SwiftUI
 
-/// The Search tab's root page: its own search field where Home and Library
-/// show their filter chips, then recent searches or results underneath.
+/// The Search tab's root page: the system search field (in the tab bar,
+/// because ContentView gives this tab the search role), then recent
+/// searches or results underneath.
 struct SearchView: View {
-    @Environment(SettingsStore.self) private var settings
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var searchModel = SearchViewModel()
     @ObservedObject private var router = AppRouter.shared
 
+    /// The native search field's presentation: true while search is active,
+    /// even with the keyboard down. The system sets it back on Cancel.
+    @State private var isSearching = false
+    /// Keyboard focus of the native field, so a tap on the results can lower
+    /// the keyboard without leaving search.
     @FocusState private var fieldFocused: Bool
     /// Shared by this tab's covers and the pages they open, for the zoom transition.
     @Namespace private var coverZoom
 
     private let accountState = AccountState.shared
-
-    /// Cancel and the sort menu show while typing or while a search is on screen.
-    private var isActive: Bool { fieldFocused || !searchModel.fieldText.isEmpty }
 
     var body: some View {
         NavigationStack(path: $router.searchPath) {
@@ -35,8 +36,6 @@ struct SearchView: View {
                     onAccount: { router.searchPath.append(DetailRoute.settings) }
                 )
 
-                searchBar
-
                 SearchResultsView(viewModel: searchModel, fieldFocused: $fieldFocused)
             }
             .frame(maxHeight: .infinity, alignment: .top)
@@ -45,96 +44,49 @@ struct SearchView: View {
             .onChange(of: router.focusSearchField) { _, requested in
                 if requested { consumeFocusRequest() }
             }
-            .onAppear { consumeFocusRequest() }
+            .onChange(of: router.pendingSearchQuery) { _, query in
+                if query != nil { consumeSearchRequest() }
+            }
+            .onAppear {
+                consumeFocusRequest()
+                consumeSearchRequest()
+            }
+        }
+        .searchable(text: $searchModel.fieldText, isPresented: $isSearching, prompt: SearchViewModel.placeholder)
+        .searchFocused($fieldFocused)
+        .autocorrectionDisabled()
+        .onSubmit(of: .search) { searchModel.submit() }
+        .onChange(of: isSearching) { _, searching in
+            // System Cancel (which also leaves the tab, see ContentView): drop
+            // the query and results, so the next visit opens on recent searches.
+            if !searching { searchModel.cancel() }
         }
         .coverZoomNamespace(coverZoom)
     }
 
-    private var searchAnimation: Animation {
-        reduceMotion ? .easeInOut(duration: 0.2) : .timingCurve(0.16, 1, 0.3, 1, duration: 0.4)
-    }
-
-    /// A field the height of the filter chips; Cancel and the sort menu slide
-    /// in on the trailing side while it is active.
-    private var searchBar: some View {
-        HStack(spacing: 10) {
-            HStack(spacing: 8) {
-                Image(systemName: "magnifyingglass")
-                    .foregroundStyle(.secondary)
-                TextField(SearchViewModel.placeholder, text: $searchModel.fieldText)
-                    .focused($fieldFocused)
-                    .submitLabel(.search)
-                    .autocorrectionDisabled()
-                    .onSubmit {
-                        fieldFocused = false
-                        searchModel.submit()
-                    }
-                if !searchModel.fieldText.isEmpty {
-                    Button {
-                        searchModel.fieldText = ""
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundStyle(.secondary)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Clear search")
-                }
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
-            .frame(minHeight: DesignTokens.controlHeight)
-            .background(Capsule().fill(Color(.systemGray5).opacity(0.6)))
-
-            if isActive {
-                Group {
-                    sortMenu
-                    Button("Cancel", action: cancelSearch)
-                        .foregroundStyle(settings.accentColor)
-                }
-                .transition(reduceMotion ? .opacity : .move(edge: .trailing).combined(with: .opacity))
-            }
-        }
-        .padding(.horizontal, DesignTokens.screenHPadding)
-        .padding(.vertical, 8)
-        .animation(searchAnimation, value: isActive)
-    }
-
-    private func cancelSearch() {
-        fieldFocused = false
-        searchModel.cancel()
-    }
-
-    private var sortMenu: some View {
-        Menu {
-            ForEach(SearchSort.allCases, id: \.self) { option in
-                Button {
-                    searchModel.sort = option
-                } label: {
-                    if searchModel.sort == option {
-                        Label(option.title, systemImage: "checkmark")
-                    } else {
-                        Text(option.title)
-                    }
-                }
-            }
-        } label: {
-            Image(systemName: "arrow.up.arrow.down")
-                .font(.body)
-                .foregroundStyle(.primary)
-                .frame(width: DesignTokens.controlHeight, height: DesignTokens.controlHeight)
-                .background(Circle().fill(Color(.systemGray5).opacity(0.6)))
-        }
-        .accessibilityLabel("Sort results")
-    }
-
-    /// Home Screen "Search" quick action: focus the field.
+    /// Home Screen "Search" quick action: open the field with the keyboard up.
     private func consumeFocusRequest() {
         guard router.focusSearchField else { return }
         router.focusSearchField = false
         Task {
-            // The tab switch must land before the field can take focus.
+            // The tab switch must land before search can activate.
             try? await Task.sleep(for: .milliseconds(150))
+            // Presenting search focuses the field; if search is already
+            // presented with the keyboard down, only the focus change raises it.
+            isSearching = true
             fieldFocused = true
+        }
+    }
+
+    /// Siri's search: show the results with the keyboard down.
+    private func consumeSearchRequest() {
+        guard let query = router.pendingSearchQuery else { return }
+        router.pendingSearchQuery = nil
+        Task {
+            // The tab switch must land before search can activate.
+            try? await Task.sleep(for: .milliseconds(150))
+            isSearching = true
+            searchModel.submit(query)
         }
     }
 }

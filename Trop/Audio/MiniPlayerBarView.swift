@@ -103,14 +103,14 @@ struct MiniPlayerBarView: View {
         GeometryReader { geo in
             let pageWidth = geo.size.width
             ZStack(alignment: .center) {
-                if let prev = prevSong {
+                if let prev = np.previousSong {
                     page(for: prev, width: pageWidth)
                         .offset(x: -pageWidth)
                 }
-                if let current = currentSong {
+                if let current = np.currentSong {
                     page(for: current, width: pageWidth)
                 }
-                if let next = nextSong {
+                if let next = np.nextSong {
                     page(for: next, width: pageWidth)
                         .offset(x: pageWidth)
                 }
@@ -143,7 +143,7 @@ struct MiniPlayerBarView: View {
                         frameHeight: 16,
                         textColor: titleColor,
                         // Neighbor pages sit off screen; only the current title scrolls.
-                        isPaused: isTransitioning || song.videoId != currentSong?.videoId
+                        isPaused: isTransitioning || song.videoId != np.currentSong?.videoId
                     )
                 }
 
@@ -183,16 +183,6 @@ struct MiniPlayerBarView: View {
 
     // MARK: - Data
 
-    private var currentSong: SongItem? {
-        guard np.queueSongs.indices.contains(np.queueIndex) else { return nil }
-        return np.queueSongs[np.queueIndex]
-    }
-
-    private var prevSong: SongItem? {
-        guard np.queueSongs.indices.contains(np.queueIndex - 1) else { return nil }
-        return np.queueSongs[np.queueIndex - 1]
-    }
-
     /// Artist line for a queued song, falling back to the resolved author
     /// (what the big player shows via `displayArtist`) when the queued item
     /// carries no artist runs — e.g. videos or cache-repaired songs.
@@ -201,11 +191,6 @@ struct MiniPlayerBarView: View {
         if !own.isEmpty { return own }
         if song.videoId == np.videoId { return np.displayArtist }
         return own
-    }
-
-    private var nextSong: SongItem? {
-        guard np.queueSongs.indices.contains(np.queueIndex + 1) else { return nil }
-        return np.queueSongs[np.queueIndex + 1]
     }
 
     // MARK: - Gesture
@@ -221,8 +206,8 @@ struct MiniPlayerBarView: View {
                 }
                 guard dragAxis == .horizontal else { return }
 
-                let minOffset = nextSong != nil ? -pageWidth : 0
-                let maxOffset = prevSong != nil ? pageWidth : 0
+                let minOffset = np.hasNext ? -pageWidth : 0
+                let maxOffset = np.hasPrevious ? pageWidth : 0
                 dragOffset = min(max(value.translation.width, minOffset), maxOffset)
             }
             .onEnded { value in
@@ -231,12 +216,12 @@ struct MiniPlayerBarView: View {
 
                 switch dragAxis {
                 case .horizontal:
-                    if dragOffset <= -pageWidth * 0.35, nextSong != nil {
-                        commitSwipe(to: .next, pageWidth: pageWidth)
-                    } else if dragOffset >= pageWidth * 0.35, prevSong != nil {
-                        commitSwipe(to: .previous, pageWidth: pageWidth)
+                    if dragOffset <= -pageWidth * TrackSwipe.commitFraction, np.hasNext {
+                        TrackSwipe.commit(.next, pageWidth: pageWidth, offset: $dragOffset, isCommitting: $isCommitting)
+                    } else if dragOffset >= pageWidth * TrackSwipe.commitFraction, np.hasPrevious {
+                        TrackSwipe.commit(.previous, pageWidth: pageWidth, offset: $dragOffset, isCommitting: $isCommitting)
                     } else {
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                        withAnimation(TrackSwipe.springBack) {
                             dragOffset = 0
                         }
                     }
@@ -248,28 +233,6 @@ struct MiniPlayerBarView: View {
                     break
                 }
             }
-    }
-
-    private enum SwipeDirection {
-        case next
-        case previous
-    }
-
-    private func commitSwipe(to direction: SwipeDirection, pageWidth: CGFloat) {
-        isCommitting = true
-        let target: CGFloat = direction == .next ? -pageWidth : pageWidth
-        // The queue moves only once the slide has fully landed (no bounce), so the
-        // page that becomes current is already where the old one was: no jump.
-        withAnimation(.spring(duration: 0.3, bounce: 0), completionCriteria: .logicallyComplete) {
-            dragOffset = target
-        } completion: {
-            switch direction {
-            case .next: np.playNext()
-            case .previous: np.playPrevious()
-            }
-            withAnimation(nil) { dragOffset = 0 }
-            isCommitting = false
-        }
     }
 }
 
@@ -299,19 +262,27 @@ private func miniArtworkURL(for song: SongItem) -> URL? {
     URL(string: ArtworkURLs.highRes(song.thumbnailUrl) ?? NowPlaying.artworkURL(for: song.videoId))
 }
 
+/// A queued song's cover. The full player's swipe pages use it too, so both
+/// players show the same cached cover for a neighbour.
 @MainActor
-private struct MiniArtworkView: View {
+struct MiniArtworkView: View {
     let song: SongItem
+    let placeholderIconSize: CGFloat
 
     @State private var uiImage: UIImage?
 
-    init(song: SongItem) {
+    /// Cropped covers by URL. The parents rebuild this view on every drag
+    /// frame, so `init` must not crop (or read the disk) each time.
+    private static let croppedCovers = NSCache<NSString, UIImage>()
+
+    init(song: SongItem, placeholderIconSize: CGFloat = 20) {
         self.song = song
+        self.placeholderIconSize = placeholderIconSize
         // Seeded here, not on appear, so a cached cover is there on the first frame.
         // The player's own image covers songs whose cover isn't cached under this URL
         // (downloads with embedded art), but only once it belongs to this song.
         let np = NowPlaying.shared
-        _uiImage = State(initialValue: cachedArtwork(for: song)
+        _uiImage = State(initialValue: Self.cachedArtwork(for: song)
             ?? (np.thumbnailVideoId == song.videoId ? np.thumbnailUIImage : nil))
     }
 
@@ -324,7 +295,7 @@ private struct MiniArtworkView: View {
             } else {
                 Color.white.opacity(0.12)
                 Image(systemName: "music.note")
-                    .font(.system(size: 20))
+                    .font(.system(size: placeholderIconSize))
                     .foregroundStyle(.white.opacity(0.4))
             }
         }
@@ -334,16 +305,21 @@ private struct MiniArtworkView: View {
     private func load() async {
         guard uiImage == nil, let url = miniArtworkURL(for: song) else { return }
         do {
-            let image = try await ArtworkLoader.image(for: url)
-            uiImage = image.centerCroppedSquare()
-        } catch {
+            let image = try await ArtworkLoader.image(for: url).centerCroppedSquare()
+            Self.croppedCovers.setObject(image, forKey: url.absoluteString as NSString)
+            uiImage = image
+        } catch where !error.isCancellation {
             Log.nowPlaying.error("Mini artwork load failed: \(error)")
-        }
+        } catch {}
     }
-}
 
-@MainActor
-private func cachedArtwork(for song: SongItem) -> UIImage? {
-    guard let url = miniArtworkURL(for: song) else { return nil }
-    return ArtworkLoader.cachedImage(for: url)?.centerCroppedSquare()
+    /// Memory caches only; a cover on disk is loaded by `load()`.
+    private static func cachedArtwork(for song: SongItem) -> UIImage? {
+        guard let url = miniArtworkURL(for: song) else { return nil }
+        let key = url.absoluteString as NSString
+        if let cropped = croppedCovers.object(forKey: key) { return cropped }
+        guard let cropped = ArtworkLoader.memoryImage(for: url)?.centerCroppedSquare() else { return nil }
+        croppedCovers.setObject(cropped, forKey: key)
+        return cropped
+    }
 }

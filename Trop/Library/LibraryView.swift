@@ -161,6 +161,7 @@ struct LibraryView: View {
                     if !podcasts.isEmpty { podcastsSection }
                 }
             }
+            .scrollsToTopOnTabReselect(1) { selectedFilter = nil }
         }
         .scrollIndicators(.automatic)
         .miniPlayerTracksScroll()
@@ -177,6 +178,7 @@ struct LibraryView: View {
                         url: playlist.thumbnailUrl,
                         title: playlist.name,
                         subtitle: playlistSongCounts[playlist.id].map { "\($0) songs" },
+                        isPlaylist: true,
                         zoomRoute: route
                     )
                 }
@@ -392,12 +394,13 @@ struct LibraryView: View {
         title: String,
         subtitle: String?,
         detail: String? = nil,
+        isPlaylist: Bool = false,
         zoomRoute: DetailRoute? = nil
     ) -> some View {
         if isList {
             listRow(url: url, title: title, subtitle: subtitle, detail: detail, isCircular: false, zoomRoute: zoomRoute)
         } else {
-            MediaGridCell(thumbnailUrl: url, title: title, subtitle: subtitle, size: nil, opensPage: false, zoomRoute: zoomRoute)
+            MediaGridCell(thumbnailUrl: url, title: title, subtitle: subtitle, size: nil, opensPage: false, isPlaylist: isPlaylist, zoomRoute: zoomRoute)
         }
     }
 
@@ -459,6 +462,7 @@ struct LibraryView: View {
         }
         .scrollIndicators(.hidden)
         .allowsHitTesting(false)
+        .shimmerClock()
     }
 
     /// A grid cell's placeholder: a cover filling the column and two text lines.
@@ -529,12 +533,20 @@ struct LibraryView: View {
                     )
                 ]
             }
-            artists = try await artistsFetch
-            playlists = try await playlistsFetch.filter { !PlaylistEntity.hiddenIds.contains($0.id) }
-            albums = try await albumsFetch
-            podcasts = try await podcastsFetch.filter { !PlaylistEntity.hiddenIds.contains($0.id) }
-            likedSongCount = try await countFetch
-            shortcutCovers = try await coversFetch
+            // This runs on every appear: assign only what changed, since each
+            // assignment redraws the whole library.
+            let newArtists = try await artistsFetch
+            if artists != newArtists { artists = newArtists }
+            let newPlaylists = try await playlistsFetch.filter { !PlaylistEntity.hiddenIds.contains($0.id) }
+            if playlists != newPlaylists { playlists = newPlaylists }
+            let newAlbums = try await albumsFetch
+            if albums != newAlbums { albums = newAlbums }
+            let newPodcasts = try await podcastsFetch.filter { !PlaylistEntity.hiddenIds.contains($0.id) }
+            if podcasts != newPodcasts { podcasts = newPodcasts }
+            let newCount = try await countFetch
+            if likedSongCount != newCount { likedSongCount = newCount }
+            let newCovers = try await coversFetch
+            if shortcutCovers != newCovers { shortcutCovers = newCovers }
 
             let rows: [(String, Int)] = try await DatabaseService.shared.read { db in
                 try Row.fetchAll(
@@ -546,10 +558,13 @@ struct LibraryView: View {
                 )
                 .map { ($0["playlist_id"] as String, $0["cnt"] as Int) }
             }
-            playlistSongCounts = Dictionary(uniqueKeysWithValues: rows)
+            let newCounts = Dictionary(uniqueKeysWithValues: rows)
+            if playlistSongCounts != newCounts { playlistSongCounts = newCounts }
 
-            isLoading = false
+            if isLoading { isLoading = false }
         } catch {
+            // Leaving the tab cancels the load; the next appear runs it again.
+            if error.isCancellation { return }
             Log.libraryView.error("Failed to load: \(error)")
             isLoading = false
         }
@@ -567,7 +582,7 @@ struct LibraryView: View {
 
 // MARK: - New Playlist Sheet
 
-/// System-style form for creating a playlist, local or synced.
+/// Creating a playlist, local or synced: the Edit Playlist sheet's header and switch.
 struct NewPlaylistSheet: View {
     let onCreated: () async -> Void
 
@@ -580,44 +595,46 @@ struct NewPlaylistSheet: View {
     /// Set once the playlist exists, so a failed cover upload retries only
     /// the cover instead of creating a second playlist.
     @State private var createdId: String?
-    @FocusState private var isFocused: Bool
 
     private var trimmedName: String { name.trimmingCharacters(in: .whitespaces) }
 
     var body: some View {
         NavigationStack {
-            Form {
-                Section {
-                    PlaylistCoverPicker(image: $coverImage, onRemove: coverImage == nil ? nil : { coverImage = nil })
-                }
-                .listRowBackground(Color.clear)
-
-                Section {
-                    TextField("Playlist Name", text: $name)
-                        .focused($isFocused)
-                        .submitLabel(.done)
-                        .onSubmit(create)
-                }
-
-                Section {
-                    Toggle("Sync with YouTube Music", isOn: $syncWithYouTube)
-                        .disabled(createdId != nil)
-                } footer: {
-                    Text("Synced playlists live in your YouTube Music account. This can't be changed later.")
-                }
-
-                if let error {
+            VStack(spacing: 0) {
+                PlaylistEditHeader(
+                    name: $name,
+                    coverImage: $coverImage,
+                    currentUrl: nil,
+                    canRemoveCover: coverImage != nil,
+                    onRemoveCover: { coverImage = nil },
+                    startsEditing: true
+                )
+                .fixedSize(horizontal: false, vertical: true)
+                Form {
                     Section {
-                        Label(error.localizedDescription, systemImage: "exclamationmark.circle")
-                            .foregroundStyle(.red)
+                        Toggle("Sync with YouTube Music", isOn: $syncWithYouTube)
+                            .disabled(createdId != nil)
+                    } footer: {
+                        Text("Synced playlists live in your YouTube Music account. This can't be changed later.")
+                    }
+
+                    if let error {
+                        Section {
+                            Label(error.localizedDescription, systemImage: "exclamationmark.circle")
+                                .foregroundStyle(.red)
+                        }
                     }
                 }
+                .scrollContentBackground(.hidden)
             }
+            .background(alignment: .top) { PlaylistEditBackdrop(coverImage: coverImage, currentUrl: nil) }
+            .background(Color(.systemGroupedBackground))
             .navigationTitle("New Playlist")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
+                        .disabled(isCreating)
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     if isCreating {
@@ -629,9 +646,9 @@ struct NewPlaylistSheet: View {
                 }
             }
         }
-        .presentationDetents([.large])
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
         .interactiveDismissDisabled(isCreating)
-        .onAppear { isFocused = true }
     }
 
     private func create() {

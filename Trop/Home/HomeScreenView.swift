@@ -24,8 +24,8 @@ struct HomeScreenView: View {
             VStack(spacing: 0) {
                 TabHeaderView(
                     title: "Home",
-                    accountIsLoggedIn: viewModel.isLoggedIn,
-                    accountImageUrl: viewModel.accountImageUrl,
+                    accountIsLoggedIn: account.isLoggedIn,
+                    accountImageUrl: account.accountImageUrl,
                     onHistory: { router.homePath.append(DetailRoute.history) },
                     onAccount: { router.homePath.append(DetailRoute.settings) }
                 )
@@ -56,11 +56,7 @@ struct HomeScreenView: View {
             .onChange(of: account.isLoggedIn) { _, loggedIn in
                 if loggedIn {
                     guard !viewModel.isLoggedIn else { return }
-                    viewModel.handleLogin(
-                        cookies: account.loginModel.cookies,
-                        sapisid: account.loginModel.sapisid,
-                        visitorData: account.loginModel.visitorData
-                    )
+                    viewModel.handleLogin(sapisid: account.loginModel.sapisid)
                 } else {
                     viewModel.handleLogout()
                 }
@@ -96,7 +92,11 @@ struct HomeScreenView: View {
                 }
 
                 if viewModel.isChipLoading {
-                    ShimmerLoadingView(isChipFeed: true)
+                    // YouTube localises chip titles; "Podcast" matches English and Italian.
+                    ShimmerLoadingView(
+                        isChipFeed: true,
+                        isPodcastFeed: viewModel.selectedChip?.title.localizedCaseInsensitiveContains("podcast") == true
+                    )
                 } else {
                     // Keyed by section id, so a new section fades in instead of popping in.
                     ForEach(viewModel.homeSections) { section in
@@ -127,6 +127,9 @@ struct HomeScreenView: View {
             }
             .animation(.smooth(duration: 0.4), value: viewModel.homeSections.map(\.id))
             .animation(.smooth(duration: 0.3), value: viewModel.isLoadingMore)
+            .scrollsToTopOnTabReselect(0) {
+                if viewModel.selectedChip != nil { viewModel.toggleChip(nil) }
+            }
         }
         .scrollIndicators(.automatic)
         .miniPlayerTracksScroll()
@@ -138,7 +141,8 @@ struct HomeScreenView: View {
         .onChange(of: settings.hideExplicit) { _, _ in
             viewModel.syncSettings()
         }
-        .onChange(of: settings.showQuickPicks) { _, _ in
+        .onChange(of: settings.showQuickPicks) { _, isOn in
+            if !isOn { WidgetSync.shared.updateQuickPicks([], isEnabled: false) }
             viewModel.syncSettings()
             Task { await viewModel.refresh() }
         }
@@ -226,6 +230,10 @@ struct HomeScreenView: View {
                 .contentMargins(.horizontal, DesignTokens.screenHPadding, for: .scrollContent)
                 .scrollTargetBehavior(.viewAligned)
                 .scrollPosition(id: $quickPicksPage)
+                // The Quick Picks widget shows the same cards.
+                .task(id: cards.map(\.0.videoId)) {
+                    WidgetSync.shared.updateQuickPicks(cards.map { (song: $0.0, isPinned: $0.1) }, isEnabled: true)
+                }
 
                 if pages.count > 1 {
                     HStack(spacing: 6) {
@@ -287,15 +295,20 @@ struct HomeScreenView: View {
 
     private func mixedSection(_ section: HomeSection) -> some View {
         let queue = section.items.compactMap { if case .song(let s) = $0 { return s } else { return nil } }
-        return HorizontalSection(title: section.displayTitle) {
+        let hasPodcasts = section.items.contains { if case .podcast = $0 { return true } else { return false } }
+        let hasPlaylists = section.items.contains { if case .playlist = $0 { return true } else { return false } }
+        // Podcast tiles glow below the row, so it must not clip them.
+        return HorizontalSection(title: section.displayTitle, clipsContent: !hasPodcasts) {
             // Top-aligned, so captions line up when titles wrap to two lines.
             LazyHStack(alignment: .top, spacing: DesignTokens.cardSpacing) {
                 ForEach(section.items.indices, id: \.self) { i in
                     let item = section.items[i]
                     if case .song(let s) = item, !queue.isEmpty {
-                        YouTubeGridItemView(item: item, onTap: { handleSongTap(s, in: queue) })
+                        YouTubeGridItemView(item: item, onTap: { handleSongTap(s, in: queue) }, reservesPlaylistLift: hasPlaylists)
+                    } else if case .podcast(let podcast) = item {
+                        RadioDialTile(podcast: podcast) { handleItemTap(item) }
                     } else {
-                        YouTubeGridItemView(item: item, onTap: { handleItemTap(item) })
+                        YouTubeGridItemView(item: item, onTap: { handleItemTap(item) }, reservesPlaylistLift: hasPlaylists)
                     }
                 }
             }
@@ -305,11 +318,14 @@ struct HomeScreenView: View {
     /// Same taps as `mixedSection`: songs play within the section's songs, the rest route.
     private func keepListeningSection(_ section: HomeSection) -> some View {
         let queue = section.items.compactMap { if case .song(let s) = $0 { return s } else { return nil } }
-        return KeepListeningStrip(title: section.displayTitle, items: section.items) { item in
-            if case .song(let s) = item, !queue.isEmpty {
-                handleSongTap(s, in: queue)
-            } else {
-                handleItemTap(item)
+        // In a month's first week, last month's recap card takes this place.
+        return RecapHomeCard {
+            KeepListeningStrip(title: section.displayTitle, items: section.items) { item in
+                if case .song(let s) = item, !queue.isEmpty {
+                    handleSongTap(s, in: queue)
+                } else {
+                    handleItemTap(item)
+                }
             }
         }
         // Same gap under the chips as Library's shortcut tiles.

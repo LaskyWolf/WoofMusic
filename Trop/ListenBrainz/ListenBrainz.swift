@@ -26,8 +26,6 @@ final class ListenBrainz {
     @ObservationIgnored private var sentNowPlaying = false
     @ObservationIgnored private var submitted = false
 
-    var isConnected: Bool { userName != nil }
-
     private init() {
         if let data = try? store.load(for: ListenBrainzDefaults.tokenAccount) {
             token = String(data: data, encoding: .utf8)
@@ -106,7 +104,12 @@ final class ListenBrainz {
         )
         Task {
             let status = await ListenBrainzService.submit(listen, type: type, token: token)
-            if status != 200 { Log.listenBrainz.error("Submitting \(type.rawValue) failed with status \(status ?? -1)") }
+            if status == nil {
+                // Server not reached: usually offline.
+                Log.listenBrainz.notice("Submitting \(type.rawValue) got no response")
+            } else if status != 200 {
+                Log.listenBrainz.error("Submitting \(type.rawValue) failed with status \(status ?? -1)")
+            }
         }
     }
 }

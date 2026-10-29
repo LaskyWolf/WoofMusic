@@ -24,12 +24,8 @@ class LikeStore: ObservableObject {
     }
 
     func refresh() async {
-        let songs = (try? await DatabaseService.shared.fetchAllLikedSongs()) ?? []
-        var dict: [String: Bool] = [:]
-        for song in songs where song.liked {
-            dict[song.id] = true
-        }
-        liked = dict
+        let ids = (try? await DatabaseService.shared.fetchLikedSongIds()) ?? []
+        liked = Dictionary(ids.map { ($0, true) }, uniquingKeysWith: { first, _ in first })
     }
 
     func toggle(song: SongItem) async {
@@ -43,8 +39,9 @@ class LikeStore: ObservableObject {
         do {
             if target {
                 try await SyncBridge.mutations.likeSong(videoId: videoId)
+                // The download must not hold up the like (the widget heart waits on toggle).
                 if SettingsStore.shared.autoDownloadOnLike {
-                    await DownloadManager.shared.download(song: song)
+                    Task { await DownloadManager.shared.download(song: song) }
                 }
             } else {
                 try await SyncBridge.mutations.unlikeSong(videoId: videoId)

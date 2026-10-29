@@ -31,6 +31,8 @@ final class NowPlaying {
     }
     /// True from the moment a song is requested until its audio is loaded.
     var isLoadingTrack = false
+    /// The full player's Radio Bloom animation follows this.
+    var radioBloom = RadioBloomEvent()
     var currentTime: TimeInterval = 0
     var duration: TimeInterval = 0
     var progress: Float {
@@ -71,6 +73,19 @@ final class NowPlaying {
 
     var hasPrevious: Bool {
         queueIndex > 0
+    }
+
+    /// The current song and its queue neighbours, the pages the track swipe slides between.
+    var currentSong: SongItem? {
+        queueSongs.indices.contains(queueIndex) ? queueSongs[queueIndex] : nil
+    }
+
+    var previousSong: SongItem? {
+        queueSongs.indices.contains(queueIndex - 1) ? queueSongs[queueIndex - 1] : nil
+    }
+
+    var nextSong: SongItem? {
+        queueSongs.indices.contains(queueIndex + 1) ? queueSongs[queueIndex + 1] : nil
     }
 
     var isBarPresented: Bool {
@@ -156,6 +171,14 @@ final class NowPlaying {
         let index = min(max(queueIndex + 1, (playNextEnd ?? queueIndex) + 1), queueSongs.count)
         queueSongs.insert(song, at: index)
         playNextEnd = index
+        persistQueueState()
+    }
+
+    /// Adds songs at the end of the queue, and of the unshuffled order too,
+    /// so turning shuffle off keeps them.
+    func appendToQueue(_ songs: [SongItem]) {
+        queueSongs.append(contentsOf: songs)
+        originalQueue?.append(contentsOf: songs)
         persistQueueState()
     }
 
@@ -354,10 +377,13 @@ final class NowPlaying {
             artists: song.artists,
             thumbnailUrl: song.thumbnailUrl
         )
+        // Known before the stream resolves, so the play button shows a
+        // podcast's microphone from the first frame.
+        musicVideoType = song.musicVideoType
     }
 
     /// Pre-warms artwork for the previous and upcoming songs so swiping the
-    /// mini player bar shows their art instantly.
+    /// mini player bar or the full player's cover shows their art instantly.
     func preloadNeighborArtwork() {
         var urls = upcomingSongs(prefixLimit: 3)
             .compactMap(\.thumbnailUrl)
@@ -373,8 +399,7 @@ final class NowPlaying {
            let url = URL(string: ArtworkURLs.highRes(previous) ?? previous) {
             urls.append(url)
         }
-        guard !urls.isEmpty else { return }
-        Task { await ImagePreloader.shared.append(urls) }
+        urls.forEach(ArtworkLoader.warm)
     }
 
     /// Artist string from `artists`, falling back to `artist`.
@@ -637,9 +662,14 @@ final class NowPlaying {
     private func preloadNextTrack() {
         guard hasNext else { return }
         let nextId = queueSongs[queueIndex + 1].videoId
-        loggedTask(Log.nowPlaying, "Pre-resolve failed") {
-            _ = try await PlaybackManager.shared.resolve(videoId: nextId)
-            Log.nowPlaying.debug("Pre-resolved next track: \(nextId)")
+        Task {
+            do {
+                _ = try await PlaybackManager.shared.resolve(videoId: nextId)
+                Log.nowPlaying.debug("Pre-resolved next track: \(nextId)")
+            } catch where !error.isCancellation {
+                // Optional: the song resolves again when it is played.
+                Log.nowPlaying.notice("Pre-resolve failed: \(error)")
+            } catch {}
         }
     }
 
@@ -699,6 +729,22 @@ func artistDisplayString(from artists: [YTArtist]) -> String {
         .joined(separator: ", ")
 }
 
+/// Built once: the player reads artist names on every redraw.
+private let trailingYearRegex = try? NSRegularExpression(pattern: "\\s*[\\(\\[]\\d{4}[\\)\\]]\\s*$")
+
+private let junkArtistLabels: Set<String> = [
+    "song", "video", "track", "music", "podcast", "episode",
+    "album", "playlist", "released", "year", "plays", "views",
+    "downloads", "listeners", "subscribers", "watchers", "likes"
+]
+
+private let junkArtistPatterns: [NSRegularExpression] = [
+    // Number optionally followed by K/M/B/T and an optional metric word
+    "^[\\d,\\.]+[KMBT]?\\s*(views|downloads|listeners|subscribers|plays|watchers|likes?)?$",
+    "^\\d{4}$",              // bare year
+    "^[\\d,\\.\\s]+[KMBT]?$" // purely numeric / abbreviated counts
+].compactMap { try? NSRegularExpression(pattern: $0, options: .caseInsensitive) }
+
 func cleanArtistDisplay(_ name: String) -> String {
     var tempName = name
 
@@ -708,7 +754,7 @@ func cleanArtistDisplay(_ name: String) -> String {
     }
 
     // Strip trailing year "(2025)" / "[2025]"
-    if let r = try? NSRegularExpression(pattern: "\\s*[\\(\\[]\\d{4}[\\)\\]]\\s*$") {
+    if let r = trailingYearRegex {
         tempName = r.stringByReplacingMatches(
             in: tempName,
             range: NSRange(tempName.startIndex..., in: tempName),
@@ -734,21 +780,8 @@ private func _isJunkArtistSegment(_ segment: String) -> Bool {
     let lower = segment.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     if lower.isEmpty || lower == "•" || lower == "·" { return true }
 
-    let junkLabels: Set<String> = [
-        "song", "video", "track", "music", "podcast", "episode",
-        "album", "playlist", "released", "year", "plays", "views",
-        "downloads", "listeners", "subscribers", "watchers", "likes"
-    ]
-    if junkLabels.contains(lower) { return true }
+    if junkArtistLabels.contains(lower) { return true }
 
-    let patterns = [
-        // Number optionally followed by K/M/B/T and an optional metric word
-        "^[\\d,\\.]+[KMBT]?\\s*(views|downloads|listeners|subscribers|plays|watchers|likes?)?$",
-        "^\\d{4}$",              // bare year
-        "^[\\d,\\.\\s]+[KMBT]?$" // purely numeric / abbreviated counts
-    ]
-    for pattern in patterns where lower.range(of: pattern, options: [.regularExpression, .caseInsensitive]) != nil {
-        return true
-    }
-    return false
+    let range = NSRange(lower.startIndex..., in: lower)
+    return junkArtistPatterns.contains { $0.firstMatch(in: lower, range: range) != nil }
 }

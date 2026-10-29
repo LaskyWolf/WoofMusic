@@ -69,7 +69,7 @@ No ads, native iOS design, DJ-style transitions.
 
 You need iOS 26 or later and a YouTube Music account. You sign in through the in-app web view.
 
-1. Get `WoofMusic-<version>.ipa` (for example `WoofMusic-1.3.0.ipa`): build it yourself (below). Releases do not include an IPA.
+1. Get `WoofMusic-<version>.ipa` (for example `WoofMusic-1.4.0.ipa`): build it yourself (below). Releases do not include an IPA.
 2. Sideload it with a tool that re-signs apps with your Apple ID: AltStore, SideStore, Feather or KravaSign. AltStore PAL is not supported.
 3. Open Woof Music and sign in from the top of Settings.
 

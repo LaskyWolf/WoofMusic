@@ -79,6 +79,11 @@ assert(QueueCheck().queueSongs.isEmpty)
 q.enqueueNext(SongItem("empty-first"))
 q.enqueueNext(SongItem("empty-second"))
 expect(["empty-first", "empty-second"])
+q.setQueue([SongItem("a"), SongItem("b")], startIndex: 0)
+q.originalQueue = [SongItem("b"), SongItem("a")]
+q.appendToQueue([SongItem("added")])
+expect(["a", "b", "added"])
+assert(q.originalQueue!.map(\.videoId) == ["b", "a", "added"])
 print("PASS: FIFO, advancement, removal, persistence, radio completion, jumps, reset, duplicates and empty queue")
 '''
 with tempfile.TemporaryDirectory() as directory:

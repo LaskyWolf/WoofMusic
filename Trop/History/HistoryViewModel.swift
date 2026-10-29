@@ -35,6 +35,7 @@ final class HistoryViewModel {
             let raw = try await db.fetchHistory(limit: 100)
             groupedEntries = Self.groupByDate(raw)
         } catch {
+            if error.isCancellation { return }
             Log.historyView.error("Failed to load local history: \(error)")
         }
     }
@@ -48,8 +49,13 @@ final class HistoryViewModel {
             let sections = Self.parseRemoteHistory(from: json)
             remoteSections = sections
         } catch {
-            Log.historyView.error("Failed to load remote history: \(error)")
-            remoteError = error
+            if error is URLError, !error.isCancellation {
+                Log.historyView.notice("Failed to load remote history: \(error)")
+                remoteError = error
+            } else if !error.isCancellation {
+                Log.historyView.error("Failed to load remote history: \(error)")
+                remoteError = error
+            }
         }
         isRemoteLoading = false
     }
@@ -77,16 +83,8 @@ final class HistoryViewModel {
         let cal = Calendar.current
         if cal.isDateInToday(day) { return "Today" }
         if cal.isDateInYesterday(day) { return "Yesterday" }
-        return dayFormatter.string(from: day)
+        return day.formatted(date: .abbreviated, time: .omitted)
     }
-
-    private static let dayFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.locale = Locale.current
-        f.dateStyle = .medium
-        f.timeStyle = .none
-        return f
-    }()
 
     func deleteEvents(_ events: [Event]) async {
         for event in events {
@@ -97,7 +95,8 @@ final class HistoryViewModel {
 
     // MARK: - Remote history parse
 
-    private static func parseRemoteHistory(from json: [String: Any]) -> [(title: String, songs: [SongItem])] {
+    /// Also read by the Woof Recap, so it is not tied to the main actor.
+    nonisolated static func parseRemoteHistory(from json: [String: Any]) -> [(title: String, songs: [SongItem])] {
         guard let contents = json["contents"] as? [String: Any] else {
             Log.historyView.debug("No 'contents' in response, keys: \(json.keys.sorted())")
             return []
@@ -135,7 +134,7 @@ final class HistoryViewModel {
         return sections
     }
 
-    private static func extractShelfTitle(_ shelf: [String: Any]) -> String? {
+    private nonisolated static func extractShelfTitle(_ shelf: [String: Any]) -> String? {
         guard let titleDict = shelf["title"] as? [String: Any],
               let runs = titleDict["runs"] as? [[String: Any]],
               let first = runs.first,

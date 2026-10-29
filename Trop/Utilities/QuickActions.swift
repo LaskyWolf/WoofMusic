@@ -3,6 +3,7 @@
 //  Trop
 //
 
+import CarPlay
 import SwiftUI
 import UIKit
 
@@ -74,6 +75,12 @@ final class QuickActionAppDelegate: NSObject, UIApplicationDelegate {
         configurationForConnecting connectingSceneSession: UISceneSession,
         options: UIScene.ConnectionOptions
     ) -> UISceneConfiguration {
+        // CarPlay gets its own scene; "CarPlay" is its entry in Info.plist.
+        if connectingSceneSession.role == .carTemplateApplication {
+            let config = UISceneConfiguration(name: "CarPlay", sessionRole: connectingSceneSession.role)
+            config.delegateClass = CarPlaySceneDelegate.self
+            return config
+        }
         if let item = options.shortcutItem {
             MainActor.assumeIsolated { QuickAction.pending = item }
         }

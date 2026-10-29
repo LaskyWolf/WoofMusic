@@ -8,11 +8,15 @@
 import SwiftUI
 
 struct LyricsView: View {
+    /// Point size of a lyric line.
+    static let lineFontSize: Double = 18
     private let np = NowPlaying.shared
     private let player = PlayerController.shared
     @Environment(SettingsStore.self) private var settings
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @Binding var showLyrics: Bool
+    @AppStorage(LyricsState.karaokeEnabledKey) private var karaokeEnabled = false
 
     @State private var lines: [LyricLine] = []
     @State private var isLoading = true
@@ -34,6 +38,17 @@ struct LyricsView: View {
     @State private var scrollProxy: ScrollViewProxy?
     @State private var loadGeneration = 0
 
+    /// Karaoke runs only on lyrics with word timing; then the panel's own
+    /// chrome (title, provider caption) steps aside.
+    private var isKaraoke: Bool { karaokeEnabled && LyricsState.shared.hasWordTiming }
+
+    /// Bumped on each karaoke start; the lines cascade in from below.
+    @State private var cascadeTrigger = 0
+    /// Karaoke started before the lines loaded: they cascade when they arrive.
+    @State private var cascadePending = false
+    /// The long-pressed line the share card composer opens with.
+    @State private var shareCardLine: LyricLine?
+
     var body: some View {
         VStack(spacing: 0) {
             headerBar
@@ -42,6 +57,13 @@ struct LyricsView: View {
                 .layoutPriority(1)
         }
         .background { LyricsTimeTracker(onTimeChange: updateActiveLine) }
+        .onAppear { if isKaraoke { karaokeDidChange() } }
+        .onChange(of: isKaraoke) { _, _ in karaokeDidChange() }
+        .onChange(of: lines.isEmpty) { _, isEmpty in
+            guard !isEmpty, cascadePending else { return }
+            cascadePending = false
+            cascadeTrigger += 1
+        }
         .task(id: np.videoId) { await loadLyrics() }
         .onChange(of: settings.lyricsOffsetSeconds) { _, _ in updateActiveLine() }
         .onChange(of: settings.romanizeCurrentTrack) { _, _ in
@@ -50,14 +72,35 @@ struct LyricsView: View {
         .onChange(of: LyricsState.shared.refreshToken) { _, _ in
             Task { await loadLyrics() }
         }
+        .sheet(item: $shareCardLine) { line in
+            LyricShareComposer(videoId: np.videoId ?? "", lines: lines, initialLineID: line.id)
+        }
+    }
+
+    /// Karaoke turned on (menu toggle, word-timed lyrics arriving, or the
+    /// panel opening with it on) or off. Closing the panel removes this view,
+    /// so closing from karaoke shows no goodbye.
+    private func karaokeDidChange() {
+        guard !reduceMotion else { return }
+        LyricsState.shared.karaokeGreetingIsOn = isKaraoke
+        LyricsState.shared.karaokeGreeting += 1
+        if !isKaraoke {
+            cascadePending = false
+        } else if lines.isEmpty {
+            cascadePending = true
+        } else {
+            cascadeTrigger += 1
+        }
     }
 
     // MARK: - Header
 
     private var headerBar: some View {
         HStack {
-            Text("Lyrics")
-                .font(.title2.bold())
+            if !isKaraoke {
+                Text("Lyrics")
+                    .font(.title2.bold())
+            }
             Spacer()
             LyricsOptionsMenu {
                 Image(systemName: "ellipsis")
@@ -100,14 +143,15 @@ struct LyricsView: View {
     // MARK: - Lyrics Content
 
     private var lyricsContentView: some View {
-        ZStack(alignment: .bottom) {
+        let fontSize = Self.lineFontSize
+        return ZStack(alignment: .bottom) {
             GeometryReader { geo in
                 ScrollViewReader { proxy in
                     ScrollView {
                         VStack(alignment: settings.lyricsAlignment.textAlignment.horizontal, spacing: 18) {
                             Spacer().frame(height: 20)
 
-                            if let provider = LyricsState.shared.providerName {
+                            if !isKaraoke, let provider = LyricsState.shared.providerName {
                                 Text("Lyrics from \(provider)")
                                     .font(.caption.weight(.medium))
                                     .foregroundStyle(.white.opacity(0.6))
@@ -116,7 +160,7 @@ struct LyricsView: View {
                             }
 
                             ForEach(Array(lines.enumerated()), id: \.element.id) { index, line in
-                                lyricsLineRow(index: index, line: line)
+                                lyricsLineRow(index: index, line: line, fontSize: fontSize)
                                     .id(line.id)
                             }
 
@@ -234,27 +278,35 @@ struct LyricsView: View {
 
     /// A lyric line plus its interval ring, which only exists in the hierarchy
     /// while playback is actually inside the gap.
-    private func lyricsLineRow(index: Int, line: LyricLine) -> some View {
+    private func lyricsLineRow(index: Int, line: LyricLine, fontSize: Double) -> some View {
         let gap = settings.showIntervalIndicator ? instrumentalGaps.last(where: { $0.afterIndex == index }) : nil
         let romanized = romanization(for: index)
+        // From three lines above the current one down, about the visible window.
+        let cascadeDelay = Double(min(max(index - activeIndex + 3, 0), 9)) * 0.08
+        let wag = index.isMultiple(of: 2) ? 3.0 : -3.0
 
         return VStack(spacing: 0) {
             LyricsLineView(
                 text: line.text,
                 isActive: index == activeIndex,
                 alignment: settings.lyricsAlignment,
-                fontSize: settings.lyricsFontSize,
+                fontSize: fontSize,
                 lineOpacity: index == activeIndex ? 1 : opacityForDistance(abs(index - activeIndex)),
                 lineScale: index == activeIndex ? 1 : scaleForDistance(abs(index - activeIndex)),
                 romanizedText: romanized,
+                karaokeWords: isKaraoke && index == activeIndex ? line.words : nil,
+                lyricsOffset: settings.lyricsOffsetSeconds,
                 onTap: {
                     if let t = line.startTime {
                         player.seek(to: t)
-                        np.currentTime = t
                         resumeAutoScroll()
                     }
                 }
             )
+            .contextMenu {
+                Button("Share Card", systemImage: "quote.bubble") { shareCardLine = line }
+                Button("Copy Line", systemImage: "doc.on.doc") { UIPasteboard.general.string = line.text }
+            }
 
             if let gap {
                 InstrumentalGapRing(
@@ -262,6 +314,30 @@ struct LyricsView: View {
                     offset: settings.lyricsOffsetSeconds,
                     color: intervalIndicatorColor
                 )
+            }
+        }
+        // Karaoke start: the line rises from below with a little wag.
+        .keyframeAnimator(initialValue: CascadeMotion(), trigger: cascadeTrigger) { content, motion in
+            content
+                .rotationEffect(.degrees(motion.angle))
+                .offset(y: motion.drop)
+                .opacity(motion.opacity)
+        } keyframes: { _ in
+            KeyframeTrack(\.drop) {
+                MoveKeyframe(40.0)
+                LinearKeyframe(40.0, duration: max(cascadeDelay, 0.01))
+                SpringKeyframe(0.0, duration: 0.55, spring: .bouncy)
+            }
+            KeyframeTrack(\.angle) {
+                MoveKeyframe(wag)
+                LinearKeyframe(wag, duration: max(cascadeDelay, 0.01))
+                CubicKeyframe(wag * -0.6, duration: 0.18)
+                SpringKeyframe(0.0, duration: 0.4, spring: .bouncy)
+            }
+            KeyframeTrack(\.opacity) {
+                MoveKeyframe(0.0)
+                LinearKeyframe(0.0, duration: max(cascadeDelay, 0.01))
+                LinearKeyframe(1.0, duration: 0.2)
             }
         }
     }
@@ -356,6 +432,7 @@ struct LyricsView: View {
         defer { if generation == loadGeneration { isLoading = false } }
         guard let videoId = np.videoId else {
             lines = []
+            LyricsState.shared.hasWordTiming = false
             return
         }
         lines = []
@@ -370,19 +447,22 @@ struct LyricsView: View {
         guard !Task.isCancelled else { return }
         do {
             let result = try await LyricsService.shared.fetchLyrics(videoId: videoId)
-            guard generation == loadGeneration, !result.isEmpty else { return }
+            guard generation == loadGeneration else { return }
+            LyricsState.shared.hasWordTiming = result.contains { $0.words != nil }
+            guard !result.isEmpty else { return }
             let withoutMarkers = result.filter { !Self.isInstrumentalMarker($0) }
             lines = withoutMarkers.isEmpty ? result : withoutMarkers
             instrumentalGaps = detectGaps(in: result)
             updateActiveLine()
             await rebuildRomanization()
         } catch {
+            if generation == loadGeneration { LyricsState.shared.hasWordTiming = false }
         }
     }
 
     private func updateActiveLine() {
         guard !lines.isEmpty else { return }
-        let t = np.currentTime + settings.lyricsOffsetSeconds
+        let t = playbackClock() + settings.lyricsOffsetSeconds
         var idx = 0
         for (i, line) in lines.enumerated() {
             guard let start = line.startTime else { continue }
@@ -398,16 +478,43 @@ struct LyricsView: View {
     }
 }
 
+/// Offsets of a lyric line during the karaoke start cascade; at rest, none.
+private struct CascadeMotion {
+    /// Degrees.
+    var angle = 0.0
+    /// Points down from the line's spot.
+    var drop = 0.0
+    var opacity = 1.0
+}
+
 // MARK: - Playback Tracking
 
-/// Reads `currentTime` so the lyrics list does not: the list redraws only when
-/// the active line changes, not on every playback tick.
+/// The lyrics clock, shared by the active line and the karaoke fill so both
+/// switch together. `np.currentTime` only moves every 0.25 s, so while playing
+/// the clock counts forward from the last progress update (read up to 80
+/// times a second, too often to ask mpv). An estimate off by a second or more
+/// means a seek or song change set `currentTime` directly; then that is used.
+@MainActor
+private func playbackClock() -> TimeInterval {
+    let np = NowPlaying.shared
+    guard np.isPlaying, let last = PlayerController.shared.lastProgress else { return np.currentTime }
+    let live = last.position + Date().timeIntervalSince(last.at) * PlaybackSpeed.shared.rate
+    return abs(live - np.currentTime) < 1 ? live : np.currentTime
+}
+
+/// Reads the clock so the lyrics list does not: the list redraws only when
+/// the active line changes, not on every playback tick. While playing it
+/// checks 20 times a second, so a line turns active when it starts instead
+/// of up to 0.25 s later.
 private struct LyricsTimeTracker: View {
     let onTimeChange: () -> Void
 
     var body: some View {
-        Color.clear
-            .onChange(of: NowPlaying.shared.currentTime) { _, _ in onTimeChange() }
+        TimelineView(.animation(minimumInterval: 0.05, paused: !NowPlaying.shared.isPlaying)) { context in
+            Color.clear
+                .onChange(of: context.date) { _, _ in onTimeChange() }
+        }
+        .onChange(of: NowPlaying.shared.currentTime) { _, _ in onTimeChange() }
     }
 }
 
@@ -516,6 +623,9 @@ private struct LyricsLineView: View {
     var lineScale: CGFloat = 1
     /// Romanized variant rendered under the main line, Metrolist-style.
     var romanizedText: String?
+    /// Set only on the active line in karaoke mode.
+    var karaokeWords: [LyricWord]?
+    var lyricsOffset: Double = 0
     let onTap: () -> Void
 
     var body: some View {
@@ -523,10 +633,16 @@ private struct LyricsLineView: View {
 
         Button(action: onTap) {
             VStack(alignment: alignment.textAlignment.horizontal, spacing: 4) {
-                Text(textToDisplay)
-                    .font(.system(size: fontSize, weight: isActive ? .bold : .semibold))
-                    .foregroundStyle(.white)
-                    .multilineTextAlignment(alignment.multilineTextAlignment)
+                Group {
+                    if let karaokeWords {
+                        KaraokeLineText(words: karaokeWords, offset: lyricsOffset)
+                    } else {
+                        Text(textToDisplay)
+                    }
+                }
+                .font(.system(size: fontSize, weight: isActive ? .bold : .semibold))
+                .foregroundStyle(.white)
+                .multilineTextAlignment(alignment.multilineTextAlignment)
 
                 if let romanizedText, !romanizedText.isEmpty {
                     Text(romanizedText)
@@ -543,5 +659,90 @@ private struct LyricsLineView: View {
         .opacity(lineOpacity)
         .scaleEffect(lineScale, anchor: alignment.textAlignment == .leading ? .leading : alignment.textAlignment == .trailing ? .trailing : .center)
         .animation(.easeInOut(duration: 0.3), value: isActive)
+    }
+}
+
+// MARK: - Karaoke
+
+/// The active line in karaoke mode: sung words lit, the current word filling
+/// left to right, upcoming words dimmed. Only this view follows the clock
+/// frame by frame; the lyrics list redraws only when the active line changes.
+private struct KaraokeLineText: View {
+    let words: [LyricWord]
+    let offset: Double
+
+    private let np = NowPlaying.shared
+
+    var body: some View {
+        let text = Self.text(for: words)
+        TimelineView(.animation(minimumInterval: 1 / 60, paused: !np.isPlaying)) { _ in
+            text.textRenderer(KaraokeRenderer(time: playbackClock() + offset))
+        }
+    }
+
+    /// One text, so lines wrap normally; each word carries its timing.
+    private static func text(for words: [LyricWord]) -> Text {
+        words.enumerated().reduce(Text(verbatim: "")) { line, item in
+            let (index, word) = item
+            // ponytail: a last word with no end tag fills over a fixed 0.5 s.
+            let timing = KaraokeWordTiming(index: index, start: word.startTime,
+                                           end: word.endTime ?? word.startTime + 0.5)
+            return Text("\(line)\(Text(verbatim: word.text).customAttribute(timing))")
+        }
+    }
+}
+
+private struct KaraokeWordTiming: TextAttribute {
+    /// The word's position in the line, so two words with equal times stay apart.
+    let index: Int
+    let start: TimeInterval
+    let end: TimeInterval
+}
+
+/// Draws each word dimmed, then its sung part at full strength, clipped from
+/// the left. Only drawing changes per frame; the text layout is reused.
+/// A word can span several runs — a line wrap, or kanji and kana drawn with
+/// different fonts — so its sung width crosses those runs in order instead
+/// of filling each run at once.
+/// ponytail: fills left to right, so right-to-left scripts fill backwards.
+private struct KaraokeRenderer: TextRenderer {
+    var time: TimeInterval
+
+    func draw(layout: Text.Layout, in context: inout GraphicsContext) {
+        var wordWidth: [Int: CGFloat] = [:]
+        for line in layout {
+            for run in line {
+                if let timing = run[KaraokeWordTiming.self] {
+                    wordWidth[timing.index, default: 0] += run.typographicBounds.rect.width
+                }
+            }
+        }
+        var drawnWidth: [Int: CGFloat] = [:]
+        for line in layout {
+            for run in line {
+                guard let timing = run[KaraokeWordTiming.self] else {
+                    context.draw(run)
+                    continue
+                }
+                let progress = min(1, max(0, (time - timing.start) / max(timing.end - timing.start, 0.01)))
+                let rect = run.typographicBounds.rect
+                let before = drawnWidth[timing.index, default: 0]
+                drawnWidth[timing.index] = before + rect.width
+                let sungWidth = progress * wordWidth[timing.index, default: rect.width] - before
+                if progress >= 1 || sungWidth >= rect.width {
+                    context.draw(run)
+                    continue
+                }
+                var upcoming = context
+                upcoming.opacity = 0.35
+                upcoming.draw(run)
+                guard sungWidth > 0 else { continue }
+                var sung = context
+                // Tall clip so only the horizontal edge cuts glyphs.
+                sung.clip(to: Path(CGRect(x: rect.minX, y: rect.minY - rect.height,
+                                          width: sungWidth, height: rect.height * 3)))
+                sung.draw(run)
+            }
+        }
     }
 }

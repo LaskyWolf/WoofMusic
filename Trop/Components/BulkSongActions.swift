@@ -159,9 +159,7 @@ struct BulkSongActionsMenu: View {
                     finish()
                 }
                 Button("Add to Queue", systemImage: "text.append") {
-                    let np = NowPlaying.shared
-                    np.queueSongs.append(contentsOf: songs)
-                    np.persistQueueState()
+                    NowPlaying.shared.appendToQueue(songs)
                     finish()
                 }
             }

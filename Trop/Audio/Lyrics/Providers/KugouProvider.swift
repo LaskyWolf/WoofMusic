@@ -23,7 +23,14 @@ struct KugouProvider: LyricsProvider {
             throw LyricsError.notFound
         }
 
-        let raw = try await downloadLyrics(id: candidate.id, accessKey: candidate.accesskey)
+        // KRC carries word timing; plain LRC is the fallback.
+        if let krc = try? await downloadLyrics(id: candidate.id, accessKey: candidate.accesskey, format: "krc"),
+           let text = LyricsParsing.decodeKrc(krc) {
+            let lines = LyricsParsing.parseWordTimedLines(text, offsetsFromLineStart: true)
+            if !lines.isEmpty { return lines }
+        }
+        let data = try await downloadLyrics(id: candidate.id, accessKey: candidate.accesskey, format: "lrc")
+        guard let raw = String(data: data, encoding: .utf8) else { throw LyricsError.decodingFailed }
         let lines = LyricsParsing.parseLrc(raw)
         if lines.isEmpty { throw LyricsError.notFound }
         return lines
@@ -97,12 +104,13 @@ struct KugouProvider: LyricsProvider {
         return try await LyricsHTTP.decoded(SearchLyricsResponse.self, URLRequest(url: url))
     }
 
-    private func downloadLyrics(id: String, accessKey: String) async throws -> String {
+    /// The base64-decoded `content` of a lyrics download in `format` ("lrc" or "krc").
+    private func downloadLyrics(id: String, accessKey: String, format: String) async throws -> Data {
         guard var components = URLComponents(string: "https://lyrics.kugou.com/download") else {
             throw LyricsError.invalidURL
         }
         components.queryItems = [
-            URLQueryItem(name: "fmt", value: "lrc"),
+            URLQueryItem(name: "fmt", value: format),
             URLQueryItem(name: "charset", value: "utf8"),
             URLQueryItem(name: "client", value: "pc"),
             URLQueryItem(name: "ver", value: "1"),
@@ -113,11 +121,10 @@ struct KugouProvider: LyricsProvider {
 
         let data = try await LyricsHTTP.get(URLRequest(url: url))
         guard let decoded = try? JSONDecoder().decode(DownloadLyricsResponse.self, from: data),
-              let decodedData = Data(base64Encoded: decoded.content),
-              let text = String(data: decodedData, encoding: .utf8) else {
+              let decodedData = Data(base64Encoded: decoded.content) else {
             throw LyricsError.decodingFailed
         }
-        return text
+        return decodedData
     }
 
     // MARK: - Helpers

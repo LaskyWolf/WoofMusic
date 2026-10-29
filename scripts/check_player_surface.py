@@ -93,6 +93,9 @@ import UIKit
     var isLoadingTrack = false
     var dominantColors: [Color] = [.purple, .black]
     var accentColor: Color? = .purple
+    var musicVideoType: String?
+    func playNext() {}
+    func playPrevious() {}
 }
 @MainActor final class AppRouter: ObservableObject {
     static let shared = AppRouter()
@@ -101,6 +104,7 @@ import UIKit
     @Published var selectedTabIndex = 0
     var activePathDepth = 0
     func popActiveRoute() {}
+    func reselectTab(_ tab: Int) {}
 }
 @MainActor enum QuickAction {
     static func performPending() {}
@@ -158,7 +162,7 @@ struct FullPlayerView: View {
                 .ignoresSafeArea()
         }
         .foregroundStyle(.white)
-        .gesture(PlayerTrackSwipeGesture(isEnabled: true, onEnded: { _ in }))
+        .gesture(PlayerTrackSwipeGesture(isEnabled: true, onChanged: { _ in }, onEnded: { _ in }))
         .onAppear { SurfaceProbe.playerVisible = true }
         .onDisappear { SurfaceProbe.playerVisible = false }
     }

@@ -60,7 +60,11 @@ struct SearchResultsView: View {
     private var loadingView: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                ShimmerChips(count: 5)
+                HStack(spacing: 0) {
+                    ShimmerChips(count: 5)
+                        .mask { chipFadeMask }
+                    sortMenu
+                }
                 ShimmerSectionTitle(width: 90)
                     .padding(.bottom, DesignTokens.titleContentGap)
                 ForEach(0..<8, id: \.self) { _ in
@@ -70,6 +74,7 @@ struct SearchResultsView: View {
         }
         .scrollIndicators(.hidden)
         .scrollDisabled(true)
+        .shimmerClock()
     }
 
     // MARK: - Submission
@@ -130,12 +135,14 @@ struct SearchResultsView: View {
     private var searchResultsList: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
-                if !viewModel.availableFilters.isEmpty {
+                HStack(spacing: 0) {
                     filterChips
+                        .mask { chipFadeMask }
+                    sortMenu
                 }
 
                 if let hero = viewModel.heroArtist {
-                    artistHeroCard(hero, songs: viewModel.heroSongs)
+                    artistHeroCard(hero, detail: viewModel.heroDetail)
                         .padding(.horizontal, DesignTokens.screenHPadding)
                         .padding(.top, 8)
                         .padding(.bottom, DesignTokens.sectionGap)
@@ -149,6 +156,8 @@ struct SearchResultsView: View {
                         artistCarousel(items: section.items)
                     case "Albums":
                         albumCarousel(items: section.items)
+                    case "Podcasts":
+                        podcastCarousel(items: section.items)
                     default:
                         ForEach(section.items, id: \.id) { item in
                             resultRow(item)
@@ -194,43 +203,49 @@ struct SearchResultsView: View {
         .padding(.bottom, DesignTokens.titleContentGap)
     }
 
-    /// Artist-first hero: big circular artwork + name, then top songs.
-    private func artistHeroCard(_ artist: ArtistItem, songs: [SongItem]) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Button {
-                router.searchPath.append(DetailRoute.artist(browseId: artist.browseId))
-            } label: {
-                HStack(spacing: 12) {
-                    AsyncImageView(url: artist.thumbnailUrl)
-                        .frame(width: DesignTokens.artSmall, height: DesignTokens.artSmall)
-                        .clipShape(Circle())
-                    Text(artist.name)
-                        .font(.title3)
-                        .fontWeight(.bold)
-                        .foregroundStyle(.primary)
+    /// Artist-first hero: medium circular artwork, then the kind, name and
+    /// audience lines styled like the artist page header. The card's songs
+    /// are listed in Songs.
+    private func artistHeroCard(_ artist: ArtistItem, detail: String?) -> some View {
+        let shape = RoundedRectangle(cornerRadius: 16)
+        return Button {
+            router.searchPath.append(DetailRoute.artist(browseId: artist.browseId))
+        } label: {
+            HStack(spacing: 14) {
+                AsyncImageView(url: artist.thumbnailUrl)
+                    .frame(width: DesignTokens.artMedium, height: DesignTokens.artMedium)
+                    .clipShape(Circle())
+                // Same fonts as `DetailHeaderCard`'s kind, title and secondary lines.
+                VStack(alignment: .leading, spacing: 3) {
+                    ArtistKindLabel(name: artist.name)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
                         .lineLimit(1)
-                    Spacer()
-                    Text("•••")
-                        .font(.body.weight(.black))
-                        .foregroundStyle(settings.accentColor)
+                    Text(artist.name)
+                        .font(.title3.weight(.bold))
+                        .foregroundStyle(.primary)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.leading)
+                    if let detail {
+                        Text(detail)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
                 }
-                .contentShape(Rectangle())
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.right")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.secondary)
             }
-            .buttonStyle(.plain)
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
-
-            ForEach(songs, id: \.videoId) { song in
-                let item = YTItem.song(song)
-                YouTubeListItemView(item: item, onTap: {
-                    handleItemTap(item)
-                }, onNavigate: { pendingRoute = $0 })
-            }
+            .background(shape.fill(Color(.systemGray6)))
+            .contentShape(shape)
         }
-        .background(
-            RoundedRectangle(cornerRadius: 16)
-                .fill(Color(.systemGray6))
-        )
+        .buttonStyle(.plain)
+        .contentShape(.contextMenuPreview, shape)
+        .artistCardMenu(browseId: artist.browseId)
     }
 
     /// Songs and episodes keep the 56 pt song row; albums, artists, playlists
@@ -312,6 +327,56 @@ struct SearchResultsView: View {
             }
             .padding(.horizontal, DesignTokens.screenHPadding)
         }
+    }
+
+    /// Podcast shows as radio-dial tiles, like Home's podcast shelves.
+    private func podcastCarousel(items: [YTItem]) -> some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            LazyHStack(alignment: .top, spacing: DesignTokens.cardSpacing) {
+                ForEach(items, id: \.id) { item in
+                    if case .podcast(let podcast) = item {
+                        RadioDialTile(podcast: podcast) { handleItemTap(item) }
+                    }
+                }
+            }
+            .padding(.horizontal, DesignTokens.screenHPadding)
+        }
+        // The tiles' glow falls outside the row.
+        .scrollClipDisabled()
+    }
+
+    /// Fades the chips out over their last 40 pt, so they dissolve before the sort button.
+    private var chipFadeMask: some View {
+        HStack(spacing: 0) {
+            Color.black
+            LinearGradient(colors: [.black, .clear], startPoint: .leading, endPoint: .trailing)
+                .frame(width: 40)
+        }
+    }
+
+    /// Pinned at the trailing end of the filter row while the chips scroll.
+    private var sortMenu: some View {
+        Menu {
+            ForEach(SearchSort.allCases, id: \.self) { option in
+                Button {
+                    viewModel.sort = option
+                } label: {
+                    if viewModel.sort == option {
+                        Label(option.title, systemImage: "checkmark")
+                    } else {
+                        Text(option.title)
+                    }
+                }
+            }
+        } label: {
+            Image(systemName: "arrow.up.arrow.down")
+                .font(.body)
+                .foregroundStyle(.primary)
+                .frame(width: DesignTokens.controlHeight, height: DesignTokens.controlHeight)
+                .background(Circle().fill(Color(.systemGray5).opacity(0.6)))
+        }
+        .accessibilityLabel("Sort results")
+        .padding(.trailing, DesignTokens.screenHPadding)
     }
 
     private var filterChips: some View {

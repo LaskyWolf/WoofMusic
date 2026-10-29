@@ -10,6 +10,9 @@ import SwiftUI
 struct YouTubeGridItemView: View {
     var item: YTItem
     var onTap: () -> Void
+    /// Room above the cover for a playlist's stacked edges; a row with a
+    /// playlist passes true for every card, so the covers stay aligned.
+    var reservesPlaylistLift = false
 
     @State private var durations = DurationResolver()
     static let artworkSize: CGFloat = DesignTokens.artLarge
@@ -25,10 +28,13 @@ struct YouTubeGridItemView: View {
     }
 
     private var opensPage: Bool {
-        switch item {
-        case .album, .playlist: return true
-        default: return false
-        }
+        if case .album = item { return true }
+        return false
+    }
+
+    private var isPlaylist: Bool {
+        if case .playlist = item { return true }
+        return false
     }
 
     private var isArtist: Bool {
@@ -71,7 +77,7 @@ struct YouTubeGridItemView: View {
                 card
             }
         }
-        .task {
+        .task(id: videoId) {
             guard let vid = videoId else { return }
             let known: Int
             switch item {
@@ -96,6 +102,8 @@ struct YouTubeGridItemView: View {
                     .clipShape(isArtist ? AnyShape(Circle()) : AnyShape(RoundedRectangle(cornerRadius: 8)))
                     .coverZoomSource(YTItemRouter.detailRoute(for: item))
                     .opensPageBadge(opensPage)
+                    .playlistEdges(isPlaylist)
+                    .padding(.top, reservesPlaylistLift ? PlaylistEdgeMetrics.lift : 0)
 
                 Text(item.title)
                     .font(.caption)
@@ -117,7 +125,7 @@ struct YouTubeGridItemView: View {
                         .lineLimit(1)
                 }
             }
-            .frame(width: Self.artworkSize, height: Self.cardHeight, alignment: .top)
+            .frame(width: Self.artworkSize, height: Self.cardHeight + (reservesPlaylistLift ? PlaylistEdgeMetrics.lift : 0), alignment: .top)
         }
         .buttonStyle(ZoomPressStyle())
         .cardMenu(for: item)
@@ -156,7 +164,7 @@ struct YouTubeListItemView: View {
                 }
                 .background(DownloadCellProgressView(song: song))
             }
-            .task { await durations.resolve(videoId: song.videoId, knownDuration: song.duration) }
+            .task(id: song.videoId) { await durations.resolve(videoId: song.videoId, knownDuration: song.duration) }
             .onReceive(NotificationCenter.default.publisher(for: .durationDidUpdate)) { notification in
                 durations.handleUpdate(notification, videoId: song.videoId)
             }

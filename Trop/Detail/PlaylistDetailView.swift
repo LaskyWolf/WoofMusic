@@ -83,6 +83,8 @@ final class PlaylistDetailViewModel {
             PlaylistHeaderCache.store(parsed, for: playlistId)
             await persist(parsed, rows: rows, browseId: browseId)
         } catch {
+            // Leaving the page cancels the load: keep isLoading so the next appear retries.
+            if error.isCancellation { return }
             // A saved copy stays on screen when the refresh fails.
             if playlist == nil { self.error = error }
             isLoading = false
@@ -145,6 +147,7 @@ final class PlaylistDetailViewModel {
             playlist = try await localInfo(entity: entity)
             isLoading = false
         } catch {
+            if error.isCancellation { return }
             self.error = error
             isLoading = false
         }
@@ -228,7 +231,7 @@ final class PlaylistDetailViewModel {
             )
             isLoading = false
         } catch {
-            guard generation == autoLoadGeneration else { return }
+            guard generation == autoLoadGeneration, !error.isCancellation else { return }
             self.error = error
             isLoading = false
         }
@@ -596,20 +599,9 @@ struct PlaylistDetailView: View {
             DetailHeaderCard(meta: kindLine(for: playlist), title: playlist.title) {
                 cover(for: playlist)
             } secondary: {
-                // Author: avatar + name, clickable → artist detail. A shared
-                // playlist shows its people here instead, like YouTube Music's page.
-                if !playlist.collaboratorAvatarUrls.isEmpty {
-                    CollaboratorBadge(avatarUrls: playlist.collaboratorAvatarUrls, panelParams: playlist.collaboratorsPanelParams)
+                if !playlist.collaboratorAvatarUrls.isEmpty || playlist.authorName != nil {
+                    PlaylistPeopleChip(playlist: playlist)
                         .padding(.top, 4)
-                } else if let authorName = playlist.authorName {
-                    if let authorId = playlist.authorBrowseId {
-                        NavigationLink(value: DetailRoute.artist(browseId: authorId)) {
-                            authorRow(name: authorName, avatarUrl: playlist.authorAvatarUrl)
-                        }
-                        .buttonStyle(.plain)
-                    } else {
-                        authorRow(name: authorName, avatarUrl: playlist.authorAvatarUrl)
-                    }
                 }
             } buttons: {
                 PlaylistActionsMenu(
@@ -628,7 +620,7 @@ struct PlaylistDetailView: View {
                 .accessibilityLabel("Shuffle")
 
                 Button(action: { playAll(playlist) }, label: {
-                    HeaderRoundIcon(systemImage: "play.fill", primary: .accentColor)
+                    HeaderRoundIcon(systemImage: "play.fill", primary: SettingsStore.shared.accentColor)
                 })
                 .accessibilityLabel("Play all")
             }
@@ -668,26 +660,6 @@ struct PlaylistDetailView: View {
                         .font(.system(size: 40))
                         .foregroundColor(.white.opacity(0.8))
                 )
-        }
-    }
-
-    @ViewBuilder
-    private func authorRow(name: String, avatarUrl: String?) -> some View {
-        HStack(spacing: 6) {
-            if let avatarUrl {
-                AsyncImageView(url: avatarUrl)
-                    .frame(width: 18, height: 18)
-                    .clipShape(Circle())
-            } else {
-                Image(systemName: "person.circle.fill")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            }
-            Text(name)
-                .font(.subheadline)
-                .fontWeight(.medium)
-                .foregroundColor(.secondary)
-                .lineLimit(1)
         }
     }
 
@@ -900,6 +872,7 @@ struct AddSongToPlaylistView: View {
                 sql: "SELECT * FROM song WHERE title != '' ORDER BY create_date DESC LIMIT 200"
             )
         } catch {
+            if error.isCancellation { return }
             Log.addSong.error("Failed to load songs: \(error)")
         }
     }
@@ -918,76 +891,199 @@ struct AddSongToPlaylistView: View {
     }
 }
 
-// MARK: - Shared playlist badge
+// MARK: - People chip
 
-/// Overlapping avatars of a shared playlist. Tapping opens a native pop-up
-/// listing the people by name. The "••" circle only shows with more than 3 people.
-/// The owner, always first, wears a tilted crown.
-private struct CollaboratorBadge: View {
-    let avatarUrls: [String]
-    let panelParams: String?
+/// Who made the playlist, in one glass capsule: overlapping avatars (owner
+/// first and crowned, at most 3) and a name. A solo playlist links to its
+/// author's page; a shared one opens a sheet listing everyone with their role.
+private struct PlaylistPeopleChip: View {
+    let playlist: PlaylistDetailInfo
 
     @State private var people: [PlaylistCollaborator] = []
-    @State private var icons: [String: UIImage] = [:]
+    @State private var hasLoadedPeople = false
+    @State private var showPeople = false
+    /// Profile picked in the sheet, opened once the sheet is gone.
+    @State private var pickedChannel: String?
 
-    private var total: Int { max(people.count, avatarUrls.count) }
+    private var isShared: Bool { !playlist.collaboratorAvatarUrls.isEmpty }
+
+    /// Owner and head count saved by the last visit's collaborators list.
+    private var saved: PlaylistHeaderSnapshot? { PlaylistHeaderCache.snapshot(for: playlist.playlistId) }
+
+    private var avatarUrls: [String?] {
+        if isShared { return playlist.collaboratorAvatarUrls.map { Optional($0) } }
+        return [playlist.authorAvatarUrl]
+    }
+
+    /// Shared playlist with no owner name yet, from the list or a past visit.
+    private var isPlaceholder: Bool {
+        isShared && people.isEmpty && saved?.ownerName == nil && !hasLoadedPeople
+    }
+
+    private var label: String {
+        guard isShared else { return playlist.authorName ?? "" }
+        guard let owner = people.first?.name ?? saved?.ownerName else {
+            // Redacted while loading; shown as text only when the list failed.
+            return hasLoadedPeople ? "Shared playlist" : "Owner + 1"
+        }
+        // The facepile can hold fewer avatars than people; the fetched list is exact.
+        let total = max(people.count, saved?.peopleCount ?? 0, playlist.collaboratorAvatarUrls.count)
+        return total > 1 ? "\(owner) + \(total - 1)" : owner
+    }
 
     var body: some View {
-        Menu {
-            Section("Collaborators") {
-                ForEach(people, id: \.self) { person in
-                    Button {} label: {
-                        Label {
-                            Text(person.name)
-                            if person.isOwner { Text("Playlist owner") }
-                        } icon: {
-                            Image(uiImage: icons[person.name] ?? CollaboratorIcon.make(avatar: nil, crowned: person.isOwner))
-                                .renderingMode(.original)
+        Group {
+            if isShared, let params = playlist.collaboratorsPanelParams {
+                Button { showPeople = true } label: { chip(tappable: true) }
+                    .accessibilityLabel("\(label), shared playlist")
+                    .sheet(isPresented: $showPeople, onDismiss: openPickedChannel) { peopleSheet }
+                    .task(id: params) {
+                        let fetched = await PlaylistCollaborators.fetch(params: params)
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            people = fetched
+                            hasLoadedPeople = true
                         }
-                        .labelStyle(.titleAndIcon)
+                        if let owner = fetched.first?.name {
+                            PlaylistHeaderCache.storePeople(owner: owner, count: fetched.count, for: playlist.playlistId)
+                        }
+                    }
+            } else if !isShared, let authorId = playlist.authorBrowseId {
+                NavigationLink(value: DetailRoute.artist(browseId: authorId)) { chip(tappable: false) }
+            } else {
+                chip(tappable: false)
+            }
+        }
+        // Same press as the header's round buttons, for both kinds of chip.
+        .buttonStyle(ZoomPressStyle(scale: 0.92))
+    }
+
+    private func chip(tappable: Bool) -> some View {
+        HStack(spacing: 6) {
+            HStack(spacing: -6) {
+                ForEach(Array(avatarUrls.prefix(3).enumerated()), id: \.offset) { index, url in
+                    avatar(url, size: 20)
+                        .overlay(Circle().stroke(Color(.systemBackground), lineWidth: 1.5))
+                        // The facepile lists the owner first.
+                        .overlay { if isShared && index == 0 { OwnerCrown(size: 20) } }
+                }
+            }
+            Text(label)
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .redacted(reason: isPlaceholder ? .placeholder : [])
+                .contentTransition(.opacity)
+            if tappable {
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
+            }
+        }
+        .padding(.leading, 4)
+        .padding(.trailing, 10)
+        .padding(.vertical, 4)
+        .glassEffect(.regular, in: Capsule())
+    }
+
+    /// The facepile URL for the person at `index` when the facepile lists
+    /// everyone, so the sheet shows the images the chip already loaded.
+    private func avatarUrl(for person: PlaylistCollaborator, at index: Int) -> String? {
+        let facepile = playlist.collaboratorAvatarUrls
+        return facepile.count == people.count ? facepile[index] : person.avatarUrl
+    }
+
+    private var peopleSheet: some View {
+        NavigationStack {
+            List {
+                ForEach(Array(people.enumerated()), id: \.offset) { index, person in
+                    Button {
+                        pickedChannel = person.channelId
+                        showPeople = false
+                    } label: {
+                        personRow(person, at: index)
+                    }
+                    .disabled(person.channelId == nil)
+                    .accessibilityHint(person.channelId == nil ? "" : "Opens their profile")
+                }
+            }
+            .overlay {
+                if people.isEmpty {
+                    if hasLoadedPeople {
+                        Text("Couldn't load the people on this playlist.")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ProgressView()
                     }
                 }
             }
-        } label: {
-            HStack(spacing: -8) {
-                ForEach(Array(avatarUrls.prefix(3).enumerated()), id: \.offset) { index, url in
-                    AsyncImageView(url: url)
-                        .frame(width: 28, height: 28)
-                        .clipShape(Circle())
-                        .overlay(Circle().stroke(Color(.systemBackground), lineWidth: 2))
-                        .overlay(alignment: .topLeading) {
-                            if index == 0 {
-                                Image(systemName: "crown.fill")
-                                    .font(.system(size: 12))
-                                    .foregroundStyle(.yellow)
-                                    .rotationEffect(.degrees(-28))
-                                    .offset(x: -5, y: -9)
-                            }
-                        }
-                }
-                if total > 3 {
-                    Image(systemName: "ellipsis")
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundStyle(.white)
-                        .frame(width: 28, height: 28)
-                        .background(Circle().fill(Color(.systemGray3)))
-                        .overlay(Circle().stroke(Color(.systemBackground), lineWidth: 2))
-                }
-            }
-            .padding(.top, 8)
+            .navigationTitle("Collaborators")
+            .navigationBarTitleDisplayMode(.inline)
         }
-        .accessibilityLabel("Shared playlist, \(total) people")
-        .task(id: panelParams) {
-            guard let panelParams else { return }
-            people = await PlaylistCollaborators.fetch(params: panelParams)
-            for person in people {
-                var avatar: UIImage?
-                if let url = person.avatarUrl.flatMap(URL.init) {
-                    avatar = try? await ArtworkLoader.image(for: url)
-                }
-                icons[person.name] = CollaboratorIcon.make(avatar: avatar, crowned: person.isOwner)
+        .presentationDetents([.medium])
+        .presentationDragIndicator(.visible)
+    }
+
+    private func personRow(_ person: PlaylistCollaborator, at index: Int) -> some View {
+        HStack(spacing: 12) {
+            avatar(avatarUrl(for: person, at: index), size: 36)
+                .overlay { if person.isOwner { OwnerCrown(size: 36) } }
+            Text(person.name)
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+            if person.name == AccountState.shared.accountName {
+                Text("(you)")
+                    .foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 8)
+            Text(person.isOwner ? "Owner" : "Editor")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+            if person.channelId != nil {
+                Image(systemName: "chevron.right")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.tertiary)
             }
         }
+        .contentShape(Rectangle())
+    }
+
+    private func openPickedChannel() {
+        guard let channel = pickedChannel else { return }
+        pickedChannel = nil
+        AppRouter.shared.open(.artist(browseId: channel))
+    }
+
+    @ViewBuilder
+    private func avatar(_ url: String?, size: CGFloat) -> some View {
+        if let url {
+            AsyncImageView(url: url)
+                .frame(width: size, height: size)
+                .clipShape(Circle())
+        } else {
+            Image(systemName: "person.circle.fill")
+                .resizable()
+                .foregroundStyle(.secondary)
+                .frame(width: size, height: size)
+        }
+    }
+}
+
+/// `CollaboratorIcon`'s crown for a SwiftUI avatar of side `size`: same
+/// tilt, colour and place (centred on the top edge, near the left).
+private struct OwnerCrown: View {
+    let size: CGFloat
+
+    var body: some View {
+        Image(systemName: "crown.fill")
+            .resizable()
+            .scaledToFit()
+            .foregroundStyle(Color(.systemYellow))
+            .frame(width: size * 0.59, height: size * 0.47)
+            .rotationEffect(.radians(-0.5))
+            .position(x: size * 0.18, y: 0)
+            .accessibilityHidden(true)
     }
 }
 

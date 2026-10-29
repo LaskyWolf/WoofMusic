@@ -111,24 +111,6 @@ actor PersonalizationService {
 
     // MARK: - Phase 2: API-based sections (load in background)
 
-    func buildAccountPlaylists() async -> HomeSection {
-        guard await isLoggedIn() else { return .accountPlaylists(items: []) }
-        do {
-            let json = try await innerTube.browse(browseId: "FEmusic_liked_playlists")
-            let playlists = LibraryBrowseParser.parsePlaylists(from: json)
-            let items = playlists.map {
-                YTItem.playlist(PlaylistItem(
-                    id: $0.browseId, title: $0.title,
-                    author: nil, thumbnailUrl: $0.thumbnailUrl,
-                    songCount: $0.songCount
-                ))
-            }
-            return .accountPlaylists(items: items)
-        } catch {
-            return .accountPlaylists(items: [])
-        }
-    }
-
     func buildDailyDiscover() async -> HomeSection {
         guard await isLoggedIn() else { return .dailyDiscover(items: []) }
         guard let likedSongs = try? await db.fetchLikedSongs(), !likedSongs.isEmpty else {
@@ -141,7 +123,8 @@ actor PersonalizationService {
 
         for song in seeds {
             guard discovered.count < 10 else { break }
-            guard let radio = try? await fetchRadio(videoId: song.id),
+            // One radio fills the 10 items; the automix call would only add more.
+            guard let radio = try? await fetchRadio(videoId: song.id, options: .default, includeAutomix: false),
                   !radio.songs.isEmpty else { continue }
             let related = radio.songs.map { YTItem.song($0) }
             for item in related {
@@ -246,7 +229,11 @@ actor PersonalizationService {
         try await fetchRadio(videoId: videoId, options: .default)
     }
 
-    func fetchRadio(videoId: String, options: RadioOptions) async throws -> (songs: [SongItem], currentIndex: Int) {
+    func fetchRadio(
+        videoId: String,
+        options: RadioOptions,
+        includeAutomix: Bool = true
+    ) async throws -> (songs: [SongItem], currentIndex: Int) {
         let playlistId = "RDAMVM\(videoId)"
         let json = try await innerTube.next(videoId: videoId, playlistId: playlistId)
         let panel = try extractPlaylistPanel(from: json)
@@ -261,7 +248,7 @@ actor PersonalizationService {
         guard !songs.isEmpty else { throw NSError(domain: "fetchRadio", code: 1, userInfo: [:]) }
         let currentIndex = songs.firstIndex(where: { $0.1 }) ?? 0
         var resultSongs = songs.map(\.0)
-        if let automixItems = await tryResolveAutomix(from: panel) {
+        if includeAutomix, let automixItems = await tryResolveAutomix(from: panel) {
             let deduped = automixItems.filter { a in !resultSongs.contains(where: { $0.videoId == a.videoId }) }
             resultSongs += deduped
         }

@@ -47,14 +47,21 @@ enum PlaybackQueue {
             NowPlaying.shared.setQueue([song], startIndex: 0)
             Task { try? await PlaybackManager.shared.resolveAndPlay(videoId: song.videoId) }
         }
+        let np = NowPlaying.shared
+        let bloomId = np.radioBloom.id + 1
+        np.radioBloom = RadioBloomEvent(id: bloomId, isLoading: true)
         Task {
+            defer { if np.radioBloom.id == bloomId { np.radioBloom.isLoading = false } }
             guard let radio = try? await PersonalizationService.shared.fetchRadio(videoId: song.videoId, options: options),
                   radio.songs.count > 1 else { return }
-            guard NowPlaying.shared.videoId == song.videoId else { return }
-            NowPlaying.shared.replaceWithRadio(
-                preservingArtists(radio.songs, over: NowPlaying.shared.queueSongs),
+            guard np.videoId == song.videoId else { return }
+            np.replaceWithRadio(
+                preservingArtists(radio.songs, over: np.queueSongs),
                 currentIndex: radio.currentIndex
             )
+            let upcoming = np.queueSongs.dropFirst(np.queueIndex + 1)
+            np.radioBloom.covers = upcoming.prefix(RadioBloomEvent.orbCount).map(\.thumbnailUrl)
+            np.radioBloom.addedCount = upcoming.count
         }
     }
 
