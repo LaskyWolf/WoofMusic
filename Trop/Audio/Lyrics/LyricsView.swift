@@ -107,7 +107,10 @@ struct LyricsView: View {
     // MARK: - Lyrics Content
 
     private var lyricsContentView: some View {
-        ZStack(alignment: .bottom) {
+        // Read here, not only inside the ForEach rows, so a new size from
+        // Appearance always redraws the lines.
+        let fontSize = settings.lyricsFontSize
+        return ZStack(alignment: .bottom) {
             GeometryReader { geo in
                 ScrollViewReader { proxy in
                     ScrollView {
@@ -123,7 +126,7 @@ struct LyricsView: View {
                             }
 
                             ForEach(Array(lines.enumerated()), id: \.element.id) { index, line in
-                                lyricsLineRow(index: index, line: line)
+                                lyricsLineRow(index: index, line: line, fontSize: fontSize)
                                     .id(line.id)
                             }
 
@@ -241,7 +244,7 @@ struct LyricsView: View {
 
     /// A lyric line plus its interval ring, which only exists in the hierarchy
     /// while playback is actually inside the gap.
-    private func lyricsLineRow(index: Int, line: LyricLine) -> some View {
+    private func lyricsLineRow(index: Int, line: LyricLine, fontSize: Double) -> some View {
         let gap = settings.showIntervalIndicator ? instrumentalGaps.last(where: { $0.afterIndex == index }) : nil
         let romanized = romanization(for: index)
 
@@ -250,7 +253,7 @@ struct LyricsView: View {
                 text: line.text,
                 isActive: index == activeIndex,
                 alignment: settings.lyricsAlignment,
-                fontSize: settings.lyricsFontSize,
+                fontSize: fontSize,
                 lineOpacity: index == activeIndex ? 1 : opacityForDistance(abs(index - activeIndex)),
                 lineScale: index == activeIndex ? 1 : scaleForDistance(abs(index - activeIndex)),
                 romanizedText: romanized,
