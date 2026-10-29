@@ -174,6 +174,14 @@ final class NowPlaying {
         persistQueueState()
     }
 
+    /// Adds songs at the end of the queue, and of the unshuffled order too,
+    /// so turning shuffle off keeps them.
+    func appendToQueue(_ songs: [SongItem]) {
+        queueSongs.append(contentsOf: songs)
+        originalQueue?.append(contentsOf: songs)
+        persistQueueState()
+    }
+
     /// Songs added with Play Next that have not played yet.
     private var pendingPlayNext: [SongItem] {
         guard let end = playNextEnd, end > queueIndex, queueSongs.indices.contains(end) else { return [] }

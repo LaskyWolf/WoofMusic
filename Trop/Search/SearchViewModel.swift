@@ -317,7 +317,7 @@ final class SearchViewModel {
             phase = results.isEmpty && heroArtist == nil ? .noResults : .results
         } catch {
             guard query == submittedQuery else { return }
-            if !Self.isCancellation(error) {
+            if !error.isCancellation {
                 Log.search.error("Submit failed: \(error)")
                 self.error = error
                 phase = .failed
@@ -445,9 +445,5 @@ final class SearchViewModel {
 
     private func cancelTasks() {
         fetchTask?.cancel()
-    }
-
-    private static func isCancellation(_ error: Error) -> Bool {
-        (error as? URLError)?.code == .cancelled || error is CancellationError
     }
 }

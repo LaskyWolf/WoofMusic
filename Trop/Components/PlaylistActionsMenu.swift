@@ -86,9 +86,7 @@ struct PlaylistActionsMenu<MenuLabel: View>: View {
     // MARK: - Actions
 
     private func addToQueue() {
-        let np = NowPlaying.shared
-        np.queueSongs.append(contentsOf: playlist.songs)
-        np.persistQueueState()
+        NowPlaying.shared.appendToQueue(playlist.songs)
     }
 
     private func downloadAll() {

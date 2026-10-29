@@ -47,9 +47,7 @@ private struct SongCollectionItems: View {
             Button("Add to Queue", systemImage: "text.append") {
                 Task {
                     let songs = await loadSongs()
-                    let np = NowPlaying.shared
-                    np.queueSongs.append(contentsOf: songs)
-                    np.persistQueueState()
+                    NowPlaying.shared.appendToQueue(songs)
                 }
             }
         }

@@ -64,6 +64,9 @@ import Combine
                 self.sapisid = await self.cookieStore.sapisid()
                 self.visitorData = await self.cookieStore.visitorData()
                 self.dataSyncId = await self.cookieStore.dataSyncId()
+                // Before isLoggedIn flips: whichever tab opens first then
+                // requests with the account, not as a guest.
+                await self.authService.loadPersistedSession()
                 self.isLoggedIn = true
             }
         }

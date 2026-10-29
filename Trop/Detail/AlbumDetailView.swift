@@ -472,9 +472,7 @@ struct AlbumMoreSheet: View {
     }
 
     private func addToQueue() {
-        let np = NowPlaying.shared
-        np.queueSongs.append(contentsOf: album.songs)
-        np.persistQueueState()
+        NowPlaying.shared.appendToQueue(album.songs)
     }
 
     private func downloadAll() {

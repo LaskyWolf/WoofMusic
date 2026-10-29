@@ -675,9 +675,7 @@ struct PodcastMoreSheet: View {
     }
 
     private func addToQueue() {
-        let np = NowPlaying.shared
-        np.queueSongs.append(contentsOf: podcast.episodes.map { $0.toSongItem() })
-        np.persistQueueState()
+        NowPlaying.shared.appendToQueue(podcast.episodes.map { $0.toSongItem() })
     }
 
     private func downloadAll() {

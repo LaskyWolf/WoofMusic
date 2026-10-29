@@ -179,9 +179,7 @@ struct SongActionsMenu<MenuLabel: View>: View {
     }
 
     private func addToQueue() {
-        let np = NowPlaying.shared
-        np.queueSongs.append(song)
-        np.persistQueueState()
+        NowPlaying.shared.appendToQueue([song])
     }
 
     private func navigate(_ route: DetailRoute) {
