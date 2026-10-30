@@ -22,7 +22,6 @@ struct LibraryView: View {
     @State private var showCreateDialog = false
     @State private var playlistToDelete: PlaylistEntity?
     @State private var playlistSongCounts: [String: Int] = [:]
-    @State private var didStartSync = false
 
     @Bindable private var router = AppRouter.shared
     /// Shared by this tab's covers and the pages they open, for the zoom transition.
@@ -92,12 +91,11 @@ struct LibraryView: View {
             .task {
                 // Runs on every appear, so coming back from a playlist deleted there reloads too.
                 await loadContent()
-                guard !didStartSync else { return }
-                didStartSync = true
-                Task {
-                    await SyncBridge.checkAndSyncIfStale()
-                    await loadContent()
-                }
+                guard accountState.isLoggedIn else { return }
+                Task { await SyncBridge.checkAndSyncIfStale() }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .libraryDidChange)) { _ in
+                Task { await loadContent() }
             }
             .refreshable {
                 await SyncBridge.forceFullSync()

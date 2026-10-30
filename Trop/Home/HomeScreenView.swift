@@ -76,6 +76,12 @@ struct HomeScreenView: View {
             .onReceive(NotificationCenter.default.publisher(for: .speedDialDidChange)) { _ in
                 Task { await reloadSpeedDial() }
             }
+            // The Quick Picks widget shows the same cards. Out here so it follows
+            // them while their section or this tab is off screen.
+            .onChange(of: quickPicksCards.map { $0.song.videoId }, initial: true) {
+                let cards = quickPicksCards
+                if !cards.isEmpty { WidgetSync.shared.updateQuickPicks(cards, isEnabled: true) }
+            }
         }
         .coverZoomNamespace(coverZoom)
     }
@@ -197,15 +203,29 @@ struct HomeScreenView: View {
         }
     }
 
+    /// Pinned songs, then the section's songs that aren't pinned.
+    private func quickPicksSongs(_ section: HomeSection) -> (pinned: [SongItem], picks: [SongItem]) {
+        let pinnedIds = Set(speedDialEntries.map(\.videoId))
+        let picks: [SongItem] = section.items.compactMap { item in
+            if case .song(let s) = item, !pinnedIds.contains(s.videoId) { return s }
+            return nil
+        }
+        return (speedDialEntries.map { $0.toSongItem() }, picks)
+    }
+
+    private var quickPicksCards: [(song: SongItem, isPinned: Bool)] {
+        let section = viewModel.homeSections.first { if case .quickPicks = $0 { true } else { false } }
+        guard let section else { return [] }
+        let songs = quickPicksSongs(section)
+        let cards = songs.pinned.map { (song: $0, isPinned: true) } + songs.picks.map { (song: $0, isPinned: false) }
+        return Array(cards.prefix(settings.quickPicksSize.count))
+    }
+
     @ViewBuilder
     private func quickPicksSection(_ section: HomeSection) -> some View {
-        let pinnedSongs = speedDialEntries.map { $0.toSongItem() }
-        let pinnedIds = Set(speedDialEntries.map(\.videoId))
-        let visibleItems = section.items.filter { item in
-            if case .song(let s) = item { return !pinnedIds.contains(s.videoId) }
-            return true
-        }
-        let quickSongs = visibleItems.compactMap { if case .song(let s) = $0 { return s } else { return nil } }
+        let songs = quickPicksSongs(section)
+        let pinnedSongs = songs.pinned
+        let quickSongs = songs.picks
         let combinedQueue = pinnedSongs + quickSongs
 
         if combinedQueue.isEmpty {
@@ -230,10 +250,6 @@ struct HomeScreenView: View {
                 .contentMargins(.horizontal, DesignTokens.screenHPadding, for: .scrollContent)
                 .scrollTargetBehavior(.viewAligned)
                 .scrollPosition(id: $quickPicksPage)
-                // The Quick Picks widget shows the same cards.
-                .task(id: cards.map(\.0.videoId)) {
-                    WidgetSync.shared.updateQuickPicks(cards.map { (song: $0.0, isPinned: $0.1) }, isEnabled: true)
-                }
 
                 if pages.count > 1 {
                     HStack(spacing: 6) {

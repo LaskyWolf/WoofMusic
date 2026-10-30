@@ -17,9 +17,9 @@ final class WidgetSync {
 
     private var lastNowPlaying: NowPlayingState?
     private var lastQuickPicks: QuickPicksSnapshot?
-    private var lastStats: StatsSnapshot?
     private var pending: Task<Void, Never>?
     private var pendingQuickPicks: Task<Void, Never>?
+    private var backgroundTask = UIBackgroundTaskIdentifier.invalid
     /// Cover encoded for `NowPlaying.thumbnailVersion`.
     private var cover: (version: Int, data: Data?)?
     /// Small covers by thumbnail URL, for up next, Quick Picks and stats.
@@ -30,6 +30,32 @@ final class WidgetSync {
     private static let smallSide: CGFloat = 120
 
     private init() {}
+
+    // MARK: - Everything
+
+    /// Rewrites the widgets' data and reloads them all, even when nothing
+    /// changed: the pushes below reload only on a change, so a reload WidgetKit
+    /// dropped would otherwise never be retried. Called at launch, when the app
+    /// goes to the background and from Diagnostics.
+    func syncAll() {
+        guard backgroundTask == .invalid else { return }
+        WidgetStore.write(WidgetPing(date: .now, build: WidgetStore.build), to: WidgetStore.appPingFile)
+        // Without this the app can be suspended before the data is written.
+        backgroundTask = UIApplication.shared.beginBackgroundTask(withName: "WidgetSync") { [weak self] in
+            self?.endBackgroundTask()
+        }
+        Task {
+            await pushNowPlaying()
+            await pushStats()
+            WidgetCenter.shared.reloadAllTimelines()
+            endBackgroundTask()
+        }
+    }
+
+    private func endBackgroundTask() {
+        UIApplication.shared.endBackgroundTask(backgroundTask)
+        backgroundTask = .invalid
+    }
 
     // MARK: - Now Playing (Turntable)
 
@@ -42,6 +68,13 @@ final class WidgetSync {
             guard !Task.isCancelled else { return }
             await pushNowPlaying()
         }
+    }
+
+    /// For the widget's own buttons: the system reloads a widget as soon as its
+    /// intent returns, so the new state has to be written by then.
+    func refreshNow() async {
+        pending?.cancel()
+        await pushNowPlaying()
     }
 
     private func pushNowPlaying() async {
@@ -65,8 +98,16 @@ final class WidgetSync {
             upNext: upNext
         )
         if state != lastNowPlaying, WidgetStore.write(state, to: WidgetStore.nowPlayingFile) {
+            let songChanged = lastNowPlaying.map { $0.title != state.title } ?? false
             lastNowPlaying = state
             WidgetCenter.shared.reloadTimelines(ofKind: WidgetKind.nowPlaying)
+            // The song that just ended counts in this month's numbers.
+            if songChanged {
+                Task {
+                    await pushStats()
+                    WidgetCenter.shared.reloadTimelines(ofKind: WidgetKind.stats)
+                }
+            }
         }
     }
 
@@ -112,49 +153,42 @@ final class WidgetSync {
 
     // MARK: - Woof Stats
 
-    /// Recomputes this month's numbers. Called at launch and when the app
-    /// goes to the background, so the widget follows the listening.
-    func refreshStats() {
-        WidgetStore.write(WidgetPing(date: .now, build: WidgetStore.build), to: WidgetStore.appPingFile)
-        Task {
-            let settings = SettingsStore.shared
-            let interval = RecapService.monthToDate()
-            guard let stats = await RecapService.compute(for: interval) else { return }
-            let streak = await RecapService.currentStreak()
+    /// Recomputes this month's numbers.
+    private func pushStats() async {
+        let settings = SettingsStore.shared
+        let interval = RecapService.monthToDate()
+        guard let stats = await RecapService.compute(for: interval) else { return }
+        let streak = await RecapService.currentStreak()
 
-            var topSong: WidgetSong?
-            if let song = stats.topSong {
-                topSong = WidgetSong(videoId: song.id, title: song.title, artist: song.artist ?? "",
-                                     artwork: await smallCover(song.thumbnailUrl))
-            }
-            var artists: [StatsSnapshot.Artist] = []
-            for artist in stats.topArtists.prefix(3) {
-                artists.append(StatsSnapshot.Artist(name: artist.name, minutes: artist.minutes,
-                                                    artwork: await smallCover(artist.thumbnailUrl)))
-            }
-            // Unlocked first: the widget has room for 7 of the 23.
-            let badges = (stats.badges.filter(\.isUnlocked) + stats.badges.filter { !$0.isUnlocked }).map { badge in
-                let pair = badge.kind.hexPair
-                return StatsSnapshot.Badge(emoji: badge.kind.emoji, name: badge.kind.name,
-                                           isUnlocked: badge.isUnlocked, colors: [pair.0, pair.1])
-            }
-            let snapshot = StatsSnapshot(
-                monthName: RecapService.monthName(interval),
-                minutes: stats.totalMinutes,
-                weeklyMinutes: stats.weeklyMinutes,
-                streakDays: streak,
-                streakGoal: RecapService.streakDays,
-                topSong: topSong,
-                topSongPlays: stats.topSong?.plays ?? 0,
-                topArtists: artists,
-                badges: badges,
-                isTracking: settings.trackPlayHistory
-            )
-            if snapshot != lastStats, WidgetStore.write(snapshot, to: WidgetStore.statsFile) {
-                lastStats = snapshot
-                WidgetCenter.shared.reloadTimelines(ofKind: WidgetKind.stats)
-            }
+        var topSong: WidgetSong?
+        if let song = stats.topSong {
+            topSong = WidgetSong(videoId: song.id, title: song.title, artist: song.artist ?? "",
+                                 artwork: await smallCover(song.thumbnailUrl))
         }
+        var artists: [StatsSnapshot.Artist] = []
+        for artist in stats.topArtists.prefix(3) {
+            artists.append(StatsSnapshot.Artist(name: artist.name, minutes: artist.minutes,
+                                                artwork: await smallCover(artist.thumbnailUrl)))
+        }
+        // Unlocked first: the widget has room for 7 of the 23.
+        let badges = (stats.badges.filter(\.isUnlocked) + stats.badges.filter { !$0.isUnlocked }).map { badge in
+            let pair = badge.kind.hexPair
+            return StatsSnapshot.Badge(emoji: badge.kind.emoji, name: badge.kind.name,
+                                       isUnlocked: badge.isUnlocked, colors: [pair.0, pair.1])
+        }
+        let snapshot = StatsSnapshot(
+            monthName: RecapService.monthName(interval),
+            minutes: stats.totalMinutes,
+            weeklyMinutes: stats.weeklyMinutes,
+            streakDays: streak,
+            streakGoal: RecapService.streakDays,
+            topSong: topSong,
+            topSongPlays: stats.topSong?.plays ?? 0,
+            topArtists: artists,
+            badges: badges,
+            isTracking: settings.trackPlayHistory
+        )
+        WidgetStore.write(snapshot, to: WidgetStore.statsFile)
     }
 
     // MARK: - Covers

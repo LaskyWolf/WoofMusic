@@ -44,6 +44,8 @@ final class AccountState {
             isLoginSheetPresented = false
             hasAttemptedTokenRefresh = false
             Task { await fetchAccountInfo() }
+            // Here and not in a tab, so the library syncs whichever tab opens first.
+            Task { await SyncBridge.checkAndSyncIfStale() }
         } else {
             accountName = "Guest"
             accountImageUrl = nil

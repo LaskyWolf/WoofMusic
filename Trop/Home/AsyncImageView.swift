@@ -101,16 +101,27 @@ struct AsyncImageView: View {
             Self.rememberAnySize(cached, for: url)
             return
         }
-        do {
-            let image = try await ImagePipeline.shared.image(for: request)
-            guard !Task.isCancelled else { return }
-            Self.rememberAnySize(image, for: url)
-            withAnimation(.easeInOut(duration: 0.2)) {
-                loadedImage = image
+        // This task only runs again when the view reappears, so a failure
+        // would otherwise leave the cover blank for as long as it stays on screen.
+        var retryDelays: [Duration] = [.seconds(1), .seconds(3)]
+        while true {
+            do {
+                let image = try await ImagePipeline.shared.image(for: request)
+                guard !Task.isCancelled else { return }
+                Self.rememberAnySize(image, for: url)
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    loadedImage = image
+                }
+                return
+            } catch {
+                guard !Task.isCancelled else { return }
+                guard !retryDelays.isEmpty else {
+                    Log.playlistCover.notice("Artwork failed after retries: \(error)")
+                    loadedImage = nil
+                    return
+                }
+                try? await Task.sleep(for: retryDelays.removeFirst())
             }
-        } catch {
-            guard !Task.isCancelled else { return }
-            loadedImage = nil
         }
     }
 

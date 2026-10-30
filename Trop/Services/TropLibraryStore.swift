@@ -8,8 +8,18 @@
 import Foundation
 import GRDB
 
+extension Notification.Name {
+    static let libraryDidChange = Notification.Name("libraryDidChange")
+}
+
 struct TropLibraryStore: LibrarySyncStore {
     private let db = DatabaseService.shared
+
+    /// Sent as each section is saved, so covers and titles show without
+    /// waiting for the rest of the sync.
+    private func announceChange() async {
+        await MainActor.run { NotificationCenter.default.post(name: .libraryDidChange, object: nil) }
+    }
 }
 
 // MARK: - Library sections
@@ -38,6 +48,7 @@ extension TropLibraryStore {
                 )
             }
         }
+        await announceChange()
         return remoteIds
     }
 
@@ -75,6 +86,7 @@ extension TropLibraryStore {
                     """, arguments: StatementArguments(Array(remoteIds)))
             }
         }
+        await announceChange()
         return remoteIds
     }
 
@@ -103,6 +115,7 @@ extension TropLibraryStore {
                 )
             }
         }
+        await announceChange()
         return remoteIds
     }
 
@@ -129,6 +142,7 @@ extension TropLibraryStore {
                 )
             }
         }
+        await announceChange()
         return remoteIds
     }
 }
