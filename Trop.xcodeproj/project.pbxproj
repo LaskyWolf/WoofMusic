@@ -525,7 +525,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.4.1;
+				MARKETING_VERSION = 1.4.2;
 				PRODUCT_BUNDLE_IDENTIFIER = com.laskywolf.Music;
 				PRODUCT_NAME = Music;
 				PRODUCT_MODULE_NAME = Trop;
@@ -560,7 +560,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.4.1;
+				MARKETING_VERSION = 1.4.2;
 				PRODUCT_BUNDLE_IDENTIFIER = com.laskywolf.Music;
 				PRODUCT_NAME = Music;
 				PRODUCT_MODULE_NAME = Trop;
@@ -590,7 +590,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.4.1;
+				MARKETING_VERSION = 1.4.2;
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-Wl,-dead_strip_dylibs",
@@ -622,7 +622,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.4.1;
+				MARKETING_VERSION = 1.4.2;
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-Wl,-dead_strip_dylibs",

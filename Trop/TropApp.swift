@@ -25,7 +25,7 @@ struct TropApp: App {
         Task { await InnerTubeClient.tropShared.syncTropLocale() }
         Task { @MainActor in DiscordIntegration.shared.start() }
         Task { @MainActor in LastFMIntegration.shared.start() }
-        Task { @MainActor in WidgetSync.shared.refreshStats() }
+        Task { @MainActor in WidgetSync.shared.syncAll() }
         Self.removeSpotifyLeftovers()
     }
 
@@ -81,7 +81,7 @@ struct TropApp: App {
         .onChange(of: scenePhase) { _, phase in
             if phase == .background {
                 QuickAction.updateResumeItem()
-                WidgetSync.shared.refreshStats()
+                WidgetSync.shared.syncAll()
             }
         }
     }

@@ -370,7 +370,7 @@ struct ToggleLikeIntent: AudioPlaybackIntent {
         #if !WIDGET_EXTENSION
         if let song = NowPlaying.shared.currentSong {
             await LikeStore.shared.toggle(song: song)
-            WidgetSync.shared.refresh()
+            await WidgetSync.shared.refreshNow()
         }
         #endif
         return .result()
@@ -387,7 +387,7 @@ struct ToggleShuffleIntent: AudioPlaybackIntent {
         let np = NowPlaying.shared
         np.isShuffleOn.toggle()
         if np.isShuffleOn { np.shuffleQueue() } else { np.disableShuffle() }
-        WidgetSync.shared.refresh()
+        await WidgetSync.shared.refreshNow()
         #endif
         return .result()
     }
@@ -401,7 +401,7 @@ struct ToggleRepeatIntent: AudioPlaybackIntent {
     func perform() async throws -> some IntentResult {
         #if !WIDGET_EXTENSION
         NowPlaying.shared.isRepeatOn.toggle()
-        WidgetSync.shared.refresh()
+        await WidgetSync.shared.refreshNow()
         #endif
         return .result()
     }

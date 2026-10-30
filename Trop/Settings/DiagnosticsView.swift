@@ -4,7 +4,6 @@
 //
 
 import SwiftUI
-import WidgetKit
 
 /// Hidden page, opened by long-pressing Settings › Integrations: build,
 /// signing, widget storage, account and recent log errors, with a button that
@@ -32,9 +31,7 @@ struct DiagnosticsView: View {
 
             Section("Actions") {
                 Button("Reload Widgets", systemImage: "arrow.clockwise") {
-                    WidgetSync.shared.refresh()
-                    WidgetSync.shared.refreshStats()
-                    WidgetCenter.shared.reloadAllTimelines()
+                    WidgetSync.shared.syncAll()
                     Task {
                         // The widgets answer with their own ping once they have reloaded.
                         try? await Task.sleep(for: .seconds(2))
