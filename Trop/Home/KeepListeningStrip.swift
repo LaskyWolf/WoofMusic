@@ -145,11 +145,11 @@ struct KeepListeningStrip: View {
         // Long press: the same menus the Home cards use.
         switch item {
         case .song(let song):
-            SongActionsMenu(song: song, onNavigate: { AppRouter.shared.open($0) }, asContextMenu: true) { button }
+            SongActionsMenu(song: song, onNavigate: { AppRouter.shared.open($0) }, asContextMenu: true, menuBackground: nil) { button }
         case .episode(let episode):
-            SongActionsMenu(song: episode.toSongItem(), onNavigate: { AppRouter.shared.open($0) }, asContextMenu: true) { button }
+            SongActionsMenu(song: episode.toSongItem(), onNavigate: { AppRouter.shared.open($0) }, asContextMenu: true, menuBackground: nil) { button }
         default:
-            button.cardMenu(for: item)
+            button.cardMenu(for: item, background: nil)
         }
     }
 

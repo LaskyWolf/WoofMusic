@@ -110,35 +110,57 @@ private struct ArtistCardMenu: View {
 }
 
 extension View {
+    /// A long press lifts only what the view draws, so text would float over the blur. This
+    /// background matches what's behind the view, so it only shows once the view is lifted.
+    /// The margin goes back after the menu, so the layout doesn't change. A nil background
+    /// is for a view that fills its own shape.
+    @ViewBuilder
+    func liftedMenu<Items: View>(
+        background: Color? = Color(.systemBackground),
+        margin: CGFloat = 6,
+        @ViewBuilder items: () -> Items
+    ) -> some View {
+        if let background {
+            let shape = RoundedRectangle(cornerRadius: 12, style: .continuous)
+            padding(margin)
+                .background(background, in: shape)
+                .contentShape(.contextMenuPreview, shape)
+                .contextMenu(menuItems: items)
+                .padding(-margin)
+        } else {
+            contextMenu(menuItems: items)
+        }
+    }
+
     /// Long press on an album card.
-    func albumCardMenu(browseId: String, artists: [YTArtist] = []) -> some View {
-        contextMenu { AlbumCardMenu(browseId: browseId, artists: artists) }
+    func albumCardMenu(browseId: String, artists: [YTArtist] = [], background: Color? = Color(.systemBackground)) -> some View {
+        liftedMenu(background: background) { AlbumCardMenu(browseId: browseId, artists: artists) }
     }
 
     /// Long press on a playlist card; `extra` adds items below the standard ones.
     func playlistCardMenu<Extra: View>(id: String, @ViewBuilder extra: () -> Extra) -> some View {
-        contextMenu {
+        liftedMenu {
             PlaylistCardMenu(id: id)
             extra()
         }
     }
 
-    func playlistCardMenu(id: String) -> some View {
-        contextMenu { PlaylistCardMenu(id: id) }
+    func playlistCardMenu(id: String, background: Color? = Color(.systemBackground)) -> some View {
+        liftedMenu(background: background) { PlaylistCardMenu(id: id) }
     }
 
     /// Long press on an artist card.
-    func artistCardMenu(browseId: String) -> some View {
-        contextMenu { ArtistCardMenu(browseId: browseId) }
+    func artistCardMenu(browseId: String, background: Color? = Color(.systemBackground)) -> some View {
+        liftedMenu(background: background) { ArtistCardMenu(browseId: browseId) }
     }
 
     /// Long press menu for a card built from a feed item (albums, playlists, artists).
     @ViewBuilder
-    func cardMenu(for item: YTItem) -> some View {
+    func cardMenu(for item: YTItem, background: Color? = Color(.systemBackground)) -> some View {
         switch item {
-        case .album(let album): albumCardMenu(browseId: album.browseId, artists: album.artists)
-        case .playlist(let playlist): playlistCardMenu(id: playlist.id)
-        case .artist(let artist): artistCardMenu(browseId: artist.browseId)
+        case .album(let album): albumCardMenu(browseId: album.browseId, artists: album.artists, background: background)
+        case .playlist(let playlist): playlistCardMenu(id: playlist.id, background: background)
+        case .artist(let artist): artistCardMenu(browseId: artist.browseId, background: background)
         default: self
         }
     }

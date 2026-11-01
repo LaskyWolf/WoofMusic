@@ -141,7 +141,7 @@ struct SearchResultsView: View {
 
     private func historyRow(_ entry: SearchHistoryEntity) -> some View {
         queryRow(entry.query, systemImage: "clock.arrow.trianglehead.counterclockwise.rotate.90", iconColor: settings.accentColor)
-            .contextMenu {
+            .liftedMenu {
                 Button(role: .destructive) {
                     viewModel.deleteSearchHistoryEntry(entry)
                 } label: {
@@ -282,7 +282,7 @@ struct SearchResultsView: View {
         }
         .buttonStyle(.plain)
         .contentShape(.contextMenuPreview, shape)
-        .artistCardMenu(browseId: artist.browseId)
+        .artistCardMenu(browseId: artist.browseId, background: nil)
     }
 
     /// Songs and episodes keep the 56 pt song row; albums, artists, playlists

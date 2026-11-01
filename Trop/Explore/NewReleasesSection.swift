@@ -172,7 +172,7 @@ struct NewReleaseCard: View {
         .contentShape(.contextMenuPreview, shape)
         // The buttons take their own taps; anywhere else opens the album.
         .onTapGesture(perform: onOpen)
-        .cardMenu(for: .album(album))
+        .cardMenu(for: .album(album), background: nil)
         // The fixed card height holds the text up to this size.
         .dynamicTypeSize(...DynamicTypeSize.xLarge)
         .accessibilityElement(children: .contain)

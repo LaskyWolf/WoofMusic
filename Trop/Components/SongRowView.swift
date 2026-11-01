@@ -52,7 +52,7 @@ struct SongRowView: View {
         } else {
             // Long pressing anywhere on the row opens the same menu as ⋯.
             SongActionsMenu(song: song, onNavigate: { onNavigate?($0) }, onSelect: onSelect,
-                            onRemove: onRemove, asContextMenu: true) {
+                            onRemove: onRemove, asContextMenu: true, menuMargin: 0) {
                 rowContent
             }
         }

@@ -307,6 +307,14 @@ struct LyricsView: View {
             .contextMenu {
                 Button("Share Card", systemImage: "quote.bubble") { shareCardLine = line }
                 Button("Copy Line", systemImage: "doc.on.doc") { UIPasteboard.general.string = line.text }
+            } preview: {
+                // The lyrics sit on the player's colours, so the lifted line brings its own background.
+                Text(line.text)
+                    .font(.title3.bold())
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding()
+                    .frame(width: 320, alignment: .leading)
+                    .background(Color(.systemBackground))
             }
 
             if let gap {

@@ -760,7 +760,7 @@ private struct EpisodeDialTile: View {
         // This episode is the player's current item, playing or paused.
         let isCurrent = NowPlaying.shared.videoId == episode.videoId
 
-        SongActionsMenu(song: episode.toSongItem(), onNavigate: { AppRouter.shared.open($0) }, asContextMenu: true) {
+        SongActionsMenu(song: episode.toSongItem(), onNavigate: { AppRouter.shared.open($0) }, asContextMenu: true, menuBackground: nil) {
             Button { play(isCurrent: isCurrent) } label: {
                 DialCard(colors: colors, size: Self.size, progress: isCurrent ? nil : (saved?.progress ?? 0)) {
                     content(isCurrent: isCurrent)

@@ -24,6 +24,10 @@ struct SongActionsMenu<MenuLabel: View>: View {
     var onRemove: (() -> Void)?
     /// Attaches the menu to the label's long press instead of making it a tap target.
     var asContextMenu = false
+    /// Behind the lifted view. Nil is for a view that fills its own shape.
+    var menuBackground: Color? = Color(.systemBackground)
+    /// A row that has its own padding needs no more.
+    var menuMargin: CGFloat = 6
     @ViewBuilder var label: () -> MenuLabel
 
     private enum Sheet: Identifiable {
@@ -167,7 +171,7 @@ struct SongActionsMenu<MenuLabel: View>: View {
     @ViewBuilder
     private func host<Items: View>(@ViewBuilder _ items: () -> Items) -> some View {
         if asContextMenu {
-            label().contextMenu { items() }
+            label().liftedMenu(background: menuBackground, margin: menuMargin) { items() }
         } else {
             Menu { items() } label: { label() }
                 .menuOrder(.fixed)
