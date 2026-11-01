@@ -57,6 +57,19 @@ final class WidgetSync {
         backgroundTask = .invalid
     }
 
+    /// The widgets stop showing the previous profile's song, picks and numbers.
+    func clearProfileData() {
+        pending?.cancel()
+        pendingQuickPicks?.cancel()
+        lastNowPlaying = nil
+        lastQuickPicks = nil
+        cover = nil
+        for file in [WidgetStore.nowPlayingFile, WidgetStore.quickPicksFile, WidgetStore.statsFile] {
+            WidgetStore.remove(file)
+        }
+        WidgetCenter.shared.reloadAllTimelines()
+    }
+
     // MARK: - Now Playing (Turntable)
 
     /// PlayerController calls this whenever it publishes the lock-screen info;
@@ -79,7 +92,8 @@ final class WidgetSync {
 
     private func pushNowPlaying() async {
         let np = NowPlaying.shared
-        guard let videoId = np.videoId, !np.title.isEmpty else { return }
+        // The widget's file stays on the iPhone, which Incognito promises not to do.
+        guard let videoId = np.videoId, !np.title.isEmpty, !SettingsStore.shared.isIncognito else { return }
         var upNext: [WidgetSong] = []
         for song in np.upcomingSongs(prefixLimit: 3).prefix(3) {
             upNext.append(await widgetSong(song))

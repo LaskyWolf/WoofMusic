@@ -14,11 +14,13 @@ keys = source[source.index("    private static let queueKey"):source.index("    
 harness = r'''import Foundation
 struct SongItem: Codable, Equatable {
     let videoId: String
+    var isAvailable: Bool { true }
     init(_ id: String) { videoId = id }
 }
 final class SettingsStore {
     static let shared = SettingsStore()
     var persistQueue = true
+    var isIncognito = false
 }
 final class QueueCheck {
     var queueSongs: [SongItem] = [] {

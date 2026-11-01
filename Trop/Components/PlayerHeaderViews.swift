@@ -122,6 +122,7 @@ struct PlayerLikeButton: View {
             .frame(width: 40, height: 40)
             .contentShape(Rectangle())
         }
+        .buttonStyle(IconPressStyle(disc: .white))
         .sensoryFeedback(.impact(weight: .medium), trigger: hapticCount)
         .accessibilityLabel(isLiked ? "Unlike" : "Like")
         .task(id: run?.start) {

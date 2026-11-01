@@ -83,7 +83,7 @@ private final class LoginNavigationDelegate: NSObject, WKNavigationDelegate {
         guard let url = webView.url, url.host?.contains("music.youtube.com") == true else {
             return
         }
-        guard !didCaptureSession, !model.isLoggedIn else { return }
+        guard !didCaptureSession, model.canCaptureSession else { return }
 
         Log.login.debug("Redirected to \(url.host ?? "") — collecting cookies...")
 
@@ -92,7 +92,7 @@ private final class LoginNavigationDelegate: NSObject, WKNavigationDelegate {
             // The first snapshot after the redirect is incomplete; the harvest
             // polls until the rotating session tokens are present.
             let session = await LoginWebviewHarvest.collectSession(from: webView) { [weak self] in
-                guard let self, !self.didCaptureSession, !self.model.isLoggedIn else { return false }
+                guard let self, !self.didCaptureSession, self.model.canCaptureSession else { return false }
                 return true
             }
             guard let self, let (cookies, sapisid) = session else {

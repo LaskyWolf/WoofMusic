@@ -21,6 +21,7 @@ struct MiniPlayerBarView: View {
     @Environment(MiniPlayerScrollState.self) private var scrollState
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @ScaledMetric(relativeTo: .footnote) private var titleHeight: CGFloat = 16
 
     private let player = PlayerController.shared
     @Bindable private var np = NowPlaying.shared
@@ -121,6 +122,13 @@ struct MiniPlayerBarView: View {
             .contentShape(Rectangle())
             .gesture(dragGesture(pageWidth: pageWidth))
             .onTapGesture { onExpand() }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("\(np.title), \(np.displayArtist)")
+            .accessibilityHint("Opens the player")
+            .accessibilityAddTraits(.isButton)
+            .accessibilityAction { onExpand() }
+            .accessibilityAction(named: "Next song") { np.playNext() }
+            .accessibilityAction(named: "Previous song") { np.playPrevious() }
         }
         .frame(height: barHeight)
     }
@@ -132,15 +140,15 @@ struct MiniPlayerBarView: View {
             VStack(alignment: .leading, spacing: 0) {
                 if isInline || reduceMotion {
                     Text(song.title)
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.footnote.weight(.semibold))
                         .lineLimit(1)
                         .truncationMode(.tail)
                         .foregroundStyle(titleColor)
                 } else {
                     MarqueeText(
                         text: song.title,
-                        font: .system(size: 13, weight: .semibold),
-                        frameHeight: 16,
+                        font: .footnote.weight(.semibold),
+                        frameHeight: titleHeight,
                         textColor: titleColor,
                         // Neighbor pages sit off screen; only the current title scrolls.
                         isPaused: isTransitioning || song.videoId != np.currentSong?.videoId
@@ -148,13 +156,15 @@ struct MiniPlayerBarView: View {
                 }
 
                 Text(artistLine(for: song))
-                    .font(.system(size: 12, weight: .regular))
+                    .font(.caption)
                     .foregroundStyle(artistColor)
                     .lineLimit(1)
                     .truncationMode(.tail)
             }
             .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
             .clipped()
+            // Two lines stop fitting the 48 pt bar past this size.
+            .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
         }
         .padding(.leading, 16)
         .padding(.trailing, 8)
@@ -178,6 +188,7 @@ struct MiniPlayerBarView: View {
                 .frame(width: 44, height: 44)
                 .contentShape(Rectangle())
         })
+        .buttonStyle(IconPressStyle())
         .accessibilityLabel(np.isPlaying ? "Pause" : "Play")
     }
 

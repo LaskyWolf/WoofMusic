@@ -10,7 +10,7 @@ import WebKit
 /// YouTube Studio, where the channel picture (the Settings avatar) is changed:
 /// Customization → Profile → Picture. No API can change it. The default
 /// website data store is the one the Google sign-in sheet filled, so Studio
-/// opens already signed in.
+/// opens already signed in. Switching profile empties it, and Studio then asks to sign in.
 struct ProfilePictureWebView: UIViewRepresentable {
     func makeUIView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()

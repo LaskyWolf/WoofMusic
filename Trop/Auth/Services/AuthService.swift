@@ -40,8 +40,9 @@ actor AuthService {
     await Self.clearGoogleWebsiteData()
   }
 
+    /// Also makes Google's sign-in page ask for an account again.
     @MainActor
-    private static func clearGoogleWebsiteData() async {
+    static func clearGoogleWebsiteData() async {
         let store = WKWebsiteDataStore.default()
         let roots = ["google.com", "youtube.com"]
         for cookie in await store.httpCookieStore.allCookies() {

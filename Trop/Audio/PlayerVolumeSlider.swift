@@ -19,6 +19,7 @@ struct PlayerVolumeSlider: View {
         HStack(spacing: 10) {
             Image(systemName: "speaker.fill")
                 .font(.caption)
+                .glyphMotion(volume <= 0 ? .volumePulse : nil, trigger: volume <= 0)
             ProgressBar(
                 progress: Binding(
                     get: { volume },
@@ -30,6 +31,7 @@ struct PlayerVolumeSlider: View {
             )
             Image(systemName: "speaker.wave.3.fill")
                 .font(.caption)
+                .glyphMotion(volume >= 1 ? .volumePulse : nil, trigger: volume >= 1)
         }
         .foregroundStyle(.white.opacity(0.6))
         .padding(.horizontal, 32)

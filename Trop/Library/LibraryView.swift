@@ -5,6 +5,7 @@
 //  Created by 686udjie on 05/07/2026.
 //
 
+import Combine
 import SwiftUI
 import GRDB
 
@@ -22,6 +23,8 @@ struct LibraryView: View {
     @State private var showCreateDialog = false
     @State private var playlistToDelete: PlaylistEntity?
     @State private var playlistSongCounts: [String: Int] = [:]
+    /// Playlists with every song saved on this iPhone.
+    @State private var playlistToRemoveDownloads: PlaylistEntity?
 
     @Bindable private var router = AppRouter.shared
     /// Shared by this tab's covers and the pages they open, for the zoom transition.
@@ -50,7 +53,7 @@ struct LibraryView: View {
                              covers: shortcutCovers["top100"] ?? [],
                              subtitle: "Most played", route: .topSongs(limit: 100)),
             // Covers and subtitle come from DownloadManager views, so only they redraw on download changes.
-            AutoPlaylistInfo(id: "downloads", title: "Downloads", icon: "arrow.down.circle.fill", tint: .blue,
+            AutoPlaylistInfo(id: "downloads", title: "Downloads", icon: "arrow.down.to.line", tint: .blue,
                              subtitle: nil, route: nil, detailRoute: .downloads)
         ]
     }
@@ -116,6 +119,19 @@ struct LibraryView: View {
                     Task { await deletePlaylist(p) }
                 }
             }
+            .destructiveConfirm(
+                "Remove Downloads?",
+                isPresented: .init(
+                    get: { playlistToRemoveDownloads != nil },
+                    set: { if !$0 { playlistToRemoveDownloads = nil } }
+                ),
+                message: Text("Remove offline copies of \"\(playlistToRemoveDownloads?.name ?? "")\" from your device? The playlist stays in your library."),
+                confirmTitle: "Remove Downloads"
+            ) {
+                if let p = playlistToRemoveDownloads {
+                    Task { await removeDownloads(of: p) }
+                }
+            }
         }
         .coverZoomNamespace(coverZoom)
     }
@@ -142,6 +158,7 @@ struct LibraryView: View {
             LazyVStack(spacing: 0) {
                 filterBar
                 shortcutRow
+                LibraryDownloadCard()
 
                 switch selectedFilter {
                 case .playlists:
@@ -183,6 +200,12 @@ struct LibraryView: View {
                 .buttonStyle(ZoomPressStyle(scale: pressScale))
                 .playlistCardMenu(id: playlist.id) {
                     Section {
+                        if DownloadedCollections.shared.hasDownloads(playlistId: playlist.id) {
+                            Button("Remove Downloads", systemImage: "trash", role: .destructive) {
+                                playlistToRemoveDownloads = playlist
+                            }
+                            .tint(.red)
+                        }
                         Button(role: .destructive) {
                             playlistToDelete = playlist
                         } label: {
@@ -396,9 +419,11 @@ struct LibraryView: View {
         zoomRoute: DetailRoute? = nil
     ) -> some View {
         if isList {
-            listRow(url: url, title: title, subtitle: subtitle, detail: detail, isCircular: false, zoomRoute: zoomRoute)
+            listRow(url: url, title: title, subtitle: subtitle, detail: detail, isCircular: false,
+                    zoomRoute: zoomRoute)
         } else {
-            MediaGridCell(thumbnailUrl: url, title: title, subtitle: subtitle, size: nil, opensPage: false, isPlaylist: isPlaylist, zoomRoute: zoomRoute)
+            MediaGridCell(thumbnailUrl: url, title: title, subtitle: subtitle, size: nil, opensPage: false,
+                          isPlaylist: isPlaylist, zoomRoute: zoomRoute)
         }
     }
 
@@ -568,6 +593,21 @@ struct LibraryView: View {
         }
     }
 
+    private func removeDownloads(of playlist: PlaylistEntity) async {
+        let songIds = try? await DatabaseService.shared.read { db in
+            try String.fetchAll(
+                db,
+                sql: "SELECT song_id FROM playlist_song_map WHERE playlist_id IN (?, ?)",
+                arguments: [playlist.id, PlaylistSongEdits.bareId(playlist.id)]
+            )
+        }
+        let manager = DownloadManager.shared
+        // Includes songs still downloading, so they don't finish after the removal.
+        for id in songIds ?? [] where manager.state(for: id) != .notStarted {
+            await manager.delete(videoId: id)
+        }
+    }
+
     private func deletePlaylist(_ playlist: PlaylistEntity) async {
         do {
             try await PlaylistRemoval.remove(playlistId: playlist.id, owned: playlist.isEditable)
@@ -711,6 +751,8 @@ private struct DownloadsSubtitle: View {
 /// Up to two artworks fanned like a small stack; nothing when the list is empty,
 /// so the tile's big symbol stands alone.
 private struct ShortcutCovers: View {
+    static let coverSide: CGFloat = 42
+
     let urls: [String]
 
     var body: some View {
@@ -732,21 +774,39 @@ private struct ShortcutCovers: View {
 
     private func cover(_ url: String) -> some View {
         AsyncImageView(url: url)
-            .frame(width: 42, height: 42)
+            .frame(width: Self.coverSide, height: Self.coverSide)
             .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
             .shadow(color: .black.opacity(0.3), radius: 3, y: 2)
     }
 }
 
 /// Observes DownloadManager on its own, like DownloadsSubtitle, and shows the newest downloads.
+/// The tile keeps its current covers until the new ones are loaded.
 private struct DownloadsCovers: View {
-    // Not private: a private stored property would make the memberwise init private.
-    @ObservedObject var downloadManager = DownloadManager.shared
+    @ObservedObject private var downloadManager = DownloadManager.shared
+    @Environment(\.displayScale) private var displayScale
+    @State private var shownUrls: [String]
+
+    init() {
+        _shownUrls = State(initialValue: Self.newestUrls(in: DownloadManager.shared.tracks))
+    }
+
+    private static func newestUrls(in tracks: [DownloadedTrackEntity]) -> [String] {
+        Array(tracks.lazy.compactMap(\.thumbnailUrl).filter { !$0.isEmpty }.prefix(2))
+    }
 
     var body: some View {
-        ShortcutCovers(
-            urls: Array(downloadManager.tracks.lazy.compactMap(\.thumbnailUrl).filter { !$0.isEmpty }.prefix(2))
-        )
+        let newest = Self.newestUrls(in: downloadManager.tracks)
+        // Color.clear exists even with no covers: a task on empty content would never start.
+        Color.clear
+            .overlay(alignment: .topLeading) { ShortcutCovers(urls: shownUrls) }
+            .task(id: newest) {
+                guard newest != shownUrls else { return }
+                for url in newest {
+                    await AsyncImageView.preload(url, side: ShortcutCovers.coverSide, scale: displayScale)
+                }
+                if !Task.isCancelled { shownUrls = newest }
+            }
     }
 }
 

@@ -104,6 +104,11 @@ final class SearchViewModel {
         set { Self.sharedRecencyMap = newValue }
     }
 
+    /// The map comes from the history of the profile that was active.
+    static func forgetRecency() {
+        sharedRecencyMap = nil
+    }
+
     // MARK: - Submission outcome
 
     var error: Error?
@@ -114,6 +119,33 @@ final class SearchViewModel {
 
     private var fetchTask: Task<Void, Never>?
 
+    // MARK: - Suggestions
+
+    /// Completions for the text being typed. The last ones stay until the next
+    /// arrive, so the list doesn't flash at each letter.
+    private(set) var suggestions: [String] = []
+
+    private var suggestionTask: Task<Void, Never>?
+
+    private static let maxMatchingHistoryEntries = 3
+
+    private var typedQuery: String {
+        fieldText.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    var isTyping: Bool { !typedQuery.isEmpty }
+
+    /// Earlier searches that contain what is being typed.
+    var matchingHistory: [SearchHistoryEntity] {
+        Array(searchHistory.filter { $0.query.localizedStandardContains(typedQuery) }.prefix(Self.maxMatchingHistoryEntries))
+    }
+
+    /// Suggestions not already listed as earlier searches.
+    var newSuggestions: [String] {
+        let earlier = Set(matchingHistory.map { $0.query.lowercased() })
+        return suggestions.filter { !earlier.contains($0.lowercased()) }
+    }
+
     private static let historyKey = "Search.history"
     private static let historyNewestFirstKey = "Search.historyNewestFirst"
     private static let sortKey = "Search.sort"
@@ -122,6 +154,9 @@ final class SearchViewModel {
     init() {
         let raw = UserDefaults.standard.string(forKey: Self.sortKey)
         sort = SearchSort(rawValue: raw ?? "") ?? .relevant
+        #if DEBUG
+        Self.selfCheck()
+        #endif
         loadSearchHistory()
         if sort == .recent {
             preloadRecencyMap()
@@ -325,9 +360,10 @@ final class SearchViewModel {
         }
     }
 
-    /// Artist-first layout: when the top result is an artist, lift it into the
-    /// hero card. The card's songs move to the top of Songs; the API often
-    /// repeats them there, so a song already in Songs is not added twice.
+    /// Artist-first layout: when the query names the first artist in the results,
+    /// lift it into the hero card. Otherwise it is listed with the other artists.
+    /// A top result card's songs move to the top of Songs; the API often repeats
+    /// them there, so a song already in Songs is not added twice.
     private func extractHero() {
         heroArtist = nil
         heroDetail = nil
@@ -336,16 +372,25 @@ final class SearchViewModel {
             return false
         }) else { return }
         guard case .artist(let artist) = results[index].items.first else { return }
-        heroArtist = artist
-        heroDetail = results[index].subtitle
+        let isArtistSearch = Self.isSearch(submittedQuery, forArtist: artist.name)
+        if isArtistSearch {
+            heroArtist = artist
+            heroDetail = results[index].subtitle
+        }
         let cardSongs = results[index].items.filter { item in
             if case .song = item { return true }
             return false
         }
         results[index].items.removeAll { item in
-            switch item {
-            case .artist, .song: return true
-            default: return false
+            if case .song = item { return true }
+            return item.id == YTItem.artist(artist).id
+        }
+        if !isArtistSearch {
+            if let artistsIndex = results.firstIndex(where: { $0.title == "Artists" }) {
+                var seen = Set<String>()
+                results[artistsIndex].items = ([.artist(artist)] + results[artistsIndex].items).filter { seen.insert($0.id).inserted }
+            } else {
+                results.append(SearchSection(title: "Artists", items: [.artist(artist)]))
             }
         }
         if !cardSongs.isEmpty {
@@ -357,6 +402,34 @@ final class SearchViewModel {
             }
         }
         results.removeAll { $0.items.isEmpty }
+    }
+
+    /// True when the query is the artist's name or a part of it, ignoring case,
+    /// accents and punctuation: "weeknd" and "the weeknd", not "blinding lights".
+    private static func isSearch(_ query: String, forArtist name: String) -> Bool {
+        let query = comparable(query)
+        return !query.isEmpty && comparable(name).contains(query)
+    }
+
+    private static func comparable(_ text: String) -> String {
+        text.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil)
+            .filter { $0.isLetter || $0.isNumber }
+    }
+
+    private static func selfCheck() {
+        assert(isSearch("adele", forArtist: "Adele"))
+        assert(isSearch("weeknd", forArtist: "The Weeknd"))
+        assert(isSearch("ac dc", forArtist: "AC/DC"))
+        assert(isSearch("beyonce", forArtist: "Beyoncé"))
+        assert(!isSearch("blinding lights", forArtist: "The Weeknd"))
+        assert(!isSearch("blinding lights the weeknd", forArtist: "The Weeknd"))
+        assert(!isSearch("!!!", forArtist: "Adele"))
+        let answer = #"{"contents":[{"searchSuggestionsSectionRenderer":{"contents":["#
+            + #"{"searchSuggestionRenderer":{"navigationEndpoint":{"searchEndpoint":{"query":"cats"}}}},"#
+            + #"{"historySuggestionRenderer":{"navigationEndpoint":{"searchEndpoint":{"query":"cat videos"}}}},"#
+            + #"{"musicResponsiveListItemRenderer":{}}]}}]}"#
+        assert(SearchService.parseSuggestions(Data(answer.utf8)) == ["cats", "cat videos"])
+        assert(SearchService.parseSuggestions(Data("<html>".utf8)).isEmpty)
     }
 
     // MARK: - Field changes
@@ -376,6 +449,29 @@ final class SearchViewModel {
             return
         }
         resetToIdle()
+        loadSuggestions()
+    }
+
+    private func loadSuggestions() {
+        let query = typedQuery
+        // Each suggestion request would send YouTube the words as they are typed.
+        guard !query.isEmpty, !SettingsStore.shared.isIncognito else {
+            suggestions = []
+            return
+        }
+        let country = SettingsStore.shared.contentCountry
+        suggestionTask = Task { [weak self] in
+            // Waits for a pause in typing, because each change cancels this task.
+            try? await Task.sleep(for: .milliseconds(250))
+            guard !Task.isCancelled else { return }
+            do {
+                let found = try await SearchService.shared.suggestions(query: query, country: country)
+                guard !Task.isCancelled else { return }
+                self?.suggestions = found
+            } catch {
+                if !error.isCancellation { Log.search.notice("Suggestions failed: \(error)") }
+            }
+        }
     }
 
     /// Clears any shown results and returns to the recent-searches state.
@@ -398,12 +494,13 @@ final class SearchViewModel {
     // MARK: - History
 
     func loadSearchHistory() {
-        var queries = UserDefaults.standard.stringArray(forKey: Self.historyKey) ?? []
+        let defaults = ProfileStorage.defaults
+        var queries = defaults.stringArray(forKey: Self.historyKey) ?? []
 
-        if !UserDefaults.standard.bool(forKey: Self.historyNewestFirstKey) {
+        if !defaults.bool(forKey: Self.historyNewestFirstKey) {
             queries.reverse()
-            UserDefaults.standard.set(queries, forKey: Self.historyKey)
-            UserDefaults.standard.set(true, forKey: Self.historyNewestFirstKey)
+            defaults.set(queries, forKey: Self.historyKey)
+            defaults.set(true, forKey: Self.historyNewestFirstKey)
         }
 
         searchHistory = queries.map { SearchHistoryEntity(query: $0, timestamp: Date()) }
@@ -420,7 +517,7 @@ final class SearchViewModel {
     }
 
     private func updateHistory(query: String) {
-        guard SettingsStore.shared.trackSearchHistory else { return }
+        guard SettingsStore.shared.trackSearchHistory, !SettingsStore.shared.isIncognito else { return }
 
         var queries = searchHistory.map(\.query)
         if let index = queries.firstIndex(of: query) {
@@ -432,18 +529,19 @@ final class SearchViewModel {
             queries.removeLast()
         }
 
-        UserDefaults.standard.set(queries, forKey: Self.historyKey)
-        UserDefaults.standard.set(true, forKey: Self.historyNewestFirstKey)
+        ProfileStorage.defaults.set(queries, forKey: Self.historyKey)
+        ProfileStorage.defaults.set(true, forKey: Self.historyNewestFirstKey)
         searchHistory = queries.map { SearchHistoryEntity(query: $0, timestamp: Date()) }
     }
 
     private func saveHistory() {
-        UserDefaults.standard.set(searchHistory.map(\.query), forKey: Self.historyKey)
+        ProfileStorage.defaults.set(searchHistory.map(\.query), forKey: Self.historyKey)
     }
 
     // MARK: - Private helpers
 
     private func cancelTasks() {
         fetchTask?.cancel()
+        suggestionTask?.cancel()
     }
 }

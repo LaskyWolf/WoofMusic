@@ -91,7 +91,7 @@ struct KeepListeningStrip: View {
                         .frame(minWidth: 44, minHeight: 44)
                         .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(IconPressStyle(motion: .pop))
                 // Full 44pt target without making the header taller.
                 .padding(.vertical, -12)
                 .padding(.trailing, -14)

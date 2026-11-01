@@ -243,7 +243,7 @@ try:
         (work / "ContentView.swift").write_text(host)
         (work / "Fixture.swift").write_text(fixture)
         sdk = run("xcrun", "--sdk", "iphonesimulator", "--show-sdk-path")
-        sources = [work / "Fixture.swift", work / "ContentView.swift"] + [
+        sources = [work / "Fixture.swift", work / "ContentView.swift", root / "Trop/Components/PressFeedback.swift", root / "Trop/Components/GlyphMotion.swift"] + [
             root / "Trop/Audio" / name for name in ["MiniPlayerScrollState.swift", "PlayerTrackSwipeGesture.swift", "PlayerComponents.swift", "AnimatedSkipLabel.swift"]
         ]
         run("xcrun", "--sdk", "iphonesimulator", "swiftc", "-parse-as-library", "-sdk", sdk,

@@ -57,6 +57,7 @@ struct LyricsOptionsMenu<MenuLabel: View>: View {
         } label: {
             label()
         }
+        .bouncesOnTap()
         .sheet(item: $sheet) { sheet in
             switch sheet {
             case .offset:
@@ -147,6 +148,7 @@ struct LyricsOffsetSheet: View {
                                 .foregroundStyle(settings.accentColor)
                                 .frame(width: 36, height: 36)
                         }
+                        .buttonStyle(IconPressStyle(motion: .spinBack))
                         .accessibilityLabel("Reset offset")
                     }
                 }
@@ -160,7 +162,7 @@ struct LyricsOffsetSheet: View {
                             .frame(width: 40, height: 40)
                             .contentShape(Rectangle())
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(IconPressStyle(motion: .pop))
 
                     Slider(
                         value: Binding(
@@ -182,7 +184,7 @@ struct LyricsOffsetSheet: View {
                             .frame(width: 40, height: 40)
                             .contentShape(Rectangle())
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(IconPressStyle(motion: .pop))
                 }
 
                 HStack {
@@ -402,10 +404,12 @@ struct SearchLyricsSheet: View {
                     Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.secondary)
+                        .contentTransition(.symbolEffect(.replace))
+                        .glyphMotion(.pop, trigger: isExpanded)
                         .frame(width: 28, height: 28)
                         .contentShape(Rectangle())
                 }
-                .buttonStyle(.borderless)
+                .buttonStyle(IconPressStyle())
             }
             .padding(.vertical, 4)
         }

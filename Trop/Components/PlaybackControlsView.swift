@@ -31,7 +31,7 @@ struct PlaybackControlsView: View {
                         .frame(width: 48, height: 48)
                         .background(Circle().fill(Color(.secondarySystemGroupedBackground)))
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(IconPressStyle(motion: .crossSwap))
                 .accessibilityLabel("Shuffle")
             }
 
@@ -43,7 +43,7 @@ struct PlaybackControlsView: View {
                     .background(Circle().fill(accent))
                     .shadow(color: accent.opacity(0.4), radius: 10, y: 4)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(IconPressStyle(motion: .playAll))
             .accessibilityLabel("Play all")
 
             if let moreMenu {
@@ -52,7 +52,7 @@ struct PlaybackControlsView: View {
                 Button(action: onMore) {
                     MoreCircleGlyph()
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(IconPressStyle(motion: .pop))
             }
         }
         .padding(.top, 4)

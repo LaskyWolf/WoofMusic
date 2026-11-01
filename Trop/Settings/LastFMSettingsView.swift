@@ -9,7 +9,7 @@ import SwiftUI
 
 struct LastFMSettingsView: View {
     @State private var isLoggedIn = false
-    @AppStorage(LastFMDefaults.usernameKey) private var username = ""
+    @AppStorage(LastFMDefaults.usernameKey, store: ProfileStorage.defaults) private var username = ""
     @AppStorage(LastFMDefaults.scrobblingEnabledKey) private var scrobblingEnabled = false
     @AppStorage(LastFMDefaults.useNowPlayingKey) private var useNowPlaying = false
     @AppStorage(LastFMDefaults.useSendLikesKey) private var useSendLikes = false

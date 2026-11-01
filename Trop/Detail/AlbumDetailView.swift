@@ -37,6 +37,11 @@ final class AlbumDetailViewModel {
             album = parsed
             Log.albumDetailViewModel.debug("Parsed album: \(parsed.title), \(parsed.songs.count) songs")
             isLoading = false
+            if !parsed.songs.isEmpty {
+                let songIds = parsed.songs.filter(\.isAvailable).map(\.videoId)
+                // Its own task: leaving the page must not roll back the save.
+                Task { await DownloadedCollections.shared.saveSongs(songIds, ofAlbum: browseId) }
+            }
             await refreshSavedState()
         } catch {
             // Leaving the page cancels the load: keep isLoading so the next appear retries.
@@ -269,14 +274,18 @@ struct AlbumDetailView: View {
                 error: viewModel.error,
                 data: viewModel.album,
                 noun: "album",
-                emptyIcon: "music.note"
+                emptyIcon: "music.note",
+                retry: { await viewModel.load() }
             ) { album in
                 albumContent(for: album)
             }
         }
         .scrollDisabled(viewModel.isLoading || viewModel.error != nil || viewModel.album == nil)
         .miniPlayerTracksScroll()
-        .navigationTitle(selection.isActive ? "\(selection.selected.count) selected" : (viewModel.album?.title ?? ""))
+        .detailBarTitle(
+            viewModel.album?.title ?? "",
+            pinnedTitle: selection.isActive ? "\(selection.selected.count) selected" : nil
+        )
         .navigationBarTitleDisplayMode(.inline)
         .sensoryFeedback(.selection, trigger: selection.selected)
         .toolbar {
@@ -340,6 +349,7 @@ struct AlbumDetailView: View {
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
             }
+            DownloadedSongsLabel(songs: album.songs)
         } buttons: {
             Menu {
                 Button(
@@ -360,15 +370,18 @@ struct AlbumDetailView: View {
                     .accessibilityLabel("More options")
             }
             .menuOrder(.fixed)
+            .bouncesOnTap()
 
             Button(action: { shufflePlay(album) }, label: {
                 HeaderRoundIcon(systemImage: "shuffle")
             })
+            .buttonStyle(IconPressStyle(motion: .crossSwap))
             .accessibilityLabel("Shuffle")
 
             Button(action: { playAll(album) }, label: {
                 HeaderRoundIcon(systemImage: "play.fill", primary: SettingsStore.shared.accentColor)
             })
+            .buttonStyle(IconPressStyle(motion: .playAll))
             .accessibilityLabel("Play all")
         }
         .padding(.vertical, 16)

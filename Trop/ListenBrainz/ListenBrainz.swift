@@ -27,25 +27,30 @@ final class ListenBrainz {
     @ObservationIgnored private var submitted = false
 
     private init() {
-        if let data = try? store.load(for: ListenBrainzDefaults.tokenAccount) {
-            token = String(data: data, encoding: .utf8)
-            userName = UserDefaults.standard.string(forKey: ListenBrainzDefaults.userNameKey)
-        }
+        reloadForActiveProfile()
+    }
+
+    /// Each profile links its own ListenBrainz account.
+    func reloadForActiveProfile() {
+        token = (try? store.load(for: ProfileStorage.scoped(ListenBrainzDefaults.tokenAccount)))
+            .flatMap { String(data: $0, encoding: .utf8) }
+        userName = token == nil ? nil : ProfileStorage.defaults.string(forKey: ListenBrainzDefaults.userNameKey)
+        videoId = nil
     }
 
     /// Checks `token` with ListenBrainz, then saves it.
     func connect(token rawToken: String) async throws {
         let token = rawToken.trimmingCharacters(in: .whitespacesAndNewlines)
         let name = try await ListenBrainzService.validate(token: token)
-        try store.save(Data(token.utf8), for: ListenBrainzDefaults.tokenAccount)
-        UserDefaults.standard.set(name, forKey: ListenBrainzDefaults.userNameKey)
+        try store.save(Data(token.utf8), for: ProfileStorage.scoped(ListenBrainzDefaults.tokenAccount))
+        ProfileStorage.defaults.set(name, forKey: ListenBrainzDefaults.userNameKey)
         self.token = token
         userName = name
     }
 
     func disconnect() {
-        try? store.delete(for: ListenBrainzDefaults.tokenAccount)
-        UserDefaults.standard.removeObject(forKey: ListenBrainzDefaults.userNameKey)
+        try? store.delete(for: ProfileStorage.scoped(ListenBrainzDefaults.tokenAccount))
+        ProfileStorage.defaults.removeObject(forKey: ListenBrainzDefaults.userNameKey)
         token = nil
         userName = nil
     }
@@ -85,6 +90,7 @@ final class ListenBrainz {
     // ponytail: a listen that fails to send is dropped, not queued; add an
     // offline queue if listens go missing on bad connections.
     private func send(type: ListenBrainzService.ListenType, listenedAt: Date?, token: String) {
+        guard !SettingsStore.shared.isIncognito else { return }
         let np = NowPlaying.shared
         guard !np.title.isEmpty, !np.displayArtist.isEmpty, let videoId = np.videoId else { return }
         let listen = ListenBrainzListen(

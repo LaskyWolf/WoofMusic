@@ -16,7 +16,7 @@ struct AsyncImageView: View {
 
     var body: some View {
         GeometryReader { geometry in
-            let request = imageRequest(targetSize: geometry.size)
+            let request = imageRequest(targetSize: geometry.size, scale: displayScale)
             Group {
                 // A memory-cache hit shows at once, so scrolling back doesn't flash the placeholder.
                 // The same artwork already shown at another size (a library row, a
@@ -65,9 +65,18 @@ struct AsyncImageView: View {
         anySizeCache.setObject(image, forKey: anySizeKey(for: url))
     }
 
-    private func imageRequest(targetSize: CGSize) -> ImageRequest? {
+    /// Loads a cover ahead of time, so a square view of this side shows it at once.
+    /// Returns when the cover is in the cache or its load failed.
+    static func preload(_ url: String, side: CGFloat, scale: CGFloat) async {
+        let targetSize = CGSize(width: side, height: side)
+        guard let request = AsyncImageView(url: url).imageRequest(targetSize: targetSize, scale: scale) else { return }
+        if let image = try? await ImagePipeline.shared.image(for: request) {
+            rememberAnySize(image, for: url)
+        }
+    }
+
+    private func imageRequest(targetSize: CGSize, scale: CGFloat) -> ImageRequest? {
         guard let urlString = url else { return nil }
-        let scale = displayScale
         // Zero-size layout passes would otherwise make degenerate cache requests.
         let fallbackPixels: CGFloat = 120 * scale
         let displaySize = targetSize.width > 0 && targetSize.height > 0

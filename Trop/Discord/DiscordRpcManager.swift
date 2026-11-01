@@ -285,6 +285,18 @@ final class DiscordRpcManager: NSObject {
         currentSongId = nil; currentIsPlaying = false
     }
 
+    /// Drops the previous profile's Discord account and connects this one's, if it has one.
+    func reloadForActiveProfile() {
+        disconnect()
+        accessToken = nil
+        currentUserSubject.value = nil
+        lastActivity = nil
+        DiscordTokenStore.shared.reloadForActiveProfile()
+        if let saved = DiscordTokenStore.shared.retrieve(), !saved.isEmpty {
+            reconnectWithToken(saved)
+        }
+    }
+
     func logout() {
         disconnect()
         accessToken = nil

@@ -40,6 +40,15 @@ actor CookieStore {
         await state()?.isLoggedIn ?? false
     }
 
+    func sessionState() async -> SessionState? {
+        await state()
+    }
+
+    /// Makes a saved profile's session the signed-in one.
+    func restore(_ state: SessionState) {
+        try? keychain.save(state, for: KeychainStorage.sessionKey)
+    }
+
     private func state() async -> SessionState? {
         try? await keychain.loadSessionState()
     }

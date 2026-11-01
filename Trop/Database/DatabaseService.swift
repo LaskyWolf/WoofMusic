@@ -11,27 +11,31 @@ import GRDB
 actor DatabaseService {
     nonisolated static let shared = DatabaseService()
 
-    let dbPool: DatabasePool
+    private(set) var dbPool: DatabasePool
+    /// The disk database failed to open, so nothing is saved until the next launch.
+    nonisolated(unsafe) private(set) static var usesTemporaryStorage = false
 
     init() {
-        var pool: DatabasePool?
+        dbPool = Self.makeActiveProfilePool()
+    }
+
+    /// Opens the active profile's database. Requests already running finish on the old one.
+    func reopenForActiveProfile() {
+        dbPool = Self.makeActiveProfilePool()
+    }
+
+    private static func makeActiveProfilePool() -> DatabasePool {
         do {
-            let url = try FileManager.default
-                .url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
-                .appendingPathComponent("trop.sqlite")
-            let diskPool = try DatabasePool(path: url.path)
+            let diskPool = try DatabasePool(path: ProfileStorage.databaseURL.path)
             var migrator = DatabaseMigrator()
-            Self.registerMigrations(&migrator)
+            registerMigrations(&migrator)
             try migrator.migrate(diskPool)
-            pool = diskPool
+            usesTemporaryStorage = false
+            return diskPool
         } catch {
             Log.db.error("Database setup failed: \(error). Falling back to a temporary database.")
-        }
-
-        if let pool {
-            dbPool = pool
-        } else {
-            dbPool = Self.makeFallbackPool()
+            usesTemporaryStorage = true
+            return makeFallbackPool()
         }
     }
 
@@ -40,7 +44,9 @@ actor DatabaseService {
     private static func makeFallbackPool() -> DatabasePool {
         let fallbackURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("trop-fallback.sqlite")
-        try? FileManager.default.removeItem(at: fallbackURL)
+        for suffix in ["", "-wal", "-shm"] {
+            try? FileManager.default.removeItem(atPath: fallbackURL.path + suffix)
+        }
         if let tempPool = try? DatabasePool(path: fallbackURL.path) {
             var migrator = DatabaseMigrator()
             registerMigrations(&migrator)
@@ -74,6 +80,8 @@ actor DatabaseService {
         migrator.registerMigration("v7", migrate: DatabaseMigrations.v7)
         migrator.registerMigration("v8", migrate: DatabaseMigrations.v8)
         migrator.registerMigration("v9", migrate: DatabaseMigrations.v9)
+        migrator.registerMigration("v10", migrate: DatabaseMigrations.v10)
+        migrator.registerMigration("v11", migrate: DatabaseMigrations.v11)
     }
 }
 

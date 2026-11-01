@@ -83,7 +83,11 @@ final class Crossfade {
             let settings = SettingsStore.shared
             songSettings = (id, settings.autoMixEnabled, settings.crossfadeEnabled, settings.crossfadeSeconds)
         }
-        guard phase != .fading else { return }
+        if phase == .fading {
+            // Play Next or a reorder changed what follows: the mix can still be called off.
+            if !promoted, let plan, np.nextSong?.videoId != plan.toId { reset() }
+            return
+        }
         guard isEnabled, np.hasNext, !np.isRepeatOn, !SleepTimer.shared.stopsAtSongEnd,
               let current = np.videoId, np.duration > 30, np.duration < 600 else {
             if phase != .idle { reset() }
@@ -180,6 +184,9 @@ final class Crossfade {
         failedFor = plan?.fromId
         reset()
     }
+
+    /// The decks have swapped: an ended song is the incoming one, shorter than the mix.
+    var hasPromoted: Bool { promoted }
 
     /// The outgoing song ran out before the transition ended.
     func outgoingEnded() {

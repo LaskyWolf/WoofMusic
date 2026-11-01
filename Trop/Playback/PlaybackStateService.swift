@@ -34,6 +34,8 @@ actor PlaybackStateService {
 
     /// Starts paused; `setPlaying(true)` begins counting once audio runs.
     func startTracking(videoId: String) {
+        // The song's row may exist in one profile's database and not in the next one's.
+        ensuredSongId = nil
         currentVideoId = videoId
         playedBefore = 0
         resumedAt = nil
@@ -110,7 +112,7 @@ actor PlaybackStateService {
     }
 
     private func addPlayTime(videoId: String, deltaMs: Int64) async {
-        guard SettingsStore.shared.trackPlayHistory, !videoId.isEmpty else { return }
+        guard SettingsStore.shared.trackPlayHistory, !SettingsStore.shared.isIncognito, !videoId.isEmpty else { return }
         await ensureSongEntity(videoId: videoId)
         do {
             try await db.incrementTotalPlayTime(songId: videoId, playTimeMs: deltaMs)
@@ -157,7 +159,7 @@ actor PlaybackStateService {
     }
 
     private func recordPlayback(videoId: String, playTimeMs: Int64) async {
-        guard SettingsStore.shared.trackPlayHistory else {
+        guard SettingsStore.shared.trackPlayHistory, !SettingsStore.shared.isIncognito else {
             Log.playbackState.debug("Play history tracking disabled — skipping recording")
             return
         }

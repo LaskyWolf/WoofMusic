@@ -48,7 +48,7 @@ final class LastFMTokenStore: @unchecked Sendable {
     func retrieveUsername() -> String? {
         queue.sync {
             if let cached = cachedUsername { return cached.isEmpty ? nil : cached }
-            if let fromDefaults = UserDefaults.standard.string(forKey: LastFMDefaults.usernameKey),
+            if let fromDefaults = ProfileStorage.defaults.string(forKey: LastFMDefaults.usernameKey),
                !fromDefaults.isEmpty {
                 cachedUsername = fromDefaults
                 return fromDefaults
@@ -65,7 +65,7 @@ final class LastFMTokenStore: @unchecked Sendable {
             self.cachedSessionKey = sessionKey
             self.cachedUsername = username
             UserDefaults.standard.removeObject(forKey: LastFMDefaults.sessionKeyKey)
-            UserDefaults.standard.set(username, forKey: LastFMDefaults.usernameKey)
+            ProfileStorage.defaults.set(username, forKey: LastFMDefaults.usernameKey)
         }
     }
 
@@ -77,22 +77,30 @@ final class LastFMTokenStore: @unchecked Sendable {
             cachedSessionKey = nil
             cachedUsername = nil
             UserDefaults.standard.removeObject(forKey: LastFMDefaults.sessionKeyKey)
-            UserDefaults.standard.removeObject(forKey: LastFMDefaults.usernameKey)
+            ProfileStorage.defaults.removeObject(forKey: LastFMDefaults.usernameKey)
+        }
+    }
+
+    /// Each profile links its own Last.fm account.
+    func reloadForActiveProfile() {
+        queue.sync(flags: .barrier) {
+            cachedSessionKey = nil
+            cachedUsername = nil
         }
     }
 
     // MARK: - Keychain primitives
 
     private func saveString(_ value: String, for key: String) throws {
-        try store.save(Data(value.utf8), for: key)
+        try store.save(Data(value.utf8), for: ProfileStorage.scoped(key))
     }
 
     private func loadString(for key: String) -> String? {
-        guard let data = try? store.load(for: key) else { return nil }
+        guard let data = try? store.load(for: ProfileStorage.scoped(key)) else { return nil }
         return String(data: data, encoding: .utf8)
     }
 
     private func delete(for key: String) {
-        try? store.delete(for: key)
+        try? store.delete(for: ProfileStorage.scoped(key))
     }
 }

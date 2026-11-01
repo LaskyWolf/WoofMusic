@@ -89,29 +89,38 @@ final class DiscordTokenStore: @unchecked Sendable {
         }
     }
 
+    /// Each profile links its own Discord account.
+    func reloadForActiveProfile() {
+        queue.sync(flags: .barrier) {
+            cachedAccessToken = nil
+            cachedRefreshToken = nil
+            cachedExpiresAt = nil
+        }
+    }
+
     // MARK: - Keychain primitives
 
     private func saveString(_ value: String, for key: String) {
         guard let data = value.data(using: .utf8) else { return }
-        try? store.save(data, for: key)
+        try? store.save(data, for: ProfileStorage.scoped(key))
     }
 
     private func loadString(for key: String) -> String? {
-        guard let data = try? store.load(for: key) else { return nil }
+        guard let data = try? store.load(for: ProfileStorage.scoped(key)) else { return nil }
         return String(data: data, encoding: .utf8)
     }
 
     private func saveInt64(_ value: Int64, for key: String) {
         var v = value
-        try? store.save(Data(bytes: &v, count: MemoryLayout<Int64>.size), for: key)
+        try? store.save(Data(bytes: &v, count: MemoryLayout<Int64>.size), for: ProfileStorage.scoped(key))
     }
 
     private func loadInt64(for key: String) -> Int64? {
-        guard let data = try? store.load(for: key), data.count == MemoryLayout<Int64>.size else { return nil }
+        guard let data = try? store.load(for: ProfileStorage.scoped(key)), data.count == MemoryLayout<Int64>.size else { return nil }
         return data.withUnsafeBytes { $0.load(as: Int64.self) }
     }
 
     private func delete(for key: String) {
-        try? store.delete(for: key)
+        try? store.delete(for: ProfileStorage.scoped(key))
     }
 }

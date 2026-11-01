@@ -36,7 +36,7 @@ actor EpisodePlaybackStore {
     private func ensureLoaded() {
         guard !loaded else { return }
         loaded = true
-        if let data = UserDefaults.standard.data(forKey: positionsKey),
+        if let data = ProfileStorage.defaults.data(forKey: positionsKey),
            let decoded = try? JSONDecoder().decode([String: EpisodePosition].self, from: data) {
             positions = decoded
         }
@@ -49,8 +49,13 @@ actor EpisodePlaybackStore {
             positions = Dictionary(uniqueKeysWithValues: sorted.prefix(200).map { ($0.key, $0.value) })
         }
         if let data = try? JSONEncoder().encode(positions) {
-            UserDefaults.standard.set(data, forKey: positionsKey)
+            ProfileStorage.defaults.set(data, forKey: positionsKey)
         }
+    }
+
+    func reloadForActiveProfile() {
+        positions = [:]
+        loaded = false
     }
 
     func position(for videoId: String) -> EpisodePosition? {
@@ -61,6 +66,7 @@ actor EpisodePlaybackStore {
     /// Saves position throttled by the caller (NowPlaying ticks 4x/sec —
     /// only persist every ~5s or on pause/seek).
     func savePosition(videoId: String, position: Double, duration: Double) {
+        guard !SettingsStore.shared.isIncognito else { return }
         ensureLoaded()
         guard duration > 0, position >= 0 else { return }
         let existing = positions[videoId]
@@ -85,6 +91,7 @@ actor EpisodePlaybackStore {
     // MARK: - Played tracking
 
     func markPlayed(videoId: String) async {
+        guard !SettingsStore.shared.isIncognito else { return }
         let entity: EpisodeEntity? = (try? await DatabaseService.shared.fetchOne(EpisodeEntity.self, key: videoId)) ?? nil
         if var entity {
             entity.isPlayed = true

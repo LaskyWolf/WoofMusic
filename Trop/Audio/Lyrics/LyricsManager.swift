@@ -93,7 +93,7 @@ actor LyricsManager {
             for (provider, index) in providers {
                 group.addTask {
                     guard let fetched = try? await provider.fetch(query: query) else { return nil }
-                    let lines = LyricsParsing.droppingCredits(fetched)
+                    let lines = LyricsParsing.droppingPlaceholder(LyricsParsing.droppingCredits(fetched))
                     guard !lines.isEmpty else { return nil }
                     return (index, LyricSearchResult(lines: lines, providerName: provider.name, sortOrder: index))
                 }
@@ -157,9 +157,10 @@ actor LyricsManager {
             for (index, provider) in candidates {
                 group.addTask {
                     do {
-                        let lines = try await LyricsParsing.droppingCredits(Self.withTimeout(seconds: 10) {
+                        let fetched = try await Self.withTimeout(seconds: 10) {
                             try await provider.fetch(query: query)
-                        })
+                        }
+                        let lines = LyricsParsing.droppingPlaceholder(LyricsParsing.droppingCredits(fetched))
                         guard !lines.isEmpty, !wordTimedOnly || lines.contains(where: { $0.words != nil }) else {
                             return (index, nil, nil)
                         }

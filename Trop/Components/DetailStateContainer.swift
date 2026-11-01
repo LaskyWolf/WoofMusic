@@ -27,6 +27,25 @@ struct LoadingStateView: View {
     }
 }
 
+/// An error state with a button to try again.
+struct RetryStateView: View {
+    let title: String
+    let systemImage: String
+    let message: String
+    let retry: () async -> Void
+
+    var body: some View {
+        ContentUnavailableView {
+            Label(title, systemImage: systemImage)
+        } description: {
+            Text(message)
+        } actions: {
+            Button("Try Again") { Task { await retry() } }
+                .buttonStyle(.bordered)
+        }
+    }
+}
+
 /// Loading / error / empty / content tri-state shared by the detail screens.
 /// `noun` derives the standard copy ("Loading album…", "Couldn't load album",
 /// "No album data", "Could not parse album details").
@@ -36,6 +55,7 @@ struct DetailStateContainer<Data, Content: View>: View {
     var data: Data?
     var noun: String
     var emptyIcon: String
+    var retry: () async -> Void
     @ViewBuilder var content: (Data) -> Content
 
     var body: some View {
@@ -44,19 +64,21 @@ struct DetailStateContainer<Data, Content: View>: View {
                 LoadingStateView("Loading \(noun)...")
                     .containerRelativeFrame(.vertical)
             } else if let error = error {
-                ContentUnavailableView(
-                    "Couldn't load \(noun)",
+                RetryStateView(
+                    title: "Couldn't load \(noun)",
                     systemImage: "exclamationmark.circle",
-                    description: Text(error.localizedDescription)
+                    message: error.localizedDescription,
+                    retry: retry
                 )
                 .containerRelativeFrame(.vertical)
             } else if let data = data {
                 content(data)
             } else {
-                ContentUnavailableView(
-                    "No \(noun) data",
+                RetryStateView(
+                    title: "No \(noun) data",
                     systemImage: emptyIcon,
-                    description: Text("Could not parse \(noun) details")
+                    message: "Could not parse \(noun) details",
+                    retry: retry
                 )
                 .containerRelativeFrame(.vertical)
             }

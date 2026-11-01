@@ -99,9 +99,9 @@ struct RecapHomeCard<Fallback: View>: View {
                     .font(.system(size: 10, weight: .bold))
                     .foregroundStyle(.white.opacity(0.8))
                     .frame(width: 28, height: 28)
-                    .contentShape(Circle())
+                    .tapArea(outset: 8)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(IconPressStyle(disc: .white, motion: .deflate))
             .padding(4)
             .accessibilityLabel("Hide \(month) Recap")
         }

@@ -65,6 +65,8 @@ final class PlayerController {
     /// Where to continue once a finished song is loaded again: the user moved
     /// the timeline after it ended and then pressed play.
     private var resumeAfterLoad: (videoId: String, time: TimeInterval)?
+    /// Pause or play pressed while a song resolves: it starts in that state.
+    var pausedWhileLoading = false
     /// Bumped by every `play()`. A call that finds it changed after an await
     /// was overtaken by a newer one and must not load its song.
     private var playGeneration = 0
@@ -149,7 +151,7 @@ extension PlayerController {
             guard generation == playGeneration else { return }
         }
         // With Persistent Play/Pause a paused player stays paused when the track changes.
-        desiredPlaying = SettingsStore.shared.persistentPlayPause ? playState.value != .paused : true
+        desiredPlaying = !pausedWhileLoading && (SettingsStore.shared.persistentPlayPause ? playState.value != .paused : true)
         assertAudioSession()
         if let videoId {
             await PlaybackStateService.shared.startTracking(videoId: videoId)
@@ -208,10 +210,34 @@ extension PlayerController {
         updateNowPlayingProgress()
     }
 
+    /// Ends playback with nothing left to resume, and drops a load on its way.
+    func stop() {
+        playGeneration &+= 1
+        pendingURL = nil
+        pendingVideoId = nil
+        currentVideoId = nil
+        resumeAfterLoad = nil
+        pausedWhileLoading = false
+        desiredPlaying = false
+        Crossfade.shared.reset()
+        withMpv { mpv in _ = ["stop"].withUnsafeCArg { mpv_command(mpv, $0) } }
+        playState.send(.stopped)
+        NowPlaying.shared.isLoadingTrack = false
+        NowPlaying.shared.isPlaying = false
+    }
+
+    /// The song reloads after a stream error: it goes on from here, not from the start.
+    func resumeOnLoad(videoId: String, at time: TimeInterval) {
+        resumeAfterLoad = time > 1 ? (videoId, time) : nil
+    }
+
     func setPaused(_ paused: Bool) {
         Crossfade.shared.finishNow()
+        let isLoading = NowPlaying.shared.isLoadingTrack
+        if isLoading { pausedWhileLoading = paused }
         // After the queue ends mpv holds no file: unpausing it would play silence.
         if !paused, playState.value == .stopped, pendingVideoId == nil {
+            guard !isLoading else { return }
             let np = NowPlaying.shared
             if let videoId = np.videoId, np.duration > 0, np.currentTime < np.duration - 1 {
                 resumeAfterLoad = (videoId, np.currentTime)
@@ -237,7 +263,7 @@ extension PlayerController {
     }
 
     func togglePlayPause() {
-        setPaused(playState.value == .playing)
+        setPaused(NowPlaying.shared.isLoadingTrack ? !pausedWhileLoading : playState.value == .playing)
     }
 
     /// mpv keeps the pitch at any speed (its default scaletempo filter).
@@ -485,8 +511,11 @@ extension PlayerController {
             NowPlaying.shared.isPlaying = actuallyPlaying
             NowPlaying.shared.isLoadingTrack = false
             Task { await PlaybackStateService.shared.setPlaying(actuallyPlaying) }
-            self.currentVideoId = pendingVideoId
-            self.pendingVideoId = nil
+            // A late event of a skipped song found the next song's id, so this one finds none.
+            if let pendingVideoId {
+                self.currentVideoId = pendingVideoId
+                if self.pendingVideoId == pendingVideoId { self.pendingVideoId = nil }
+            }
             if let resume = self.resumeAfterLoad {
                 self.resumeAfterLoad = nil
                 if resume.videoId == pendingVideoId { self.seek(to: resume.time) }
@@ -537,9 +566,10 @@ extension PlayerController {
             if isError, videoId != nil {
                 Task { await PlaybackStateService.shared.stopTracking() }
             }
-            if isEof, self.isCrossfading {
+            if isEof, self.isCrossfading, !Crossfade.shared.hasPromoted {
                 Crossfade.shared.outgoingEnded()
             } else if isEof {
+                Crossfade.shared.finishNow()
                 self.playState.send(.stopped)
                 NowPlaying.shared.stopped(videoId: videoId, isEof: true)
             } else if isError {
@@ -626,6 +656,8 @@ extension PlayerController {
             // A song started meanwhile tracks itself.
             guard generation == playGeneration else { return }
             await PlaybackStateService.shared.startTracking(videoId: videoId)
+            // Tracking counts from here: nothing else reports that this deck is playing.
+            await PlaybackStateService.shared.setPlaying(desiredPlaying)
         }
     }
 }
@@ -690,9 +722,8 @@ extension PlayerController {
             }
         case .ended:
             Log.player.info("AUDIO_INTERRUPTION ended")
-            let optionsValue = userInfo[AVAudioSessionInterruptionOptionKey] as? UInt ?? 0
-            let options = AVAudioSession.InterruptionOptions(rawValue: optionsValue)
-            let shouldResume = options.contains(.shouldResume) || wasPlayingBeforeInterruption
+            // Whatever iOS suggests, a song the user had paused stays paused.
+            let shouldResume = wasPlayingBeforeInterruption
             Task { @MainActor in
                 guard shouldResume else { return }
                 self.assertAudioSession()
@@ -743,6 +774,11 @@ extension PlayerController {
 // MARK: - Now Playing info / lock-screen
 
 extension PlayerController {
+    func clearNowPlayingMetadata() {
+        nowPlayingInfo.removeAll()
+        MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
+    }
+
     func setNowPlayingMetadata() {
         // Activating the session while paused would interrupt other apps' audio.
         if desiredPlaying { assertAudioSession() }
@@ -802,8 +838,17 @@ extension PlayerController {
             mpv_get_property(mpv, "time-pos", MPV_FORMAT_DOUBLE, &pos)
             return (dur, pos)
         }
-        guard var props, props.dur > 0 else { return }
         let np = NowPlaying.shared
+        guard var props, props.dur > 0 else {
+            // Nothing is loaded after the last song, and the lock screen must stop counting.
+            if !onlyIfDrifted, !nowPlayingInfo.isEmpty {
+                nowPlayingInfo[MPNowPlayingInfoPropertyPlaybackRate] = np.isPlaying ? PlaybackSpeed.shared.rate : 0
+                nowPlayingInfo[MPNowPlayingInfoPropertyElapsedPlaybackTime] = np.currentTime
+                MPNowPlayingInfoCenter.default().nowPlayingInfo = nowPlayingInfo
+                MPNowPlayingInfoCenter.default().playbackState = np.isPlaying ? .playing : .paused
+            }
+            return
+        }
 
         if let seek = pendingSeek {
             if abs(props.pos - seek.target) > 1, Date() < seek.deadline {

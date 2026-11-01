@@ -17,6 +17,10 @@ import Combine
         @Published var dataSyncId: String?
         @Published var isLoggedIn = false
         @Published var isPresented = false
+        /// The sign-in sheet is adding another account to a signed-in app.
+        var isAddingAccount = false
+
+        var canCaptureSession: Bool { !isLoggedIn || isAddingAccount }
 
         private let authService = AuthService.shared
         private let cookieStore = CookieStore()
@@ -32,10 +36,15 @@ import Combine
             loadTask = Task { [weak self] in
                 guard let self else { return }
         do {
+            await AccountState.shared.prepareForNewSession()
             try await self.authService.importSession(from: self.cookieString(from: cookies), dataSyncId: dataSyncId)
+            // Before isLoggedIn flips: nothing may read or write the wrong profile's data.
+            await AccountState.shared.openProfileOfNewSession()
+            self.isAddingAccount = false
             self.isLoggedIn = true
             self.isPresented = false
         } catch {
+            AccountState.shared.cancelNewSession()
             Log.loginViewModel.error("importSession failed: \(error)")
         }
             }
@@ -60,15 +69,19 @@ import Combine
                 let loggedIn = await self.cookieStore.isLoggedIn()
                 guard loggedIn else { return }
 
-                self.cookies = await self.cookieStore.cookies()
-                self.sapisid = await self.cookieStore.sapisid()
-                self.visitorData = await self.cookieStore.visitorData()
-                self.dataSyncId = await self.cookieStore.dataSyncId()
                 // Before isLoggedIn flips: whichever tab opens first then
                 // requests with the account, not as a guest.
-                await self.authService.loadPersistedSession()
+                await self.loadPersistedSession()
                 self.isLoggedIn = true
             }
+        }
+
+        func loadPersistedSession() async {
+            cookies = await cookieStore.cookies()
+            sapisid = await cookieStore.sapisid()
+            visitorData = await cookieStore.visitorData()
+            dataSyncId = await cookieStore.dataSyncId()
+            await authService.loadPersistedSession()
         }
 
         private func cookieString(from dict: [String: String]) -> String {

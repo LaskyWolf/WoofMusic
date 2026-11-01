@@ -21,14 +21,16 @@ struct DownloadsView: View {
             if !downloadManager.isLoaded {
                 LoadingStateView("Loading downloads…")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .navigationTitle("Downloads")
             } else if tracks.isEmpty && activeDownloads.isEmpty {
                 emptyView
+                    .navigationTitle("Downloads")
             } else {
                 contentView
+                    .detailBarTitle("Downloads")
             }
         }
         .background(Color(.systemGroupedBackground))
-        .navigationTitle("Downloads")
         .navigationBarTitleDisplayMode(.inline)
         .refreshable { await downloadManager.reload() }
         .task {
@@ -40,7 +42,7 @@ struct DownloadsView: View {
 
     private var emptyView: some View {
         ContentUnavailableView {
-            Label("No Downloads Yet", systemImage: "arrow.down.circle")
+            Label("No Downloads Yet", systemImage: "arrow.down.to.line")
         } description: {
             Text("Save songs for offline listening from the player menu, or enable auto-download when you like a track.")
         } actions: {
@@ -95,7 +97,7 @@ struct DownloadsView: View {
 
     private var activeDownloadsSection: some View {
         VStack(spacing: 0) {
-            SectionLabel(title: "Downloading", systemImage: "arrow.down.circle")
+            SectionLabel(title: "Downloading", systemImage: "arrow.down.to.line")
                 .padding(.horizontal, 16)
                 .padding(.bottom, 8)
             ForEach(activeDownloads, id: \.videoId) { item in
@@ -117,7 +119,8 @@ struct DownloadsView: View {
                 artSize: DesignTokens.artSmall,
                 artRadius: DesignTokens.cardRadius,
                 onTap: { playSong(song) },
-                onNavigate: { AppRouter.shared.open($0) }
+                onNavigate: { AppRouter.shared.open($0) },
+                showsDownloadBadge: false
             )
         }
     }

@@ -59,18 +59,20 @@ struct ExploreView: View {
         case .loaded:
             sectionsList
         case .empty:
-            ContentUnavailableView(
-                "Nothing to explore",
+            RetryStateView(
+                title: "Nothing to explore",
                 systemImage: "flame",
-                description: Text("Try again later.")
+                message: "YouTube Music sent nothing for this region.",
+                retry: { await viewModel.refresh() }
             )
         case .failed:
             // Wrapped in a ScrollView so the "Pull to retry" gesture works.
             ScrollView {
-                ContentUnavailableView(
-                    "Explore failed",
+                RetryStateView(
+                    title: "Explore failed",
                     systemImage: "exclamationmark.triangle",
-                    description: Text("Couldn't load Explore. Pull to retry.")
+                    message: "Couldn't load Explore.",
+                    retry: { await viewModel.refresh() }
                 )
                 .containerRelativeFrame([.horizontal, .vertical])
             }

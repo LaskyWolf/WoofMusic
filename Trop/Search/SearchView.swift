@@ -13,6 +13,7 @@ import SwiftUI
 struct SearchView: View {
     @State private var searchModel = SearchViewModel()
     @Bindable private var router = AppRouter.shared
+    @Bindable private var settings = SettingsStore.shared
 
     /// The native search field's presentation: true while search is active,
     /// even with the keyboard down. The system sets it back on Cancel.
@@ -33,7 +34,8 @@ struct SearchView: View {
                     accountIsLoggedIn: accountState.isLoggedIn,
                     accountImageUrl: accountState.accountImageUrl,
                     onHistory: { router.searchPath.append(DetailRoute.history) },
-                    onAccount: { router.searchPath.append(DetailRoute.settings) }
+                    onAccount: { router.searchPath.append(DetailRoute.settings) },
+                    incognito: $settings.isIncognito
                 )
 
                 SearchResultsView(viewModel: searchModel, fieldFocused: $fieldFocused)

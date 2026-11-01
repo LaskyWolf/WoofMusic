@@ -111,7 +111,7 @@ struct FullscreenCoverOverlay<Cover: View>: View {
                     .contentShape(Circle())
             }
             .buttonStyle(.plain)
-            .glassEffect(.regular, in: Circle())
+            .glassEffect(.regular.interactive(), in: Circle())
             .accessibilityLabel(np.isPlaying ? "Pause" : "Play")
             .padding(24)
             .opacity(hasLanded ? 1 : 0)

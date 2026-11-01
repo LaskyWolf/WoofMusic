@@ -164,6 +164,8 @@ struct HistoryScreenView: View {
                     Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
                         .font(.title3)
                         .foregroundStyle(isSelected ? settings.accentColor : .secondary)
+                        .contentTransition(.symbolEffect(.replace))
+                        .glyphMotion(isSelected ? .pop : .deflate, trigger: isSelected)
                         .padding(.leading, 16)
                         .padding(.trailing, 4)
                 }
@@ -199,10 +201,11 @@ struct HistoryScreenView: View {
                 LoadingStateView("Loading history...")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let error = viewModel.remoteError {
-                ContentUnavailableView(
-                    "Couldn't load history",
+                RetryStateView(
+                    title: "Couldn't load history",
                     systemImage: "exclamationmark.circle",
-                    description: Text(error.localizedDescription)
+                    message: error.localizedDescription,
+                    retry: { await viewModel.loadRemote() }
                 )
             } else if viewModel.remoteSections.isEmpty {
                 ContentUnavailableView(

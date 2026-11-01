@@ -94,6 +94,16 @@ final class HomeViewModel {
         }
     }
 
+    /// Keep Listening reads the library, which a sync can fill after Home loaded.
+    func refreshKeepListeningIfMissing() async {
+        let isShown = cachedLocalSections.contains { if case .keepListening = $0 { true } else { false } }
+        guard !isShown else { return }
+        let section = await personalization.buildKeepListening()
+        guard !section.items.isEmpty else { return }
+        cachedLocalSections.append(section)
+        mergeSections()
+    }
+
     /// Re-reads settings that affect the feed (explicit filter, quick picks).
     func syncSettings() {
         let settings = SettingsStore.shared
@@ -109,8 +119,7 @@ final class HomeViewModel {
     func refresh() async {
         guard !isRefreshing else { return }
         isRefreshing = true
-        cachedLocalSections = []
-        cachedPhase2Sections = []
+        // The old sections stay on screen until `load` replaces them.
         await load()
         isRefreshing = false
     }
@@ -151,6 +160,9 @@ final class HomeViewModel {
         _ = await localTask
         guard generation == loadGeneration else { return }
 
+        await showSavedHome(generation: generation)
+        guard generation == loadGeneration else { return }
+
         async let phase2Work: Void = loadPhase2Sections()
 
         await fetchHomePage(generation: generation)
@@ -158,14 +170,23 @@ final class HomeViewModel {
             await phase2Work
             return
         }
-        await ensureQuickPicksAvailable(generation: generation)
-        guard generation == loadGeneration else {
-            await phase2Work
-            return
-        }
-        await phase2Work
+        // YouTube's first page decides Quick Picks and the chips, so nothing above
+        // the fold changes after this. Later sections fade in as they arrive.
+        mergeSections()
+        isLoading = false
 
-        guard generation == loadGeneration else { return }
+        await ensureQuickPicksAvailable(generation: generation)
+        await phase2Work
+    }
+
+    private func showSavedHome(generation: Int) async {
+        guard homePage == nil else { return }
+        let file = SavedHome.file
+        let saved = await Task.detached(priority: .userInitiated) { SavedHome.page(from: file) }.value
+        guard generation == loadGeneration, homePage == nil, var saved else { return }
+        // The token may have expired. The next pages wait for the new answer.
+        saved.continuation = nil
+        homePage = saved
         mergeSections()
         isLoading = false
     }
@@ -205,6 +226,9 @@ final class HomeViewModel {
     }
 
     private func fetchHomePage(generation: Int) async {
+        // Read now: the profile can change while the request runs.
+        let file = SavedHome.file
+        let profile = AccountState.shared.currentProfileId
         do {
             let json = try await InnerTubeClient.tropShared.browse(browseId: "FEmusic_home")
             guard let page = HomePageParser.parseHomePage(from: json) else {
@@ -213,7 +237,15 @@ final class HomeViewModel {
                 }
                 return
             }
-            homePage = page
+            if profile == AccountState.shared.currentProfileId {
+                Task.detached(priority: .utility) { SavedHome.write(json, to: file) }
+            }
+            // A mood chip's feed stays on screen. This page comes back when it closes.
+            if selectedChip == nil {
+                homePage = page
+            } else {
+                previousHomePage = page
+            }
         } catch {
             // A cancelled refresh, or a failed one with a feed on screen, keeps the feed.
             if generation == loadGeneration, homePage == nil, !error.isCancellation {
@@ -451,6 +483,26 @@ final class HomeViewModel {
         case .similarRecommendation: return 35
         case .fromTheCommunity: return 25
         }
+    }
+}
+
+/// The last Home page, shown at launch while the new one loads. Each profile has its own.
+enum SavedHome {
+    static var file: URL { URL.cachesDirectory.appending(path: "home-\(ProfileStorage.active).json") }
+
+    static func clear() {
+        try? FileManager.default.removeItem(at: file)
+    }
+
+    static func write(_ json: [String: Any], to file: URL) {
+        guard JSONSerialization.isValidJSONObject(json) else { return }
+        try? JSONSerialization.data(withJSONObject: json).write(to: file, options: .atomic)
+    }
+
+    static func page(from file: URL) -> HomePage? {
+        guard let data = try? Data(contentsOf: file),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+        return HomePageParser.parseHomePage(from: json)
     }
 }
 

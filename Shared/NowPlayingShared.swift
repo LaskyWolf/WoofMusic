@@ -185,6 +185,18 @@ enum WidgetStore {
         }
     }
 
+    /// A widget with no file shows its empty state.
+    static func remove(_ name: String) {
+        switch backend {
+        case .appGroup:
+            if let url = fileURL(name) { try? FileManager.default.removeItem(at: url) }
+        case .keychain:
+            SharedKeychain.remove(name)
+        case .pasteboard:
+            SharedPasteboard.remove(name)
+        }
+    }
+
     /// The running build, for the pings.
     static var build: String {
         let info = Bundle.main.infoDictionary
@@ -233,6 +245,10 @@ enum SharedPasteboard {
         return true
     }
 
+    static func remove(_ name: String) {
+        pasteboard(name)?.items = []
+    }
+
     private static func pasteboard(_ name: String) -> UIPasteboard? {
         UIPasteboard(name: UIPasteboard.Name("com.laskywolf.woofmusic.widgets." + name), create: true)
     }
@@ -276,6 +292,16 @@ enum SharedKeychain {
     static func write(_ data: Data, for account: String) -> Bool {
         guard let group else { return false }
         return upsert(data, account: account, group: group) == errSecSuccess
+    }
+
+    static func remove(_ account: String) {
+        guard let group else { return }
+        SecItemDelete([
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account,
+            kSecAttrAccessGroup as String: group
+        ] as CFDictionary)
     }
 
     private static func upsert(_ data: Data, account: String, group: String) -> OSStatus {

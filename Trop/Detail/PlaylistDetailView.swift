@@ -81,7 +81,8 @@ final class PlaylistDetailViewModel {
             playlist = parsed
             isLoading = false
             PlaylistHeaderCache.store(parsed, for: playlistId)
-            await persist(parsed, rows: rows, browseId: browseId)
+            // Its own task: leaving the page must not roll back a save in progress.
+            await Task { await persist(parsed, rows: rows, browseId: browseId) }.value
         } catch {
             // Leaving the page cancels the load: keep isLoading so the next appear retries.
             if error.isCancellation { return }
@@ -116,7 +117,7 @@ final class PlaylistDetailViewModel {
                 try db.execute(sql: "DELETE FROM playlist_song_map WHERE playlist_id = ?", arguments: [pid])
                 for (index, song) in songs.enumerated() {
                     let existingSong = try SongEntity.fetchOne(db, key: song.videoId)
-                    let songEntity = SongEntity.merging(
+                    var songEntity = SongEntity.merging(
                         existing: existingSong,
                         id: song.videoId,
                         title: song.title,
@@ -125,6 +126,7 @@ final class PlaylistDetailViewModel {
                         duration: song.duration,
                         thumbnailUrl: song.thumbnailUrl
                     )
+                    songEntity.isUnavailable = !song.isAvailable
                     try songEntity.save(db)
 
                     let map = PlaylistSongMap(
@@ -140,6 +142,7 @@ final class PlaylistDetailViewModel {
         } catch {
             Log.playlistDetail.error("Failed to save playlist \(pid): \(error)")
         }
+        await DownloadedCollections.shared.refresh()
     }
 
     private func loadLocalPlaylist(entity: PlaylistEntity) async {
@@ -491,14 +494,18 @@ struct PlaylistDetailView: View {
                 error: viewModel.error,
                 data: viewModel.playlist,
                 noun: "playlist",
-                emptyIcon: "music.note.list"
+                emptyIcon: "music.note.list",
+                retry: { await viewModel.load() }
             ) { playlist in
                 playlistContent(for: playlist)
             }
         }
         .scrollDisabled(viewModel.isLoading || viewModel.error != nil || viewModel.playlist == nil)
         .miniPlayerTracksScroll()
-        .navigationTitle(selection.isActive ? "\(selection.selected.count) selected" : (viewModel.playlist?.title ?? ""))
+        .detailBarTitle(
+            viewModel.playlist?.title ?? "",
+            pinnedTitle: selection.isActive ? "\(selection.selected.count) selected" : nil
+        )
         .navigationBarTitleDisplayMode(.inline)
         .sensoryFeedback(.selection, trigger: selection.selected)
         .toolbar { toolbarContent }
@@ -603,6 +610,7 @@ struct PlaylistDetailView: View {
                     PlaylistPeopleChip(playlist: playlist)
                         .padding(.top, 4)
                 }
+                DownloadedSongsLabel(songs: playlist.songs)
             } buttons: {
                 PlaylistActionsMenu(
                     playlist: playlist,
@@ -617,11 +625,13 @@ struct PlaylistDetailView: View {
                 Button(action: { shufflePlay(playlist) }, label: {
                     HeaderRoundIcon(systemImage: "shuffle")
                 })
+                .buttonStyle(IconPressStyle(motion: .crossSwap))
                 .accessibilityLabel("Shuffle")
 
                 Button(action: { playAll(playlist) }, label: {
                     HeaderRoundIcon(systemImage: "play.fill", primary: SettingsStore.shared.accentColor)
                 })
+                .buttonStyle(IconPressStyle(motion: .playAll))
                 .accessibilityLabel("Play all")
             }
 

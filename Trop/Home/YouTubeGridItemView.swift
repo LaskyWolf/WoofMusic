@@ -118,14 +118,19 @@ struct YouTubeGridItemView: View {
                         .font(.caption2)
                         .foregroundColor(.secondary)
                         .lineLimit(1)
-                } else if !subtitle.isEmpty {
-                    Text(subtitle)
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
-                        .lineLimit(1)
+                } else if !subtitle.isEmpty || DownloadedCollections.shared.isComplete(YTItemRouter.detailRoute(for: item)) {
+                    HStack(spacing: 4) {
+                        Text(subtitle)
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                            .lineLimit(1)
+                        Spacer(minLength: 0)
+                        ItemDownloadedBadge(item: item)
+                    }
                 }
             }
             .frame(width: Self.artworkSize, height: Self.cardHeight + (reservesPlaylistLift ? PlaylistEdgeMetrics.lift : 0), alignment: .top)
+            .greyedOut(songItem?.isAvailable == false)
         }
         .buttonStyle(ZoomPressStyle())
         .cardMenu(for: item)
@@ -176,7 +181,7 @@ struct YouTubeListItemView: View {
                     } label: {
                         VerticalMoreGlyph()
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(IconPressStyle(motion: .pop))
                     .accessibilityLabel("Copy link")
                 }
             }
@@ -189,6 +194,7 @@ struct YouTubeListItemView: View {
                 .frame(width: Self.artSize, height: Self.artSize)
                 .clipShape(RoundedRectangle(cornerRadius: Self.artRadius, style: .continuous))
                 .coverZoomSource(YTItemRouter.detailRoute(for: item))
+                .greyedOut(songItem?.isAvailable == false)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(item.title)
@@ -204,8 +210,12 @@ struct YouTubeListItemView: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+            .greyedOut(songItem?.isAvailable == false)
 
-            trailing()
+            HStack(spacing: 2) {
+                ItemDownloadedBadge(item: item)
+                trailing()
+            }
         }
         .padding(.leading, DesignTokens.screenHPadding)
         // The 44pt glyph already leaves air on the right.

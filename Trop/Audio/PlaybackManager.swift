@@ -23,7 +23,10 @@ actor PlaybackManager {
     /// `NowPlaying.isLoadingTrack` stays on until mpv reports the file loaded.
     @discardableResult
     func resolveAndPlay(videoId: String) async throws -> PlaybackResult {
-        await MainActor.run { NowPlaying.shared.isLoadingTrack = true }
+        await MainActor.run {
+            NowPlaying.shared.isLoadingTrack = true
+            PlayerController.shared.pausedWhileLoading = false
+        }
         do {
             return try await resolveAndPlayUnflagged(videoId: videoId)
         } catch {
@@ -126,7 +129,8 @@ actor PlaybackManager {
             let np = NowPlaying.shared
             return np.queueSongs.indices.contains(np.queueIndex) ? np.queueSongs[np.queueIndex].videoId : nil
         }
-        return current == nil || current == videoId
+        // Every play sets the queue first, so an empty one means playback was stopped.
+        return current == videoId
     }
 
     private func playNetworkResult(_ result: PlaybackResult, videoId: String) async {

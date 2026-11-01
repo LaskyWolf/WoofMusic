@@ -61,6 +61,8 @@ struct FullPlayerView: View {
     @State private var karaokeReplacesPlay = false
     @State private var radioReplacesPlay = false
     private var playerBackgroundColors: [Color] { np.dominantColors }
+    /// Dark enough for the white controls, at a 4.5:1 contrast, on a pale cover too.
+    private var readableBackgroundColors: [Color] { playerBackgroundColors.map { $0.darkened(toLuminance: 0.18) } }
 
     var body: some View {
         GeometryReader { geometry in
@@ -85,8 +87,8 @@ struct FullPlayerView: View {
                 } else {
                     LinearGradient(
                         colors: [
-                            playerBackgroundColors.first ?? Color(red: 0.15, green: 0.15, blue: 0.2),
-                            playerBackgroundColors.last ?? Color(red: 0.05, green: 0.05, blue: 0.08)
+                            readableBackgroundColors.first ?? Color(red: 0.15, green: 0.15, blue: 0.2),
+                            readableBackgroundColors.last ?? Color(red: 0.05, green: 0.05, blue: 0.08)
                         ],
                         startPoint: .top,
                         endPoint: .bottom
@@ -96,7 +98,7 @@ struct FullPlayerView: View {
                     // shift it right and show the previous cover at the left edge.
                     .overlay {
                         Circle()
-                            .fill(playerBackgroundColors.first ?? .blue)
+                            .fill(readableBackgroundColors.first ?? .blue)
                             .frame(width: 400, height: 400)
                             .blur(radius: 120)
                             .opacity(0.45)
@@ -444,6 +446,10 @@ struct FullPlayerView: View {
             Spacer()
 
             HStack(spacing: 12) {
+                if let videoId = np.videoId {
+                    DownloadedBadge(videoId: videoId, onArtwork: true)
+                        .id(videoId)
+                }
                 PlayerLikeButton(isLiked: isLiked, flavor: currentLikeFlavor) {
                     guard let song = np.queueSongs.indices.contains(np.queueIndex) ? np.queueSongs[np.queueIndex] : nil else { return }
                     Task { await likeStore.toggle(song: song) }
@@ -700,7 +706,7 @@ private struct PlayerProgressSection: View {
             onChipTap()
         } label: {
             Text(PlaybackSpeed.label(rate))
-                .font(.system(size: 11, weight: .bold).monospacedDigit())
+                .font(.caption2.weight(.bold).monospacedDigit())
                 .foregroundStyle(.white)
                 .padding(.horizontal, 9)
                 .padding(.vertical, 3)
@@ -708,7 +714,7 @@ private struct PlayerProgressSection: View {
                 .overlay { Capsule().strokeBorder(isChanged ? SettingsStore.shared.accentColor : .white.opacity(0.2), lineWidth: 1) }
                 .padding(.vertical, 4)
                 .padding(.horizontal, 8)
-                .contentShape(Rectangle())
+                .tapArea(outset: 8)
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Playback speed, \(PlaybackSpeed.label(rate))")

@@ -42,6 +42,11 @@ enum LastFMDefaults {
     static let sessionKeyKey = "privacy-regression.session"
     static let usernameKey = "privacy-regression.username"
 }
+enum ProfileStorage {
+    static var active = ""
+    static var defaults: UserDefaults { .standard }
+    static func scoped(_ account: String) -> String { active.isEmpty ? account : "\(active).\(account)" }
+}
 enum Log {
     static let lastfm = Sink()
     struct Sink { func error(_ message: String) {} }
@@ -91,6 +96,12 @@ do {
 } catch {}
 assert(migrated.retrieveSessionKey() == "new-secret")
 SecureStore.failSave = false
+ProfileStorage.active = "other-profile"
+migrated.reloadForActiveProfile()
+assert(migrated.retrieveSessionKey() == nil)
+ProfileStorage.active = ""
+migrated.reloadForActiveProfile()
+assert(migrated.retrieveSessionKey() == "new-secret")
 migrated.clear()
 assert(migrated.retrieveSessionKey() == nil)
 assert(SecureStore.values.isEmpty)

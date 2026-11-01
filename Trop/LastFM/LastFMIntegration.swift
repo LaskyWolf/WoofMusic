@@ -89,7 +89,7 @@ final class LastFMIntegration {
               let track = info["track"] as? String,
               let love = info["love"] as? Bool else { return }
         guard UserDefaults.standard.bool(forKey: LastFMDefaults.useSendLikesKey) else { return }
-        guard isLoggedIn, isEnabled else { return }
+        guard isLoggedIn, isEnabled, !SettingsStore.shared.isIncognito else { return }
         Task {
             try? await LastFMService.shared.setLoveStatus(artist: artist, track: track, love: love)
         }
@@ -260,7 +260,7 @@ final class LastFMIntegration {
         let album = song.album
         let duration = song.duration
         let ts = songStartedAtSec
-        guard isEnabled, !artist.isEmpty, !track.isEmpty else { return }
+        guard isEnabled, !SettingsStore.shared.isIncognito, !artist.isEmpty, !track.isEmpty else { return }
         if lastScrobbledVideoId == song.videoId { return }
         lastScrobbledVideoId = song.videoId
         Task {
@@ -278,7 +278,7 @@ final class LastFMIntegration {
     private func updateNowPlaying(song: SongItem) {
         let artist = song.artists.map(\.name).joined(separator: ", ")
         let track = song.title
-        guard !artist.isEmpty, !track.isEmpty else { return }
+        guard !SettingsStore.shared.isIncognito, !artist.isEmpty, !track.isEmpty else { return }
         Task {
             try? await LastFMService.shared.updateNowPlaying(
                 artist: artist, track: track, album: song.album,

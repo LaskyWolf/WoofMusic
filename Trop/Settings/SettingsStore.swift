@@ -350,6 +350,11 @@ final class SettingsStore {
         didSet { Self.defaults.set(trackPlayHistory, forKey: Keys.trackPlayHistory) }
     }
 
+    /// While on, nothing the person searches or plays is kept or shared.
+    var isIncognito: Bool {
+        didSet { Self.defaults.set(isIncognito, forKey: Keys.isIncognito) }
+    }
+
     // MARK: - Downloads & storage
 
     var downloadQuality: DownloadQuality {
@@ -428,6 +433,7 @@ final class SettingsStore {
         static let disabledLyricsProviders = "settings.disabledLyricsProviders"
         static let trackSearchHistory = "settings.trackSearchHistory"
         static let trackPlayHistory = "settings.trackPlayHistory"
+        static let isIncognito = "settings.isIncognito"
         static let downloadQuality = "settings.downloadQuality"
         static let wifiOnlyDownloads = "settings.wifiOnlyDownloads"
         static let autoDownloadOnLike = "settings.autoDownloadOnLike"
@@ -497,6 +503,7 @@ final class SettingsStore {
         disabledLyricsProviders = Set(d.stringArray(forKey: Keys.disabledLyricsProviders) ?? [])
         trackSearchHistory = Self.load(Keys.trackSearchHistory, default: true)
         trackPlayHistory = Self.load(Keys.trackPlayHistory, default: true)
+        isIncognito = Self.load(Keys.isIncognito, default: false)
         downloadQuality = Self.loadEnum(Keys.downloadQuality, default: .auto)
         wifiOnlyDownloads = Self.load(Keys.wifiOnlyDownloads, default: false)
         autoDownloadOnLike = Self.load(Keys.autoDownloadOnLike, default: false)

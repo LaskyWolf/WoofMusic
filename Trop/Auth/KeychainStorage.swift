@@ -11,6 +11,7 @@ import Foundation
 actor KeychainStorage {
   static let serviceName = "com.trop.app"
   static let sessionKey = "sessionState"
+  static let profilesKey = "profiles"
 
   private let store: SecureStore
 
@@ -20,6 +21,10 @@ actor KeychainStorage {
 
   nonisolated func loadSessionState() async throws -> SessionState {
     try loadDataDecoded(for: KeychainStorage.sessionKey)
+  }
+
+  nonisolated func loadProfiles() -> [SavedProfile] {
+    (try? loadDataDecoded(for: KeychainStorage.profilesKey)) ?? []
   }
 
   // Saves a Codable value to Keychain, replacing any existing entry for the key

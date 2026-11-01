@@ -29,7 +29,7 @@ struct SettingsView: View {
                 SettingsNavigationRow("Player", icon: "play.circle") {
                     PlayerSettingsView()
                 }
-                SettingsNavigationRow("Downloads", icon: "arrow.down.circle") {
+                SettingsNavigationRow("Downloads", icon: "arrow.down.to.line") {
                     DownloadSettingsView()
                 }
             } header: {

@@ -40,10 +40,22 @@ struct SearchResultsView: View {
     private var content: some View {
         switch viewModel.phase {
         case .idle:
-            if viewModel.searchHistory.isEmpty {
-                noRecentSearchesView
-            } else {
-                searchHistoryView
+            VStack(spacing: 0) {
+                if settings.isIncognito {
+                    Label("Incognito is on. Searches and plays aren't saved on this iPhone, and songs stay out of your YouTube Music history. YouTube still receives your searches.", systemImage: "eyeglasses")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+                }
+                if viewModel.isTyping {
+                    suggestionsView
+                } else if viewModel.searchHistory.isEmpty {
+                    noRecentSearchesView
+                } else {
+                    searchHistoryView
+                }
             }
         case .loading:
             loadingView
@@ -102,34 +114,59 @@ struct SearchResultsView: View {
                 .padding(.vertical, 8)
 
                 ForEach(viewModel.searchHistory, id: \.query) { entry in
-                    Button {
-                        submit(entry.query)
-                    } label: {
-                        HStack {
-                            Image(systemName: "clock.arrow.trianglehead.counterclockwise.rotate.90")
-                                .foregroundColor(settings.accentColor)
-                            Text(entry.query)
-                                .foregroundColor(.primary)
-                            Spacer()
-                        }
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 12)
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .contextMenu {
-                        Button(role: .destructive) {
-                            viewModel.deleteSearchHistoryEntry(entry)
-                        } label: {
-                            Label("Delete", systemImage: "trash")
-                        }
-                        .tint(.red)
-                    }
+                    historyRow(entry)
                 }
             }
         }
         .scrollIndicators(.automatic)
         .miniPlayerTracksScroll()
+    }
+
+    /// Replaces the recent searches while typing: the earlier searches that
+    /// match, then what YouTube suggests.
+    private var suggestionsView: some View {
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 0) {
+                ForEach(viewModel.matchingHistory, id: \.query) { entry in
+                    historyRow(entry)
+                }
+                ForEach(viewModel.newSuggestions, id: \.self) { suggestion in
+                    queryRow(suggestion, systemImage: "magnifyingglass", iconColor: .secondary)
+                }
+            }
+        }
+        .scrollIndicators(.automatic)
+        .miniPlayerTracksScroll()
+    }
+
+    private func historyRow(_ entry: SearchHistoryEntity) -> some View {
+        queryRow(entry.query, systemImage: "clock.arrow.trianglehead.counterclockwise.rotate.90", iconColor: settings.accentColor)
+            .contextMenu {
+                Button(role: .destructive) {
+                    viewModel.deleteSearchHistoryEntry(entry)
+                } label: {
+                    Label("Delete", systemImage: "trash")
+                }
+                .tint(.red)
+            }
+    }
+
+    private func queryRow(_ query: String, systemImage: String, iconColor: Color) -> some View {
+        Button {
+            submit(query)
+        } label: {
+            HStack {
+                Image(systemName: systemImage)
+                    .foregroundColor(iconColor)
+                Text(query)
+                    .foregroundColor(.primary)
+                Spacer()
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 
     private var searchResultsList: some View {
@@ -420,15 +457,16 @@ struct SearchResultsView: View {
         ContentUnavailableView(
             "No Recent Searches",
             systemImage: "magnifyingglass",
-            description: Text("Your recent searches will appear here.")
+            description: settings.isIncognito ? nil : Text("Your recent searches will appear here.")
         )
     }
 
     private func errorView(_ error: Error?) -> some View {
-        ContentUnavailableView(
-            "Search failed",
+        RetryStateView(
+            title: "Search failed",
             systemImage: "exclamationmark.triangle",
-            description: Text(error?.localizedDescription ?? "Something went wrong.")
+            message: error?.localizedDescription ?? "Something went wrong.",
+            retry: { viewModel.submit(viewModel.submittedQuery) }
         )
     }
 

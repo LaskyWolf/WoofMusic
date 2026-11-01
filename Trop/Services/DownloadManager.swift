@@ -21,6 +21,10 @@ final class DownloadManager: ObservableObject {
 
     @Published private(set) var downloads: [String: DownloadState] = [:]
     @Published private(set) var tracks: [DownloadedTrackEntity] = []
+    /// Saved songs, for the badges: each one listens for its own id.
+    @Published private(set) var downloadedIds: Set<String> = []
+    /// The songs of the current download run, finished ones included.
+    @Published private var batchIds: Set<String> = []
     @Published private(set) var persistedDownloadCount = 0
     @Published private(set) var isLoaded = false
 
@@ -30,6 +34,21 @@ final class DownloadManager: ObservableObject {
         case completed
         case failed(String)
     }
+
+    struct BatchProgress: Equatable {
+        var total = 0
+        var completed = 0
+        var failed = 0
+        /// 0...1, counting the progress of the songs still downloading.
+        var fraction = 0.0
+        /// Why the first failed song failed.
+        var failureReason: String?
+
+        var isDone: Bool { completed + failed == total }
+    }
+
+    /// Below this a song's own row shows enough.
+    private static let minimumBatchSize = 2
 
     nonisolated private static let minimumAudioBytes = 8_192
     private static let maxConcurrentDownloads = 3
@@ -49,11 +68,7 @@ final class DownloadManager: ObservableObject {
 
     private var tracksById: [String: DownloadedTrackEntity] = [:]
 
-    private var downloadsDir: URL {
-        let base = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first
-            ?? fileManager.temporaryDirectory
-        return base.appendingPathComponent("Downloads", isDirectory: true)
-    }
+    private var downloadsDir: URL { ProfileStorage.downloadsDirectory }
 
     private init() {
         pathMonitor.pathUpdateHandler = { [weak self] path in
@@ -263,6 +278,8 @@ final class DownloadManager: ObservableObject {
         let sorted = newTracks.values.sorted { $0.downloadedAt > $1.downloadedAt }
         if tracks != sorted { tracks = sorted }
         if persistedDownloadCount != newTracks.count { persistedDownloadCount = newTracks.count }
+        let ids = Set(newTracks.keys)
+        if downloadedIds != ids { downloadedIds = ids }
     }
 
     nonisolated private static func scanDownloadedFiles(in downloadsDir: URL) -> [String: URL] {
@@ -315,12 +332,80 @@ final class DownloadManager: ObservableObject {
 
 extension DownloadManager {
 
+    /// A whole page's songs: all of them count in the same run, and the
+    /// download slots decide how many run at once.
+    func download(songs: [SongItem]) {
+        let songs = songs.filter(\.isAvailable)
+        joinBatch(songs.map(\.videoId))
+        for song in songs {
+            Task { await download(song: song) }
+        }
+    }
+
+    /// A download started with nothing running begins a new run.
+    var hasActiveDownloads: Bool { Self.hasActive(downloads) }
+
+    nonisolated static func hasActive(_ downloads: [String: DownloadState]) -> Bool {
+        downloads.values.contains { if case .downloading = $0 { true } else { false } }
+    }
+
+    /// Shows the downloads of the profile that just became active.
+    func reloadForActiveProfile() async {
+        while isReloading { try? await Task.sleep(for: .milliseconds(50)) }
+        downloads.removeAll()
+        lastReportedProgress.removeAll()
+        batchIds = []
+        apply([:])
+        await reload()
+    }
+
+    /// Ends what is running: the next profile has its own downloads folder.
+    func cancelAllForProfileChange() {
+        cancelAllActiveDownloads()
+    }
+
+    private func joinBatch(_ ids: [String]) {
+        if !hasActiveDownloads { batchIds = [] }
+        batchIds.formUnion(ids)
+    }
+
+    /// Nil when no run of several songs is on, or its result was closed.
+    var batchProgress: BatchProgress? {
+        var batch = BatchProgress()
+        var downloadingProgress = 0.0
+        for id in batchIds {
+            switch downloads[id] {
+            case .downloading(let progress):
+                batch.total += 1
+                downloadingProgress += progress
+            case .completed:
+                batch.total += 1
+                batch.completed += 1
+            case .failed(let reason):
+                batch.total += 1
+                batch.failed += 1
+                batch.failureReason = batch.failureReason ?? reason
+            case .notStarted, nil:
+                break
+            }
+        }
+        guard batch.total >= Self.minimumBatchSize else { return nil }
+        batch.fraction = (Double(batch.completed + batch.failed) + downloadingProgress) / Double(batch.total)
+        return batch
+    }
+
+    func clearFinishedBatch() {
+        batchIds = []
+    }
+
     func download(song: SongItem) async {
+        guard song.isAvailable else { return }
         let videoId = song.videoId
         if case .downloading = downloads[videoId] {
             Log.downloadManager.debug("Download already in progress for \(videoId)")
             return
         }
+        if !batchIds.contains(videoId) { joinBatch([videoId]) }
         // Claim the id before the first suspension so a second call stops at the guard above.
         let token = UUID()
         downloadTokens[videoId] = token
@@ -411,7 +496,7 @@ extension DownloadManager {
             if isAACStream {
                 // AVFoundation can open AAC/MP4; validate before remux.
                 let validateStart = CFAbsoluteTimeGetCurrent()
-                try await validateDownloadedFile(at: tempDownload)
+                try await validateDownloadedFile(at: tempDownload, expectedDuration: song.duration)
                 Log.downloadManager.debug("VALIDATE \(String(format: "%.1f", CFAbsoluteTimeGetCurrent() - validateStart))s")
 
                 Log.downloadManager.debug("FFMPEG remux (AAC passthrough)...")
@@ -441,7 +526,7 @@ extension DownloadManager {
                 )
                 let validateStart = CFAbsoluteTimeGetCurrent()
                 do {
-                    try await validateDownloadedFile(at: fileURL)
+                    try await validateDownloadedFile(at: fileURL, expectedDuration: song.duration)
                 } catch {
                     try? fileManager.removeItem(at: fileURL)
                     throw error
@@ -518,7 +603,7 @@ extension DownloadManager {
 
     // MARK: - Validation & Errors
 
-    private func validateDownloadedFile(at url: URL) async throws {
+    private func validateDownloadedFile(at url: URL, expectedDuration: Int) async throws {
         let values = try url.resourceValues(forKeys: [.fileSizeKey])
         let size = values.fileSize ?? 0
         // Real audio streams are well above this; error/HTML bodies are not.
@@ -535,6 +620,12 @@ extension DownloadManager {
         }
         guard !audioTracks.isEmpty else {
             throw DownloadError.invalidAudio("Downloaded file has no audio track — rejecting as invalid stream")
+        }
+        // A dropped connection can leave a valid file with only the first part of the song.
+        // The listed length is rounded and can differ a little, so only a clear gap counts.
+        let seconds = try? await asset.load(.duration).seconds
+        if expectedDuration > 0, let seconds, seconds.isFinite, seconds < Double(expectedDuration) * 0.9 {
+            throw DownloadError.invalidAudio("Downloaded file is cut short (\(Int(seconds)) of \(expectedDuration) seconds)")
         }
     }
 

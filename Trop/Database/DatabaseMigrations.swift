@@ -262,4 +262,20 @@ enum DatabaseMigrations {
         // History and recency queries filter and sort events by timestamp.
         try db.execute(sql: "CREATE INDEX IF NOT EXISTS event_on_timestamp ON event(timestamp)")
     }
+
+    static let v10: (Database) throws -> Void = logged("v10") { db in
+        // Each album's songs, so its cards know when all of them are downloaded.
+        try db.create(table: "album_song") { t in
+            t.column("album_id", .text).notNull()
+            t.column("song_id", .text).notNull()
+            t.primaryKey(["album_id", "song_id"])
+        }
+    }
+
+    static let v11: (Database) throws -> Void = logged("v11") { db in
+        // Songs YouTube Music greys out, for pages built from the database.
+        try db.alter(table: "song") { t in
+            t.add(column: "is_unavailable", .boolean).notNull().defaults(to: false)
+        }
+    }
 }

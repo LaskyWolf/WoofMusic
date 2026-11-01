@@ -38,6 +38,14 @@ final class AppRouter {
     /// push from there would be invisible without collapsing the player.
     var sheetRoute: DetailRoute?
 
+    func closeAllPages() {
+        homePath = NavigationPath()
+        libraryPath = NavigationPath()
+        explorePath = NavigationPath()
+        searchPath = NavigationPath()
+        sheetRoute = nil
+    }
+
     var activePathDepth: Int {
         switch selectedTabIndex {
         case 1: libraryPath.count

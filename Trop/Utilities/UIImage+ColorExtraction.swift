@@ -8,6 +8,23 @@
 import UIKit
 import SwiftUI
 
+extension Color {
+    /// This colour, darkened only as far as `maxLuminance` needs. White text
+    /// reaches 4.5:1 on 0.18; this colour reaches 3:1 on white at 0.3.
+    func darkened(toLuminance maxLuminance: Double) -> Color {
+        var red: CGFloat = 0, green: CGFloat = 0, blue: CGFloat = 0, alpha: CGFloat = 0
+        guard UIColor(self).getRed(&red, green: &green, blue: &blue, alpha: &alpha) else { return self }
+        func linear(_ channel: CGFloat) -> Double {
+            let value = Double(channel)
+            return value <= 0.04045 ? value / 12.92 : pow((value + 0.055) / 1.055, 2.4)
+        }
+        let luminance = 0.2126 * linear(red) + 0.7152 * linear(green) + 0.0722 * linear(blue)
+        guard luminance > maxLuminance else { return self }
+        // Mixing with black scales each channel, and luminance follows about the 2.2 power of that.
+        return mix(with: .black, by: 1 - pow(maxLuminance / luminance, 1 / 2.2))
+    }
+}
+
 extension UIImage {
     /// Extracts a list of dominant vibrant colors from the image.
     /// Returns a fallback set if extraction fails.

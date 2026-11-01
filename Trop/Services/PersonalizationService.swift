@@ -35,24 +35,22 @@ actor PersonalizationService {
         var items: [YTItem] = []
         var recentSongs: [SongEntity] = []
 
-        if let fetched = try? await db.fetchRecentSongs(days: 30, limit: 6) {
-            recentSongs = fetched
-            for song in fetched where items.count < 8 {
-                items.append(.song(SongItem(entity: song)))
-            }
+        // A year back: the newest plays still come first, and someone returning
+        // after a month away keeps the section.
+        recentSongs = await keepListeningRows("recent songs") { try await db.fetchRecentSongs(days: 365, limit: 6) }
+        for song in recentSongs where items.count < 8 {
+            items.append(.song(SongItem(entity: song)))
         }
 
-        if let albums = try? await db.fetchAlbums(limit: 4) {
-            for album in albums where items.count < 12 {
-                items.append(.album(AlbumItem(entity: album)))
-            }
+        for album in await keepListeningRows("albums", { try await db.fetchAlbums(limit: 4) }) where items.count < 12 {
+            items.append(.album(AlbumItem(entity: album)))
         }
 
-        if let artists = try? await db.fetchArtists(limit: 4) {
-            for artist in artists where items.count < 16 {
-                items.append(.artist(ArtistItem(entity: artist)))
-            }
+        for artist in await keepListeningRows("artists", { try await db.fetchArtists(limit: 4) }) where items.count < 16 {
+            items.append(.artist(ArtistItem(entity: artist)))
         }
+
+        if items.isEmpty { Log.homeViewModel.notice("Keep Listening has no plays, albums or artists to show") }
 
         let section = HomeSection.keepListening(items: items)
         let task = Task { [weak self] in
@@ -63,13 +61,24 @@ actor PersonalizationService {
         return section
     }
 
+    /// A failed read leaves that part out of the section and goes to Diagnostics.
+    private func keepListeningRows<Item>(_ name: String, _ fetch: () async throws -> [Item]) async -> [Item] {
+        do {
+            return try await fetch()
+        } catch {
+            if !error.isCancellation { Log.homeViewModel.error("Keep Listening: reading \(name) failed: \(error)") }
+            return []
+        }
+    }
+
     private func enrichLikedSongs(songs: [SongEntity]) async {
         for entity in songs where entity.title.isEmpty {
             guard let metadata = try? await fetchSongMetadata(videoId: entity.id),
                   !metadata.title.isEmpty,
                   // Re-read: likes or play time saved during the fetch must survive.
                   let fresh = try? await db.fetchOne(SongEntity.self, key: entity.id) else { continue }
-            let enriched = SongEntity(sync: SyncSong.merging(fresh.toSync(), with: metadata))
+            var enriched = SongEntity(sync: SyncSong.merging(fresh.toSync(), with: metadata))
+            enriched.isUnavailable = fresh.isUnavailable
             try? await db.save(enriched)
         }
     }
@@ -98,7 +107,8 @@ actor PersonalizationService {
                   !metadata.title.isEmpty,
                   // Re-read: likes or play time saved during the fetch must survive.
                   let fresh = try? await db.fetchOne(SongEntity.self, key: entity.id) else { continue }
-            let enriched = SongEntity(sync: SyncSong.merging(fresh.toSync(), with: metadata))
+            var enriched = SongEntity(sync: SyncSong.merging(fresh.toSync(), with: metadata))
+            enriched.isUnavailable = fresh.isUnavailable
             try? await db.save(enriched)
             didEnrich = true
         }

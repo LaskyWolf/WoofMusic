@@ -3,6 +3,7 @@
 //  Trop
 //
 
+import Combine
 import SwiftUI
 
 /// The account page pushed from Settings: picture, name, sign in or out,
@@ -19,6 +20,8 @@ struct ProfileView: View {
     @State private var recapInterval = RecapService.monthToDate()
     @State private var showsRecap = false
     @State private var selectedBadge: RecapBadge?
+    /// Changing account while a song downloads would save it into the wrong profile.
+    @State private var isDownloading = DownloadManager.shared.hasActiveDownloads
 
     var body: some View {
         List {
@@ -28,9 +31,14 @@ struct ProfileView: View {
                     .listRowBackground(Color.clear)
             }
 
+            if account.isLoggedIn {
+                accountsSection
+            }
+
             Section {
                 if account.isLoggedIn {
                     Button("Sign Out", role: .destructive) { confirmsSignOut = true }
+                        .disabled(isDownloading && account.profiles.count > 1)
                 } else {
                     Button {
                         account.isLoginSheetPresented = true
@@ -75,7 +83,7 @@ struct ProfileView: View {
             } header: {
                 Text("Badges")
             } footer: {
-                Text("Badges come from what this iPhone played.")
+                Text("Badges come from what this account played on this iPhone.")
             }
         }
         .listSectionSpacing(.compact)
@@ -83,8 +91,13 @@ struct ProfileView: View {
         .navigationBarTitleDisplayMode(.inline)
         .miniPlayerTracksScroll()
         .loginSheet()
-        .confirmationDialog("Sign out of YouTube Music?", isPresented: $confirmsSignOut, titleVisibility: .visible) {
+        .onReceive(DownloadManager.shared.$downloads.map(DownloadManager.hasActive).removeDuplicates()) {
+            isDownloading = $0
+        }
+        .confirmationDialog("Sign out of this account?", isPresented: $confirmsSignOut, titleVisibility: .visible) {
             Button("Sign Out", role: .destructive) { account.signOut() }
+        } message: {
+            Text("Its library and downloads stay on this iPhone for when you sign back in.")
         }
         .sheet(isPresented: $isEditingPicture, onDismiss: { Task { await account.fetchAccountInfo() } }) {
             NavigationStack {
@@ -111,6 +124,51 @@ struct ProfileView: View {
         }
     }
 
+    private var accountsSection: some View {
+        Section {
+            ForEach(account.profiles) { profile in
+                profileRow(profile)
+            }
+            Button("Add Account", systemImage: "person.badge.plus") {
+                Task { await account.beginAddingAccount() }
+            }
+            .tint(settings.accentColor)
+            .disabled(!account.canAddAccount)
+        } header: {
+            Text("Accounts")
+        } footer: {
+            Text(isDownloading
+                 ? "Accounts can't change while songs are downloading."
+                 : "Each account has its own library, downloads, history and Recap.")
+        }
+        .disabled(isDownloading || account.switchingProfileId != nil)
+    }
+
+    private func profileRow(_ profile: SavedProfile) -> some View {
+        let isCurrent = profile.id == account.currentProfileId
+        return Button {
+            Task { await account.switchTo(profile) }
+        } label: {
+            HStack(spacing: 12) {
+                AsyncImageView(url: profile.thumbnailUrl)
+                    .frame(width: 32, height: 32)
+                    .clipShape(Circle())
+                Text(profile.name)
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+                if account.switchingProfileId == profile.id {
+                    ProgressView()
+                } else if isCurrent {
+                    Image(systemName: "checkmark")
+                        .foregroundStyle(settings.accentColor)
+                }
+            }
+            .contentShape(.rect)
+        }
+        .accessibilityAddTraits(isCurrent ? .isSelected : [])
+    }
+
     private var header: some View {
         VStack(spacing: 10) {
             if account.isLoggedIn {
@@ -125,7 +183,7 @@ struct ProfileView: View {
                             .glassEffect(.regular, in: Circle())
                     }
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(ZoomPressStyle())
                 .accessibilityLabel("Change Profile Picture")
             } else {
                 avatar

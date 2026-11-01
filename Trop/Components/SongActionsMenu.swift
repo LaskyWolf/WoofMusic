@@ -55,7 +55,7 @@ struct SongActionsMenu<MenuLabel: View>: View {
                 }
             }
 
-            if showsQueueActions {
+            if showsQueueActions, song.isAvailable {
                 Section {
                     Button("Play Next", systemImage: "text.insert") {
                         NowPlaying.shared.enqueueNext(song)
@@ -64,7 +64,9 @@ struct SongActionsMenu<MenuLabel: View>: View {
                 }
             }
 
-            DownloadMenuButton(song: song)
+            if song.isAvailable {
+                DownloadMenuButton(song: song)
+            }
 
             if showsSleepTimer {
                 sleepTimerMenu
@@ -72,7 +74,9 @@ struct SongActionsMenu<MenuLabel: View>: View {
 
             // The rarer actions share one item, so the menu fits the screen without scrolling.
             Menu("More", systemImage: "ellipsis.circle") {
-                Button("Start Radio…", systemImage: "dot.radiowaves.left.and.right") { sheet = .radio }
+                if song.isAvailable {
+                    Button("Start Radio…", systemImage: "dot.radiowaves.left.and.right") { sheet = .radio }
+                }
                 PinMenuButton(song: song, pin: pin)
                 ShareCardMenuButton(videoId: song.videoId) { sheet = .shareCard }
                 if let onSelect {
@@ -167,6 +171,7 @@ struct SongActionsMenu<MenuLabel: View>: View {
         } else {
             Menu { items() } label: { label() }
                 .menuOrder(.fixed)
+                .bouncesOnTap()
         }
     }
 
@@ -335,10 +340,10 @@ private struct DownloadMenuButton: View {
         case .completed:
             EmptyView()
         case .downloading:
-            Button("Downloading…", systemImage: "arrow.down.circle") {}
+            Button("Downloading…", systemImage: "arrow.down.to.line") {}
                 .disabled(true)
         case .notStarted, .failed:
-            Button("Download", systemImage: "arrow.down.circle") {
+            Button("Download", systemImage: "arrow.down.to.line") {
                 Task { await downloadManager.download(song: song) }
             }
         }
@@ -365,7 +370,7 @@ private struct RemoveMenuItems: View {
                         .tint(.red)
                     }
                     if hasDownload {
-                        Button("from Downloads", systemImage: "arrow.down.circle", role: .destructive) {
+                        Button("from Downloads", systemImage: "arrow.down.to.line", role: .destructive) {
                             confirmRemoveDownload = true
                         }
                         .tint(.red)
@@ -620,7 +625,7 @@ private struct ClockRoundButton: View {
                 .background(disc)
                 .contentShape(Circle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(IconPressStyle(motion: .pop))
         .opacity(isEnabled ? 1 : 0.4)
         .accessibilityLabel(title)
     }

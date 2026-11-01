@@ -176,9 +176,8 @@ struct BulkSongActionsMenu: View {
 
             if !toDownload.isEmpty {
                 Section {
-                    Button("Download", systemImage: "arrow.down.circle") {
-                        let pending = toDownload
-                        Task { for song in pending { await downloadManager.download(song: song) } }
+                    Button("Download", systemImage: "arrow.down.to.line") {
+                        downloadManager.download(songs: toDownload)
                         finish()
                     }
                 }
@@ -194,7 +193,7 @@ struct BulkSongActionsMenu: View {
                             .tint(.red)
                         }
                         if !downloaded.isEmpty {
-                            Button("from Downloads", systemImage: "arrow.down.circle", role: .destructive) {
+                            Button("from Downloads", systemImage: "arrow.down.to.line", role: .destructive) {
                                 confirmRemoveDownloads = true
                             }
                             .tint(.red)

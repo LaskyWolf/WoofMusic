@@ -284,6 +284,8 @@ struct ArtistDetailView: View {
     @State private var viewModel: ArtistDetailViewModel
 
     @State private var linkCopied = false
+    /// The movement waits for a tap: the state also changes when the page loads.
+    @State private var tappedSubscribe = false
     /// "Rapper", "DJ"… from MusicBrainz; nil shows "Artist".
     @State private var artistKind: String?
     @State private var linkResetTask: Task<Void, Never>?
@@ -300,7 +302,8 @@ struct ArtistDetailView: View {
                 error: viewModel.error,
                 data: viewModel.artist,
                 noun: "artist",
-                emptyIcon: "music.mic"
+                emptyIcon: "music.mic",
+                retry: { await viewModel.load() }
             ) { artist in
                 artistContent(for: artist)
             }
@@ -308,7 +311,7 @@ struct ArtistDetailView: View {
         .scrollDisabled(viewModel.isLoading || viewModel.error != nil || viewModel.artist == nil)
         .miniPlayerTracksScroll()
         // System bar, as on the playlist and album pages: its back button is the only one.
-        .navigationTitle(viewModel.artist?.name ?? "")
+        .detailBarTitle(viewModel.artist?.name ?? "")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
@@ -401,10 +404,15 @@ struct ArtistDetailView: View {
                     .lineLimit(1)
             }
         } buttons: {
-            Button(action: { toggleSubscribe(artist) }, label: {
+            Button(action: {
+                tappedSubscribe = true
+                toggleSubscribe(artist)
+            }, label: {
                 HeaderRoundIcon(
                     systemImage: artist.isSubscribed ? "person.fill.checkmark" : "person.badge.plus",
-                    tint: artist.isSubscribed ? SettingsStore.shared.accentColor : .primary
+                    tint: artist.isSubscribed ? SettingsStore.shared.accentColor : .primary,
+                    motion: tappedSubscribe ? (artist.isSubscribed ? .followArtist : .deflate) : nil,
+                    trigger: artist.isSubscribed
                 )
             })
             .accessibilityLabel(artist.isSubscribed ? "Unsubscribe" : "Subscribe")
@@ -414,11 +422,13 @@ struct ArtistDetailView: View {
                 Button(action: { shufflePlay(artist) }, label: {
                     HeaderRoundIcon(systemImage: "shuffle")
                 })
+                .buttonStyle(IconPressStyle(motion: .crossSwap))
                 .accessibilityLabel("Shuffle artist")
 
                 Button(action: { playAll(artist) }, label: {
                     HeaderRoundIcon(systemImage: "play.fill", primary: SettingsStore.shared.accentColor)
                 })
+                .buttonStyle(IconPressStyle(motion: .playAll))
                 .accessibilityLabel("Play songs")
             }
         }

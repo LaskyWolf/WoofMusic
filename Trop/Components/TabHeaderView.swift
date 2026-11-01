@@ -10,6 +10,7 @@ import SwiftUI
 /// Shared large-title header with history and account buttons,
 /// used by the Home and Library tabs.
 struct TabHeaderView: View {
+    @Environment(SettingsStore.self) private var settings
     let title: String
     var accountIsLoggedIn: Bool = false
     var accountImageUrl: String?
@@ -17,6 +18,8 @@ struct TabHeaderView: View {
     var onAccount: () -> Void
     /// Shows a "+" button when set (Library: new playlist).
     var onAdd: (() -> Void)?
+    /// Shows the Incognito button when set (Search).
+    var incognito: Binding<Bool>?
 
     var body: some View {
         HStack(alignment: .center) {
@@ -24,7 +27,7 @@ struct TabHeaderView: View {
                 .font(.largeTitle)
                 .fontWeight(.bold)
             Spacer()
-            // 36 pt tap targets with 12 pt between them, so the icons don't crowd.
+            // 36 pt icons with 12 pt between them, so they don't crowd. Each takes taps on 44 pt.
             HStack(spacing: 12) {
                 if let onAdd {
                     Button(action: onAdd) {
@@ -32,10 +35,24 @@ struct TabHeaderView: View {
                             .font(.title3)
                             .foregroundStyle(.secondary)
                             .frame(width: 36, height: 36)
-                            .contentShape(Rectangle())
+                            .tapArea(outset: 4)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(IconPressStyle(motion: .plusTurn))
                     .accessibilityLabel("New Playlist")
+                }
+
+                if let incognito {
+                    Button { incognito.wrappedValue.toggle() } label: {
+                        Image(systemName: "eyeglasses")
+                            .font(.title3)
+                            .glyphMotion(incognito.wrappedValue ? .glassesOn : .glassesOff, trigger: incognito.wrappedValue)
+                            .foregroundStyle(incognito.wrappedValue ? AnyShapeStyle(settings.accentColor) : AnyShapeStyle(.secondary))
+                            .frame(width: 36, height: 36)
+                            .tapArea(outset: 4)
+                    }
+                    .buttonStyle(IconPressStyle())
+                    .accessibilityLabel(incognito.wrappedValue ? "Turn Off Incognito" : "Turn On Incognito")
+                    .sensoryFeedback(.selection, trigger: incognito.wrappedValue)
                 }
 
                 Button(action: onHistory) {
@@ -43,9 +60,9 @@ struct TabHeaderView: View {
                         .font(.title3)
                         .foregroundStyle(.secondary)
                         .frame(width: 36, height: 36)
-                        .contentShape(Rectangle())
+                        .tapArea(outset: 4)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(IconPressStyle(motion: .clockBack))
                 .accessibilityLabel("History")
 
                 AccountButtonView(

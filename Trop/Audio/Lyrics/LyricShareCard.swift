@@ -91,6 +91,8 @@ struct LyricShareComposer: View {
                             Image(systemName: isOn ? "checkmark.circle.fill" : "circle")
                                 .font(.title3)
                                 .foregroundStyle(isOn ? AnyShapeStyle(.tint) : AnyShapeStyle(.tertiary))
+                                .contentTransition(.symbolEffect(.replace))
+                                .glyphMotion(isOn ? .pop : .deflate, trigger: isOn)
                                 .accessibilityHidden(true)
                             Text(line.text)
                                 .font(.body.weight(isOn ? .semibold : .regular))

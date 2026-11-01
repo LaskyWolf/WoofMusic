@@ -867,7 +867,7 @@ struct ShareCardStudio: View {
                                         .frame(width: 36, height: 36)
                                         .background(.quaternary, in: Circle())
                                 }
-                                .buttonStyle(.plain)
+                                .buttonStyle(IconPressStyle(motion: .deflate))
                                 .accessibilityLabel("Remove all stickers")
                                 .transition(.scale.combined(with: .opacity))
                             }
@@ -878,7 +878,7 @@ struct ShareCardStudio: View {
                                         .frame(width: 36, height: 36)
                                         .background(.quaternary, in: Circle())
                                 }
-                                .buttonStyle(.plain)
+                                .buttonStyle(IconPressStyle(motion: .pop))
                                 .accessibilityLabel("Add \(emoji) sticker")
                             }
                         }

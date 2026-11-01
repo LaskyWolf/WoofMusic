@@ -61,6 +61,7 @@ struct PlaylistActionsMenu<MenuLabel: View>: View {
             label()
         }
         .menuOrder(.fixed)
+        .bouncesOnTap()
         .sheet(isPresented: $showEdit) {
             PlaylistEditSheet(playlist: playlist, onSaved: { onSync?() }, onUploaded: { dismissScreen() })
         }
@@ -101,10 +102,8 @@ struct SongsMenuActions: View {
         Button("Add to Queue", systemImage: "text.append") {
             NowPlaying.shared.appendToQueue(songs)
         }
-        Button("Download", systemImage: "arrow.down.circle") {
-            for song in songs {
-                Task { await DownloadManager.shared.download(song: song) }
-            }
+        Button("Download", systemImage: "arrow.down.to.line") {
+            DownloadManager.shared.download(songs: songs)
         }
     }
 }

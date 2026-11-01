@@ -63,8 +63,10 @@ struct PlaylistHeaderView: View {
                         .accessibilityLabel("More options")
                 }
                 Button(action: onShuffle) { HeaderRoundIcon(systemImage: "shuffle") }
+                    .buttonStyle(IconPressStyle(motion: .crossSwap))
                     .accessibilityLabel("Shuffle")
                 Button(action: onPlay) { HeaderRoundIcon(systemImage: "play.fill", primary: accentColor) }
+                    .buttonStyle(IconPressStyle(motion: .playAll))
                     .accessibilityLabel("Play all")
             }
         }
@@ -101,7 +103,7 @@ struct PlaylistHeaderView: View {
                 )
             )
             .overlay {
-                Image(systemName: "arrow.down.circle.fill")
+                Image(systemName: "arrow.down.to.line")
                     .font(.system(size: 40, weight: .medium))
                     .foregroundStyle(.white.opacity(0.95))
                     .symbolRenderingMode(.hierarchical)
@@ -162,12 +164,39 @@ struct DetailHeaderCard<Cover: View, Secondary: View, Buttons: View>: View {
     }
 }
 
+/// `DetailHeaderCard` already shows the title, so the bar repeats it only once
+/// the cover has scrolled away. A pinned title, like a selection count, always shows.
+private struct DetailBarTitle: ViewModifier {
+    let title: String
+    let pinnedTitle: String?
+    @State private var isHeaderScrolledAway = false
+
+    func body(content: Content) -> some View {
+        content
+            .onScrollGeometryChange(for: Bool.self) { geometry in
+                geometry.contentOffset.y + geometry.contentInsets.top > DesignTokens.artLarge
+            } action: { _, isScrolledAway in
+                isHeaderScrolledAway = isScrolledAway
+            }
+            .navigationTitle(pinnedTitle ?? (isHeaderScrolledAway ? title : ""))
+    }
+}
+
+extension View {
+    /// Goes on the ScrollView of a page that starts with `DetailHeaderCard`.
+    func detailBarTitle(_ title: String, pinnedTitle: String? = nil) -> some View {
+        modifier(DetailBarTitle(title: title, pinnedTitle: pinnedTitle))
+    }
+}
+
 /// Round icon face for the header card buttons (same shape as the New
 /// Releases card buttons). `primary` fills it with that colour and a white glyph.
 struct HeaderRoundIcon: View {
     let systemImage: String
     var primary: Color?
     var tint: Color = .primary
+    var motion: GlyphScript?
+    var trigger: AnyHashable = 0
 
     /// The filled play button is larger than the other buttons beside it.
     private var size: CGFloat { primary == nil ? 38 : 50 }
@@ -176,6 +205,7 @@ struct HeaderRoundIcon: View {
         Image(systemName: systemImage)
             .font(.system(size: primary == nil ? 15 : 19, weight: .bold))
             .contentTransition(.symbolEffect(.replace))
+            .glyphMotion(motion, trigger: trigger)
             .foregroundStyle(primary == nil ? tint : .white)
             .frame(width: size, height: size)
             .background(Circle().fill(primary ?? Color.primary.opacity(0.1)))

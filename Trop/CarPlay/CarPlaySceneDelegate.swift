@@ -30,7 +30,7 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
         self.interfaceController = interfaceController
         let listenNow = Self.tab("Listen Now", systemImage: "play.circle", empty: "Nothing played yet")
         let library = Self.tab("Library", systemImage: "square.stack", empty: "No playlists")
-        let downloads = Self.tab("Downloads", systemImage: "arrow.down.circle", empty: "No downloads")
+        let downloads = Self.tab("Downloads", systemImage: "arrow.down.to.line", empty: "No downloads")
         self.listenNow = listenNow
         self.library = library
         self.downloads = downloads

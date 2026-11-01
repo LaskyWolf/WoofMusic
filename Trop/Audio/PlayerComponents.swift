@@ -7,6 +7,8 @@
 
 import SwiftUI
 import AVKit
+import AVFoundation
+import Combine
 
 // MARK: - ProgressBar
 struct ProgressBar: View {
@@ -68,6 +70,14 @@ struct ProgressBar: View {
             }
         }
         .frame(height: 32)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Playback position")
+        .accessibilityValue("\(Int(progress * 100))%")
+        .accessibilityAdjustableAction { direction in
+            onEditingChanged(true)
+            progress = min(1, max(0, progress + (direction == .increment ? 0.05 : -0.05)))
+            onEditingChanged(false)
+        }
     }
 }
 
@@ -109,10 +119,11 @@ struct PlayPauseGlyph: View {
                     .transition(.opacity)
             } else {
                 // A moon replaces the button while the sleep timer animation plays.
-                Image(systemName: SleepTimer.shared.isCelebrating ? "moon.fill" : symbol(playing: playingBeforeLoad ?? isPlaying))
+                let shownPlaying = playingBeforeLoad ?? isPlaying
+                MorphingGlyph(systemName: SleepTimer.shared.isCelebrating ? "moon.fill" : symbol(playing: shownPlaying))
                     .font(.system(size: size))
+                    .glyphMotion(shownPlaying ? .pauseStamp(size: size) : .playShoot(size: size), trigger: shownPlaying)
                     .foregroundStyle(style)
-                    .contentTransition(.symbolEffect(.replace))
                     .transition(.opacity)
             }
         }
@@ -138,10 +149,10 @@ struct PlayerPlayPauseButton: View {
     var body: some View {
         Button(action: action) {
             PlayPauseGlyph(isPlaying: isPlaying, size: 42, color: .white)
+                .frame(width: 68, height: 68)
+                .contentShape(Circle())
         }
-        // Scoped here: on the whole row it also bent the skip glyph
-        // animation whenever play state changed mid-skip.
-        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isPlaying)
+        .buttonStyle(IconPressStyle(disc: .white))
         .frame(width: 80, height: 80)
         .accessibilityLabel(isPlaying ? "Pause" : "Play")
     }
@@ -224,9 +235,11 @@ struct SecondaryActionsRow: View {
                     Image(systemName: "quote.bubble")
                         .font(.title3)
                         .foregroundStyle(showLyrics.wrappedValue ? .white : .white.opacity(0.7))
+                        .glyphMotion(showLyrics.wrappedValue ? .bubblePop : nil, trigger: showLyrics.wrappedValue)
                         .frame(width: 44, height: 44)
                         .background(showLyrics.wrappedValue ? Circle().fill(.white.opacity(0.15)) : Circle().fill(.clear))
                 }
+                .buttonStyle(IconPressStyle(disc: .white))
                 .accessibilityLabel(showLyrics.wrappedValue ? "Close lyrics" : "Open lyrics")
                 .frame(maxWidth: .infinity)
             }
@@ -234,32 +247,35 @@ struct SecondaryActionsRow: View {
             PlayerAirPlayControl()
                 .frame(maxWidth: .infinity)
 
-            // Queue + Repeat stacked like Apple Music
-            ZStack(alignment: .topTrailing) {
-                Button {
+            Button {
                     showQueue.toggle()
                 } label: {
                     Image(systemName: "list.bullet")
                         .font(.title3)
                         .foregroundStyle(showQueue ? .white : .white.opacity(0.7))
-                        .padding(10)
+                        .glyphMotion(showQueue ? .stackIn : nil, trigger: showQueue)
+                        .frame(width: 44, height: 44)
                         .background(showQueue ? Circle().fill(.white.opacity(0.15)) : Circle().fill(.clear))
                 }
+                .buttonStyle(IconPressStyle(disc: .white))
                 .accessibilityLabel("Queue")
+                .frame(maxWidth: .infinity)
 
-                if !showQueue {
-                    Button {
-                        isRepeatOn.toggle()
-                    } label: {
-                        Image(systemName: isRepeatOn ? "repeat.1" : "repeat")
-                            .font(.system(size: 9, weight: .bold))
-                            .foregroundStyle(isRepeatOn ? .white : .white.opacity(0.7))
-                            .padding(4)
-                    }
-                    .offset(x: 2, y: -2)
-                    .accessibilityLabel(isRepeatOn ? "Repeat one" : "Repeat all")
-                }
+            Button {
+                isRepeatOn.toggle()
+            } label: {
+                Image(systemName: isRepeatOn ? "repeat.1" : "repeat")
+                    .font(.title3)
+                    .foregroundStyle(isRepeatOn ? .white : .white.opacity(0.7))
+                    .contentTransition(.symbolEffect(.replace))
+                    .glyphMotion(isRepeatOn ? .repeatOneTurn : .repeatTurn, trigger: isRepeatOn)
+                    .frame(width: 44, height: 44)
+                    .background(isRepeatOn ? Circle().fill(.white.opacity(0.15)) : Circle().fill(.clear))
             }
+            .buttonStyle(IconPressStyle(disc: .white))
+            .sensoryFeedback(.selection, trigger: isRepeatOn)
+            .accessibilityLabel("Repeat this song")
+            .accessibilityValue(isRepeatOn ? "On" : "Off")
             .frame(maxWidth: .infinity)
         }
         .padding(.vertical, 16)
@@ -267,15 +283,25 @@ struct SecondaryActionsRow: View {
 }
 
 struct PlayerAirPlayControl: View {
+    @State private var output = Self.currentOutput
+
+    private static var currentOutput: String? {
+        AVAudioSession.sharedInstance().currentRoute.outputs.first?.uid
+    }
+
     var body: some View {
-        Button {} label: {
-            Image(systemName: "airplayaudio")
-                .font(.title3)
-                .foregroundStyle(.white.opacity(0.7))
-                .padding(10)
-        }
-        .overlay(AirPlayButton())
-        .accessibilityLabel("AirPlay")
+        Image(systemName: "airplayaudio")
+            .font(.title3)
+            // The system picker above takes the tap, so it moves when the output changes.
+            .glyphMotion(.routeShift, trigger: output)
+            .foregroundStyle(.white.opacity(0.7))
+            .frame(width: 44, height: 44)
+            .accessibilityHidden(true)
+            // VoiceOver reads the system picker, the control that works.
+            .overlay(AirPlayButton())
+            .onReceive(NotificationCenter.default.publisher(for: AVAudioSession.routeChangeNotification).receive(on: DispatchQueue.main)) { _ in
+                output = Self.currentOutput
+            }
     }
 }
 

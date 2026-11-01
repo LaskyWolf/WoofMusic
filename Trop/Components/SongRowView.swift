@@ -12,11 +12,13 @@ import SwiftUI
 /// Label for a row's "⋯" song menu.
 struct MoreGlyph: View {
     @Environment(SettingsStore.self) private var settings
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         Image(systemName: "ellipsis")
             .font(.body.weight(.semibold))
-            .foregroundStyle(settings.accentColor)
+            // A pale accent like Amber nearly disappears on white.
+            .foregroundStyle(colorScheme == .light ? settings.accentColor.darkened(toLuminance: 0.3) : settings.accentColor)
             .frame(minWidth: 44, minHeight: 44)
             .contentShape(Rectangle())
             .accessibilityLabel("More")
@@ -38,6 +40,8 @@ struct SongRowView: View {
     /// Starts multi-select from the song menu (⋯ or long press).
     var onSelect: (() -> Void)?
     var onRemove: (() -> Void)?
+    /// Off on the Downloads page, where every row would show it.
+    var showsDownloadBadge = true
 
     @State private var durations = DurationResolver()
     @Environment(SettingsStore.self) private var settings
@@ -59,6 +63,8 @@ struct SongRowView: View {
             AsyncImageView(url: song.thumbnailUrl)
                 .frame(width: artSize, height: artSize)
                 .clipShape(RoundedRectangle(cornerRadius: artRadius, style: .continuous))
+                .greyedOut(!song.isAvailable)
+                .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(song.title)
@@ -72,18 +78,25 @@ struct SongRowView: View {
                     .foregroundColor(.secondary)
                     .lineLimit(1)
             }
+            .greyedOut(!song.isAvailable)
+            .accessibilityElement(children: .combine)
+            .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+            .accessibilityValue(song.isAvailable ? "" : "Unavailable")
+            .accessibilityAction { if isSelecting || song.isAvailable { onTap() } }
 
             Spacer()
 
-            if isSelecting {
-                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                    .font(.title3)
-                    .foregroundStyle(isSelected ? AnyShapeStyle(settings.accentColor) : AnyShapeStyle(.secondary))
-                    .contentTransition(.symbolEffect(.replace))
-                    .frame(minWidth: 44, minHeight: 44)
-                    .accessibilityHidden(true)
-            } else {
-                HStack(spacing: 2) {
+            HStack(spacing: 2) {
+                if showsDownloadBadge { DownloadedBadge(videoId: song.videoId) }
+                if isSelecting {
+                    Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                        .font(.title3)
+                        .foregroundStyle(isSelected ? AnyShapeStyle(settings.accentColor) : AnyShapeStyle(.secondary))
+                        .contentTransition(.symbolEffect(.replace))
+                        .glyphMotion(isSelected ? .pop : .deflate, trigger: isSelected)
+                        .frame(minWidth: 44, minHeight: 44)
+                        .accessibilityHidden(true)
+                } else {
                     SongActionsMenu(song: song, onNavigate: { onNavigate?($0) },
                                     onSelect: onSelect, onRemove: onRemove) {
                         MoreGlyph()
@@ -96,13 +109,115 @@ struct SongRowView: View {
         .background(DownloadCellProgressView(song: song))
         .background(isSelected ? settings.accentColor.opacity(0.12) : .clear)
         .contentShape(Rectangle())
-        .accessibilityAddTraits(isSelected ? .isSelected : [])
-        .onTapGesture(perform: onTap)
+        .onTapGesture {
+            if isSelecting || song.isAvailable { onTap() }
+        }
         .rowPressFeedback()
         .task(id: song.videoId) { await durations.resolve(videoId: song.videoId, knownDuration: song.duration) }
         .onReceive(NotificationCenter.default.publisher(for: .durationDidUpdate)) { notification in
             durations.handleUpdate(notification, videoId: song.videoId)
         }
+    }
+}
+
+extension View {
+    /// The look of a song YouTube Music can't play.
+    func greyedOut(_ isGreyedOut: Bool) -> some View {
+        saturation(isGreyedOut ? 0 : 1)
+            .opacity(isGreyedOut ? 0.4 : 1)
+    }
+}
+
+/// The arrow that marks a song, playlist or album saved on this iPhone.
+struct DownloadedGlyph: View {
+    /// White, for artwork and coloured cards where the accent colour may not show.
+    var onArtwork = false
+    @Environment(SettingsStore.self) private var settings
+
+    var body: some View {
+        Image(systemName: "arrow.down.to.line")
+            .font(.caption.weight(.bold))
+            .foregroundStyle(onArtwork ? Color.white : settings.accentColor)
+            .accessibilityLabel("Downloaded")
+    }
+}
+
+/// `DownloadedGlyph` for one song, once that song is saved.
+struct DownloadedBadge: View {
+    let videoId: String
+    var onArtwork = false
+    /// Only this song's answer, like `DownloadCellProgressView`.
+    @State private var isDownloaded: Bool
+    /// The song `isDownloaded` belongs to: a list can reuse this view for another song.
+    @State private var shownVideoId: String
+    @State private var finishedDownloads = 0
+
+    init(videoId: String, onArtwork: Bool = false) {
+        self.videoId = videoId
+        self.onArtwork = onArtwork
+        _shownVideoId = State(initialValue: videoId)
+        _isDownloaded = State(initialValue: DownloadManager.shared.downloadedIds.contains(videoId))
+    }
+
+    var body: some View {
+        // The ZStack stays when empty: it keeps the subscription, at no width.
+        ZStack {
+            if isDownloaded { DownloadedGlyph(onArtwork: onArtwork) }
+        }
+        .glyphMotion(.downloadDone, trigger: finishedDownloads)
+        .onReceive(DownloadManager.shared.$downloadedIds.map { [videoId] in $0.contains(videoId) }.removeDuplicates()) { downloaded in
+            if shownVideoId == videoId, downloaded, !isDownloaded { finishedDownloads += 1 }
+            shownVideoId = videoId
+            isDownloaded = downloaded
+        }
+    }
+}
+
+/// The arrow for any feed item that can be saved: a song, episode, album or playlist.
+struct ItemDownloadedBadge: View {
+    let item: YTItem
+
+    var body: some View {
+        switch item {
+        case .song(let song):
+            DownloadedBadge(videoId: song.videoId)
+        case .episode(let episode):
+            DownloadedBadge(videoId: episode.videoId)
+        default:
+            if DownloadedCollections.shared.isComplete(YTItemRouter.detailRoute(for: item)) {
+                DownloadedGlyph()
+            }
+        }
+    }
+}
+
+/// "Downloaded" or "3 of 12 downloaded", under a playlist or album title.
+struct DownloadedSongsLabel: View {
+    let songs: [SongItem]
+    @Environment(SettingsStore.self) private var settings
+    @State private var downloadedIds: Set<String> = []
+
+    private var available: [SongItem] { songs.filter(\.isAvailable) }
+    private var count: Int { available.filter { downloadedIds.contains($0.videoId) }.count }
+
+    var body: some View {
+        ZStack {
+            if count > 0 {
+                Label {
+                    Text(count == available.count ? "Downloaded" : "\(count) of \(available.count) downloaded")
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                } icon: {
+                    Image(systemName: "arrow.down.to.line")
+                        .foregroundStyle(settings.accentColor)
+                }
+                .labelStyle(.titleAndIcon)
+                .font(.caption.weight(.medium))
+                .lineLimit(1)
+                .padding(.top, 4)
+            }
+        }
+        .onReceive(DownloadManager.shared.$downloadedIds) { downloadedIds = $0 }
     }
 }
 

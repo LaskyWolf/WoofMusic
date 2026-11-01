@@ -86,10 +86,12 @@ struct MediaGridCell: View {
     var opensPage = true
     /// Shows the playlist's stacked edges instead of the ">" badge.
     var isPlaylist = false
-    /// The route this card pushes; its page zooms out of the cover.
+    /// The route this card pushes; its page zooms out of the cover. A fully
+    /// downloaded album or playlist shows the arrow at the right of the subtitle line.
     var zoomRoute: DetailRoute? = nil
 
     var body: some View {
+        let isDownloaded = DownloadedCollections.shared.isComplete(zoomRoute)
         VStack(alignment: .leading, spacing: DesignTokens.cardInnerSpacing) {
             Color.clear
                 .aspectRatio(1, contentMode: .fit)
@@ -108,12 +110,18 @@ struct MediaGridCell: View {
                 .lineLimit(2)
                 .frame(maxWidth: size ?? .infinity, alignment: .leading)
 
-            if let subtitle, !subtitle.isEmpty {
-                Text(subtitle)
-                    .font(.caption2)
-                    .foregroundColor(.secondary)
-                    .lineLimit(1)
-                    .frame(maxWidth: size ?? .infinity, alignment: .leading)
+            if isDownloaded || subtitle?.isEmpty == false {
+                HStack(spacing: 4) {
+                    if let subtitle {
+                        Text(subtitle)
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                            .lineLimit(1)
+                    }
+                    Spacer(minLength: 0)
+                    if isDownloaded { DownloadedGlyph() }
+                }
+                .frame(maxWidth: size ?? .infinity, alignment: .leading)
             }
         }
         .frame(width: size)

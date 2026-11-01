@@ -89,6 +89,7 @@ struct ActiveDownloadRow: View {
             Image(systemName: "arrow.down")
                 .font(.system(size: 8, weight: .bold))
                 .foregroundStyle(settings.accentColor)
+                .glyphMotion(.arrowDrop, trigger: 0, playsOnAppear: true)
         }
     }
 

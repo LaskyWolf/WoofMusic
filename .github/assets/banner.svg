@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 560" width="1280" height="560" font-family="-apple-system,'SF Pro Display','Segoe UI',Roboto,Helvetica,Arial,sans-serif">
+<defs><radialGradient id="a" cx=".82" cy=".1" r=".9"><stop offset="0" stop-color="#0a7bff" stop-opacity=".6"/><stop offset=".55" stop-color="#0a7bff" stop-opacity=".08"/><stop offset="1" stop-color="#0a7bff" stop-opacity="0"/></radialGradient>
+<linearGradient id="c1" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ef8a5a"/><stop offset="1" stop-color="#5d1f3c"/></linearGradient>
+<linearGradient id="c2" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#6f6df0"/><stop offset="1" stop-color="#16132a"/></linearGradient>
+<linearGradient id="c3" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#3cc4b4"/><stop offset="1" stop-color="#0e3a3f"/></linearGradient>
+<clipPath id="r"><rect width="1280" height="560" rx="28"/></clipPath>
+<style>
+.f{animation:f 7s ease-in-out infinite}.f2{animation:f 7s ease-in-out -2.4s infinite}.f3{animation:f 7s ease-in-out -4.6s infinite}
+@keyframes f{50%{transform:translateY(-12px)}}
+.i0,.i1,.i2,.i3,.i4{transform-box:fill-box;transform-origin:center;animation-duration:6s;animation-iteration-count:infinite}
+.i0{animation-name:pl}@keyframes pl{0%,6%,24%,100%{transform:none}11%{transform:translateX(5px) scale(1.18)}17%{transform:scale(.94)}}
+.i1{animation-name:ht}@keyframes ht{0%,26%,44%,100%{transform:none}32%{transform:scale(1.32)}38%{transform:scale(.92)}}
+.i2{animation-name:dl}@keyframes dl{0%,46%,64%,100%{transform:none}52%{transform:translateY(-7px)}58%{transform:translateY(3px) scale(1.08,.9)}}
+.i3{animation-name:rp}@keyframes rp{0%,66%{transform:none}84%,100%{transform:rotate(360deg)}}
+.i4{animation-name:mn}@keyframes mn{0%,84%,100%{transform:none}90%{transform:rotate(-16deg) scale(1.1)}96%{transform:rotate(8deg)}}
+.eq{transform-box:fill-box;transform-origin:bottom;animation:eq 1.1s ease-in-out infinite alternate}
+.eq2{animation-delay:-.4s}.eq3{animation-delay:-.8s}
+@keyframes eq{to{transform:scaleY(.45)}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important}}
+</style></defs>
+<g clip-path="url(#r)"><rect width="1280" height="560" fill="#0a0a0c"/><rect width="1280" height="560" fill="url(#a)"/>
+<text x="90" y="176" font-size="92" font-weight="800" fill="#fff" letter-spacing="-3">Woof Music</text>
+<text x="92" y="240" font-size="32" font-weight="600" fill="#fff">YouTube Music, native on iPhone.</text>
+<text x="92" y="292" font-size="24" fill="#c7c7cc">No ads. Liquid Glass. DJ-style transitions.</text>
+<text x="92" y="328" font-size="24" fill="#c7c7cc">Downloads, synced lyrics and widgets built in.</text>
+<g fill="none" stroke="#4da3ff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+<g transform="translate(92 406)"><circle cx="30" cy="30" r="30" fill="#ffffff14" stroke="#ffffff26" stroke-width="1"/><g transform="translate(12 12) scale(1.5)"><path class="i0" d="M8 5l11 7-11 7z"/></g></g>
+<g transform="translate(176 406)"><circle cx="30" cy="30" r="30" fill="#ffffff14" stroke="#ffffff26" stroke-width="1"/><g transform="translate(12 12) scale(1.5)"><path class="i1" d="M12 20s-7.5-4.6-7.5-10A4.3 4.3 0 0 1 12 7.4 4.3 4.3 0 0 1 19.500 10c0 5.400-7.500 10-7.500 10z"/></g></g>
+<g transform="translate(260 406)"><circle cx="30" cy="30" r="30" fill="#ffffff14" stroke="#ffffff26" stroke-width="1"/><g transform="translate(12 12) scale(1.5)"><path class="i2" d="M12 4v11M7.500 11l4.500 4.500 4.500-4.500M5 20h14"/></g></g>
+<g transform="translate(344 406)"><circle cx="30" cy="30" r="30" fill="#ffffff14" stroke="#ffffff26" stroke-width="1"/><g transform="translate(12 12) scale(1.5)"><path class="i3" d="M17 3l3 3-3 3M20 6H8a4 4 0 0 0-4 4v1M7 21l-3-3 3-3M4 18h12a4 4 0 0 0 4-4v-1"/></g></g>
+<g transform="translate(428 406)"><circle cx="30" cy="30" r="30" fill="#ffffff14" stroke="#ffffff26" stroke-width="1"/><g transform="translate(12 12) scale(1.5)"><path class="i4" d="M20 14.500A8.500 8.500 0 1 1 9.500 4a7 7 0 0 0 10.500 10.500z"/></g></g>
+</g>
+<g class="f"><g transform="translate(800 62) rotate(-5)"><rect width="360" height="112" rx="24" fill="#1c1c1e" stroke="#ffffff1c"/><rect x="12" y="12" width="88" height="88" rx="14" fill="url(#c1)"/><text x="116" y="48" font-size="19" font-weight="700" fill="#fff">Slow Harbour</text><text x="116" y="74" font-size="15" fill="#c7c7cc">Mira Vale</text><g fill="#fff"><rect class="eq" x="312" y="42" width="5" height="28" rx="2.500"/><rect class="eq eq2" x="321" y="42" width="5" height="28" rx="2.500"/><rect class="eq eq3" x="330" y="42" width="5" height="28" rx="2.500"/></g></g></g>
+<g class="f2"><g transform="translate(850 208) rotate(3)"><rect width="360" height="112" rx="24" fill="#3d3ba0" stroke="#ffffff1c"/><rect x="12" y="12" width="88" height="88" rx="14" fill="url(#c2)"/><text x="116" y="48" font-size="19" font-weight="700" fill="#fff">Night Bus Home</text><text x="116" y="74" font-size="15" fill="#d9d8f5">The Paper Lanterns</text></g></g>
+<g class="f3"><g transform="translate(790 356) rotate(-2)"><rect width="360" height="112" rx="24" fill="#12656b" stroke="#ffffff1c"/><rect x="12" y="12" width="88" height="88" rx="14" fill="url(#c3)"/><text x="116" y="48" font-size="19" font-weight="700" fill="#fff">Saltwater</text><text x="116" y="74" font-size="15" fill="#cdeeea">Juno Ash</text></g></g>
+</g></svg>

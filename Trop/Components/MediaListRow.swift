@@ -18,7 +18,8 @@ struct MediaListRow: View {
     var detail: String?
     var isCircular = false
     var artSize = DesignTokens.artMedium
-    /// The route this row pushes; its page zooms out of the artwork.
+    /// The route this row pushes; its page zooms out of the artwork. A fully
+    /// downloaded album or playlist shows the arrow at the right of the row.
     var zoomRoute: DetailRoute? = nil
 
     var body: some View {
@@ -55,6 +56,8 @@ struct MediaListRow: View {
             }
 
             Spacer(minLength: 0)
+
+            if DownloadedCollections.shared.isComplete(zoomRoute) { DownloadedGlyph() }
         }
         .padding(.vertical, DesignTokens.rowVPadding)
         .contentShape(Rectangle())

@@ -28,6 +28,46 @@ actor SearchService {
         return result
     }
 
+    /// YouTube Music's autocomplete. Needs no account, and works for guests the
+    /// same way. SwiftyTube keeps its request builder internal.
+    func suggestions(query: String, country: String) async throws -> [String] {
+        let config = await innerTube.config
+        let web = config.defaultClient
+        let origin = config.service.origin
+        var request = URLRequest(url: config.service.baseURL.appendingPathComponent("music/get_search_suggestions"))
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(origin, forHTTPHeaderField: "X-Origin")
+        request.setValue(origin + "/", forHTTPHeaderField: "Referer")
+        request.setValue(web.userAgent, forHTTPHeaderField: "User-Agent")
+        let clientContext: [String: Any] = [
+            "clientName": web.clientName,
+            "clientVersion": web.clientVersion,
+            "gl": country.isEmpty ? "US" : country,
+            "hl": config.defaultLocale.hl
+        ]
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["context": ["client": clientContext], "input": query])
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard (response as? HTTPURLResponse)?.statusCode == 200 else { throw URLError(.badServerResponse) }
+        return Self.parseSuggestions(data)
+    }
+
+    /// Takes the text suggestions. The answer's other section lists songs and
+    /// artists, which have no `searchEndpoint`.
+    nonisolated static func parseSuggestions(_ data: Data) -> [String] {
+        guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let sections = root["contents"] as? [[String: Any]] else { return [] }
+        return sections.flatMap { section -> [String] in
+            let shelf = section["searchSuggestionsSectionRenderer"] as? [String: Any]
+            let items = shelf?["contents"] as? [[String: Any]] ?? []
+            return items.compactMap { item in
+                let suggestion = (item["searchSuggestionRenderer"] ?? item["historySuggestionRenderer"]) as? [String: Any]
+                let endpoint = suggestion?["navigationEndpoint"] as? [String: Any]
+                return (endpoint?["searchEndpoint"] as? [String: Any])?["query"] as? String
+            }
+        }
+    }
+
     struct LocalSearchResults {
         var songs: [SongEntity] = []
         var artists: [ArtistEntity] = []

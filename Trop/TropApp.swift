@@ -18,6 +18,9 @@ struct TropApp: App {
     @State private var showsRecap = false
 
     init() {
+        #if DEBUG
+        GlyphScript.selfCheck()
+        #endif
         configureNuke()
         ensureDirectories()
         PlayerController.registerRemoteControlSupport()
@@ -70,7 +73,7 @@ struct TropApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            ProfileRoot()
                 .preferredColorScheme(settings.preferredColorScheme)
                 .tint(settings.accentColor)
                 .environment(settings)
@@ -114,5 +117,24 @@ struct TropApp: App {
         let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first ?? FileManager.default.temporaryDirectory
         try? FileManager.default.createDirectory(at: docs.appendingPathComponent("Downloads"), withIntermediateDirectories: true)
         try? FileManager.default.createDirectory(at: docs.appendingPathComponent("Player"), withIntermediateDirectories: true)
+    }
+}
+
+/// Starts every tab over when another profile takes over.
+private struct ProfileRoot: View {
+    @State private var libraryFailedToOpen = false
+
+    var body: some View {
+        ContentView()
+            .id(AccountState.shared.generation)
+            .task(id: AccountState.shared.generation) {
+                _ = DatabaseService.shared
+                libraryFailedToOpen = DatabaseService.usesTemporaryStorage
+            }
+            .alert("Your library couldn't open", isPresented: $libraryFailedToOpen) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text("Changes you make now won't be saved. Close and reopen Woof Music to try again.")
+            }
     }
 }

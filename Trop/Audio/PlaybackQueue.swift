@@ -14,13 +14,37 @@ import Foundation
 enum PlaybackQueue {
     /// Plays `songs[startIndex]` (clamped). Used by detail play-all / play-song.
     static func play(_ songs: [SongItem], startIndex: Int = 0, log: AppLogger, context: String) {
+        #if DEBUG
+        selfCheck()
+        #endif
+        let (songs, index) = available(songs, startIndex: startIndex)
         guard !songs.isEmpty else { return }
-        let index = min(max(startIndex, 0), songs.count - 1)
         let first = songs[index]
         NowPlaying.shared.setQueue(songs, startIndex: index)
         loggedTask(log, "\(context) failed") {
             try await PlaybackManager.shared.resolveAndPlay(videoId: first.videoId)
         }
+    }
+
+    /// The songs without the unavailable ones. The start stays on its song,
+    /// or moves to the next available one.
+    private static func available(_ songs: [SongItem], startIndex: Int) -> (songs: [SongItem], startIndex: Int) {
+        let queue = songs.filter(\.isAvailable)
+        let before = songs.prefix(max(startIndex, 0)).filter(\.isAvailable).count
+        return (queue, min(before, max(queue.count - 1, 0)))
+    }
+
+    private static func selfCheck() {
+        func song(_ id: String, unavailable: Bool = false) -> SongItem {
+            SongItem(videoId: id, title: id, artists: [], duration: 0, isExplicit: false, isUnavailable: unavailable ? true : nil)
+        }
+        let songs = [song("a"), song("x", unavailable: true), song("b"), song("y", unavailable: true)]
+        assert(available(songs, startIndex: 0).songs.map(\.videoId) == ["a", "b"])
+        assert(available(songs, startIndex: 0).startIndex == 0)
+        assert(available(songs, startIndex: 1).startIndex == 1)
+        assert(available(songs, startIndex: 2).startIndex == 1)
+        assert(available(songs, startIndex: 3).startIndex == 1)
+        assert(available([song("x", unavailable: true)], startIndex: 0).songs.isEmpty)
     }
 
     /// Shuffled variant of `play(_:startIndex:)`.
@@ -31,6 +55,7 @@ enum PlaybackQueue {
 
     /// Plays `song`, reusing `songs` as the queue when it contains it.
     static func play(_ song: SongItem, in songs: [SongItem], log: AppLogger, context: String) {
+        guard song.isAvailable else { return }
         if let index = songs.firstIndex(where: { $0.videoId == song.videoId }) {
             play(songs, startIndex: index, log: log, context: context)
         } else {
@@ -42,6 +67,7 @@ enum PlaybackQueue {
     /// then replaces the queue with the fetched radio. Used by the song and
     /// player "Start Radio" menu actions.
     static func startRadio(for song: SongItem, options: RadioOptions = .default) {
+        guard song.isAvailable else { return }
         let isCurrentSong = NowPlaying.shared.videoId == song.videoId
         if !isCurrentSong {
             NowPlaying.shared.setQueue([song], startIndex: 0)
@@ -55,10 +81,8 @@ enum PlaybackQueue {
             guard let radio = try? await PersonalizationService.shared.fetchRadio(videoId: song.videoId, options: options),
                   radio.songs.count > 1 else { return }
             guard np.videoId == song.videoId else { return }
-            np.replaceWithRadio(
-                preservingArtists(radio.songs, over: np.queueSongs),
-                currentIndex: radio.currentIndex
-            )
+            let (songs, index) = available(preservingArtists(radio.songs, over: np.queueSongs), startIndex: radio.currentIndex)
+            np.replaceWithRadio(songs, currentIndex: index)
             let upcoming = np.queueSongs.dropFirst(np.queueIndex + 1)
             np.radioBloom.covers = upcoming.prefix(RadioBloomEvent.orbCount).map(\.thumbnailUrl)
             np.radioBloom.addedCount = upcoming.count
@@ -68,6 +92,7 @@ enum PlaybackQueue {
     /// Plays a single song, then continues with its radio queue when available.
     /// Used by Home/Search/Explore tap-to-play.
     static func playSingleWithRadio(_ song: SongItem, log: AppLogger) {
+        guard song.isAvailable else { return }
         NowPlaying.shared.setQueue([song], startIndex: 0)
         Task { @MainActor in
             do {
@@ -79,10 +104,8 @@ enum PlaybackQueue {
             guard let radio = try? await PersonalizationService.shared.fetchRadio(videoId: song.videoId),
                   radio.songs.count > 1,
                   NowPlaying.shared.videoId == song.videoId else { return }
-            NowPlaying.shared.replaceWithRadio(
-                preservingArtists(radio.songs, over: NowPlaying.shared.queueSongs),
-                currentIndex: radio.currentIndex
-            )
+            let (songs, index) = available(preservingArtists(radio.songs, over: NowPlaying.shared.queueSongs), startIndex: radio.currentIndex)
+            NowPlaying.shared.replaceWithRadio(songs, currentIndex: index)
         }
     }
 

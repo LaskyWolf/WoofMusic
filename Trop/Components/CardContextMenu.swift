@@ -21,7 +21,7 @@ private enum CardSongs {
     }
 }
 
-/// Play, Shuffle, Play Next and Add to Queue for a card that holds songs.
+/// Play, Shuffle, Play Next, Add to Queue and Download for a card that holds songs.
 private struct SongCollectionItems: View {
     let loadSongs: () async -> [SongItem]
 
@@ -49,6 +49,9 @@ private struct SongCollectionItems: View {
                     let songs = await loadSongs()
                     NowPlaying.shared.appendToQueue(songs)
                 }
+            }
+            Button("Download", systemImage: "arrow.down.to.line") {
+                Task { DownloadManager.shared.download(songs: await loadSongs()) }
             }
         }
     }

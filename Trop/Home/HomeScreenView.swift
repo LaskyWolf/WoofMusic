@@ -35,7 +35,8 @@ struct HomeScreenView: View {
                         ShimmerLoadingView()
                             .frame(maxHeight: .infinity, alignment: .top)
                             .transition(.opacity)
-                    } else if let error = viewModel.error {
+                    } else if let error = viewModel.error, viewModel.homeSections.isEmpty {
+                        // Offline, the sections built from the library still show.
                         errorView(error)
                     } else {
                         homescreenContent
@@ -75,6 +76,13 @@ struct HomeScreenView: View {
             }
             .onReceive(NotificationCenter.default.publisher(for: .speedDialDidChange)) { _ in
                 Task { await reloadSpeedDial() }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .libraryDidChange)) { _ in
+                Task { await viewModel.refreshKeepListeningIfMissing() }
+            }
+            // The feed loaded before the renewal came as a guest's.
+            .onReceive(NotificationCenter.default.publisher(for: .sessionDidRenew)) { _ in
+                Task { await viewModel.refresh() }
             }
             // The Quick Picks widget shows the same cards. Out here so it follows
             // them while their section or this tab is off screen.
@@ -380,10 +388,11 @@ struct HomeScreenView: View {
     }
 
     private func errorView(_ error: Error) -> some View {
-        ContentUnavailableView(
-            "Couldn't load your homescreen",
+        RetryStateView(
+            title: "Couldn't load your homescreen",
             systemImage: "wifi.slash",
-            description: Text(error.localizedDescription)
+            message: error.localizedDescription,
+            retry: { await viewModel.refresh() }
         )
     }
 }
@@ -405,25 +414,32 @@ private struct QuickPickCard: View {
                 .aspectRatio(1, contentMode: .fit)
                 .overlay { AsyncImageView(url: song.thumbnailUrl).scaledToFill() }
                 .overlay(alignment: .bottom) {
-                    Text(song.title)
-                        .font(.footnote.weight(.semibold))
-                        .foregroundStyle(.white)
-                        .lineLimit(1)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 8)
-                        .padding(.bottom, 6)
-                        .padding(.top, 28)
-                        .background(LinearGradient(colors: [.clear, .black.opacity(0.7)], startPoint: .top, endPoint: .bottom))
+                    HStack(spacing: 4) {
+                        Text(song.title)
+                            .font(.footnote.weight(.semibold))
+                            .foregroundStyle(.white)
+                            .lineLimit(1)
+                        Spacer(minLength: 0)
+                        DownloadedBadge(videoId: song.videoId, onArtwork: true)
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.bottom, 6)
+                    .padding(.top, 28)
+                    .background(LinearGradient(colors: [.clear, .black.opacity(0.7)], startPoint: .top, endPoint: .bottom))
                 }
                 .overlay(alignment: .topTrailing) {
-                    if isPinned {
-                        Image(systemName: "pin.fill")
-                            .font(.system(size: 9, weight: .bold))
-                            .foregroundStyle(settings.accentColor)
-                            .padding(6)
+                    ZStack {
+                        if isPinned {
+                            Image(systemName: "pin.fill")
+                                .font(.system(size: 9, weight: .bold))
+                                .foregroundStyle(settings.accentColor)
+                                .padding(6)
+                        }
                     }
+                    .glyphMotion(isPinned ? .pinStick : nil, trigger: isPinned)
                 }
                 .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .greyedOut(!song.isAvailable)
         }
         .buttonStyle(ZoomPressStyle())
     }

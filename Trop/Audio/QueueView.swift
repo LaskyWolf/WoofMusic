@@ -45,6 +45,7 @@ struct QueueView: View {
                         .font(.body.weight(.semibold))
                         .frame(width: 44, height: 44)
                 }
+                .buttonStyle(IconPressStyle(disc: .white, motion: .deflate))
                 .accessibilityLabel("Close queue")
             }
             .foregroundStyle(.white)
@@ -117,6 +118,7 @@ struct QueueView: View {
             Image(systemName: icon)
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(.white)
+                .glyphMotion(icon == "shuffle" ? .crossSwap : .repeatTurn, trigger: isOn.wrappedValue)
                 .frame(maxWidth: .infinity)
                 .frame(height: 44)
                 .background(
@@ -124,6 +126,8 @@ struct QueueView: View {
                         .fill(isOn.wrappedValue ? .white.opacity(0.15) : .white.opacity(0.07))
                 )
         }
+        .buttonStyle(ZoomPressStyle())
+        .sensoryFeedback(.selection, trigger: isOn.wrappedValue)
         .accessibilityLabel(icon == "shuffle" ? "Shuffle" : "Repeat")
         .accessibilityValue(isOn.wrappedValue ? "On" : "Off")
     }
@@ -245,6 +249,8 @@ struct QueueSongRow: View {
             }
 
             Spacer()
+
+            DownloadedBadge(videoId: song.videoId, onArtwork: true)
 
             Image(systemName: "line.3.horizontal")
                 .font(.system(size: 15, weight: .semibold))

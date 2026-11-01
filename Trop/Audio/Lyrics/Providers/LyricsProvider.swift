@@ -272,6 +272,19 @@ enum LyricsParsing {
         return sawCredit ? Array(lines.dropFirst(count)) : lines
     }
 
+    /// Chinese providers answer with a line instead of lyrics when a song has
+    /// none: "纯音乐，请欣赏" is "instrumental, please enjoy".
+    private static let placeholderFragments = ["纯音乐", "純音樂", "暂无歌词", "暫無歌詞", "没有歌词", "沒有歌詞"]
+
+    /// Empty when the lines are only a note that the song has no lyrics, so the
+    /// next provider gets its turn. Real lyrics are longer than three lines.
+    static func droppingPlaceholder(_ lines: [LyricLine]) -> [LyricLine] {
+        let isNote = lines.count <= 3 && lines.contains { line in
+            placeholderFragments.contains { line.text.contains($0) }
+        }
+        return isNote ? [] : lines
+    }
+
     private static let creditKeywords = [
         "词", "詞", "曲", "编", "編", "制作", "製作", "混音", "母带", "录音", "錄音", "和声", "和聲",
         "监制", "監製", "出品", "发行", "發行", "吉他", "贝斯", "鼓", "弦乐", "企划", "统筹",
@@ -345,6 +358,10 @@ enum LyricsParsing {
         let credited = ["AIYOU - Eve", "词：Eve", "编曲：Eve/Numa", "Lyrics by: Someone", "あなたは", "Note: still sung"]
             .map { LyricLine(text: $0, startTime: nil) }
         assert(droppingCredits(credited).map(\.text) == ["あなたは", "Note: still sung"])
+        let note = [LyricLine(text: "纯音乐，请欣赏", startTime: 0)]
+        assert(droppingPlaceholder(note).isEmpty)
+        let sung = (1...4).map { LyricLine(text: $0 == 1 ? "纯音乐" : "line \($0)", startTime: nil) }
+        assert(droppingPlaceholder(sung).count == 4)
         let titleOnly = ["Night - Day", "First line"].map { LyricLine(text: $0, startTime: nil) }
         assert(droppingCredits(titleOnly).count == 2)
     }

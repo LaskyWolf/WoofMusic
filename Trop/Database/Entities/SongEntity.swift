@@ -25,6 +25,7 @@ struct SongEntity: Codable, Hashable, FetchableRecord, PersistableRecord {
     var isVideo: Bool
     var createDate: Date
     var modifyDate: Date
+    var isUnavailable = false
 
     static let databaseTableName = "song"
 
@@ -45,6 +46,7 @@ struct SongEntity: Codable, Hashable, FetchableRecord, PersistableRecord {
         case isVideo = "is_video"
         case createDate = "create_date"
         case modifyDate = "modify_date"
+        case isUnavailable = "is_unavailable"
     }
 }
 
@@ -85,7 +87,8 @@ extension SongEntity {
             isUploaded: existing?.isUploaded ?? isUploaded,
             isVideo: existing?.isVideo ?? isVideo,
             createDate: existing?.createDate ?? Date(),
-            modifyDate: Date()
+            modifyDate: Date(),
+            isUnavailable: existing?.isUnavailable ?? false
         )
     }
 }

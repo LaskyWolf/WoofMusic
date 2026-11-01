@@ -138,7 +138,7 @@ final class NowPlaying {
     }
 
     func persistQueueState() {
-        guard SettingsStore.shared.persistQueue else { return }
+        // Removing saves nothing, so Incognito allows it: a profile switch relies on it.
         if queueSongs.isEmpty {
             UserDefaults.standard.removeObject(forKey: Self.playNextEndKey)
             UserDefaults.standard.removeObject(forKey: Self.queueKey)
@@ -147,6 +147,7 @@ final class NowPlaying {
             UserDefaults.standard.removeObject(forKey: Self.repeatKey)
             return
         }
+        guard SettingsStore.shared.persistQueue, !SettingsStore.shared.isIncognito else { return }
         if queueNeedsSave, let data = try? JSONEncoder().encode(queueSongs) {
             UserDefaults.standard.set(data, forKey: Self.queueKey)
             queueNeedsSave = false
@@ -168,6 +169,7 @@ final class NowPlaying {
 
     /// Appends to the manually requested next songs, ahead of the regular queue.
     func enqueueNext(_ song: SongItem) {
+        guard song.isAvailable else { return }
         let index = min(max(queueIndex + 1, (playNextEnd ?? queueIndex) + 1), queueSongs.count)
         queueSongs.insert(song, at: index)
         playNextEnd = index
@@ -177,6 +179,7 @@ final class NowPlaying {
     /// Adds songs at the end of the queue, and of the unshuffled order too,
     /// so turning shuffle off keeps them.
     func appendToQueue(_ songs: [SongItem]) {
+        let songs = songs.filter(\.isAvailable)
         queueSongs.append(contentsOf: songs)
         originalQueue?.append(contentsOf: songs)
         persistQueueState()
@@ -290,9 +293,7 @@ final class NowPlaying {
 
     func repeatCurrent() {
         guard queueSongs.indices.contains(queueIndex) else { return }
-        playCurrentSong(logContext: "repeatCurrent") {
-            self.isRepeatOn = false
-        }
+        playCurrentSong(logContext: "repeatCurrent")
     }
 
     func playNext(automatic: Bool = false) {
@@ -300,14 +301,15 @@ final class NowPlaying {
         guard !isResolvingNext else { return }
         if !automatic { lastManualSkipTime = Date() }
         queueIndex += 1
-        playCurrentSong(logContext: "playNext")
+        playCurrentSong(logContext: "playNext", skipsOnFailure: automatic)
     }
 
     /// Moves to the next song after `Crossfade` already started it on the
     /// other deck: updates the screen and queue without loading anything.
     func advanceForCrossfade(to videoId: String) {
-        guard hasNext, queueSongs[queueIndex + 1].videoId == videoId else { return }
-        queueIndex += 1
+        // Songs may have been added in front of it in the moment before the decks swapped.
+        guard let index = queueSongs.indices.first(where: { $0 > queueIndex && queueSongs[$0].videoId == videoId }) else { return }
+        queueIndex = index
         update(with: queueSongs[queueIndex])
         isPlaying = true
         persistQueueState()
@@ -328,6 +330,7 @@ final class NowPlaying {
     func playCurrentSong(
         logContext: String,
         manageResolvingFlag: Bool = true,
+        skipsOnFailure: Bool = false,
         afterResolve: (() -> Void)? = nil
     ) {
         guard queueSongs.indices.contains(queueIndex) else { return }
@@ -338,18 +341,23 @@ final class NowPlaying {
         update(with: song)
         persistQueueState()
         Task {
+            var skipsSong = false
             do {
                 try await PlaybackManager.shared.resolveAndPlay(videoId: song.videoId)
             } catch {
                 Log.nowPlaying.error("\(logContext) failed: \(error)")
                 if self.videoId == song.videoId {
-                    isPlaying = false
+                    // The previous song's audio must not go on under this title. Play tries again.
+                    PlayerController.shared.stop()
+                    // One bad song doesn't end the queue. Offline, the next ones would fail too.
+                    skipsSong = skipsOnFailure && !(error is URLError)
                 }
             }
             if manageResolvingFlag {
                 isResolvingNext = false
             }
             afterResolve?()
+            if skipsSong { playNext(automatic: true) }
         }
     }
 
@@ -444,10 +452,29 @@ final class NowPlaying {
     /// Pauses but keeps the last song shown in the player: end of queue, or the
     /// sleep timer set to stop at the end of the song.
     private func pauseAfterLastSong() {
+        PlayerController.shared.desiredPlaying = false
         isPlaying = false
         stopTimer()
         PlayerController.shared.updateNowPlayingProgress()
         Task { await PlaybackStateService.shared.stopTracking() }
+    }
+
+    /// Stops the song and empties the queue, so nothing carries into another profile.
+    func stopAndClear() async {
+        PlayerController.shared.stop()
+        PlayerController.shared.clearNowPlayingMetadata()
+        isPlaying = false
+        isLoadingTrack = false
+        stopTimer()
+        await PlaybackStateService.shared.stopTracking()
+        setQueue([], startIndex: 0)
+        isRepeatOn = false
+        videoId = nil
+        title = ""
+        artist = ""
+        artists = []
+        currentTime = 0
+        duration = 0
     }
 
     /// Continues playback with a radio queue built from the last song when the
@@ -458,7 +485,8 @@ final class NowPlaying {
                 let radio = try await PersonalizationService.shared.fetchRadio(videoId: videoId)
                 // The user picked another song while the radio loaded.
                 guard self.videoId == videoId else { return }
-                let songs = radio.songs
+                // A radio starts with the song it is built from, which just ended.
+                let songs = radio.songs.filter { $0.isAvailable && $0.videoId != videoId }
                 guard !songs.isEmpty else {
                     isPlaying = false
                     return
@@ -489,6 +517,7 @@ final class NowPlaying {
         }
         lastFailureAt[videoId] = Date()
         isPlaying = false
+        PlayerController.shared.resumeOnLoad(videoId: videoId, at: currentTime)
         Log.nowPlaying.notice("Stream failed mid-play, re-resolving \(videoId)")
         Task {
             await PlayerConfigStore.shared.notifyStreamRejection()

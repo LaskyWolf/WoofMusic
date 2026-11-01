@@ -173,11 +173,11 @@ extension TropLibraryStore {
     }
 
     func unmarkStaleLikedSongs(excluding ids: Set<String>, graceCutoff: Date) async throws {
+        // A guest-shaped answer lists nothing too: it must not unlike the whole library.
+        guard !ids.isEmpty else { return }
         try await db.write { db in
             var sql = "SELECT id FROM song WHERE liked = 1"
-            if !ids.isEmpty {
-                sql += " AND id NOT IN (\(DatabaseService.placeholders(count: ids.count)))"
-            }
+            sql += " AND id NOT IN (\(DatabaseService.placeholders(count: ids.count)))"
             sql += " AND modify_date < ?"
             let staleIds = try String.fetchAll(
                 db,
@@ -278,7 +278,12 @@ extension TropLibraryStore {
     }
 
     func saveSong(_ song: SyncSong) async throws {
-        try await db.save(SongEntity(sync: song))
+        try await db.write { db in
+            var entity = SongEntity(sync: song)
+            // Sync doesn't know this flag: keep the stored one.
+            entity.isUnavailable = try SongEntity.fetchOne(db, key: song.id)?.isUnavailable ?? false
+            try entity.save(db)
+        }
     }
 
     func insertSongIgnoringConflicts(_ song: SyncSong) async throws {

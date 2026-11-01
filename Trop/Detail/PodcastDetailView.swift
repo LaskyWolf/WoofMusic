@@ -420,6 +420,8 @@ extension PodcastDetailViewModel {
 // MARK: - View
 
 struct PodcastDetailView: View {
+    /// The movement waits for a tap: the state also changes when the page loads.
+    @State private var tappedSubscribe = false
     let browseId: String
     @State private var viewModel: PodcastDetailViewModel
 
@@ -435,14 +437,15 @@ struct PodcastDetailView: View {
                 error: viewModel.error,
                 data: viewModel.podcast,
                 noun: "podcast",
-                emptyIcon: "antenna.radiowaves.left.and.right"
+                emptyIcon: "antenna.radiowaves.left.and.right",
+                retry: { await viewModel.load() }
             ) { podcast in
                 podcastContent(for: podcast)
             }
         }
         .scrollDisabled(viewModel.isLoading || viewModel.error != nil || viewModel.podcast == nil)
         .miniPlayerTracksScroll()
-        .navigationTitle(viewModel.podcast?.title ?? "")
+        .detailBarTitle(viewModel.podcast?.title ?? "")
         .navigationBarTitleDisplayMode(.inline)
         .task {
             guard viewModel.isLoading else { return }
@@ -507,13 +510,17 @@ struct PodcastDetailView: View {
                         .accessibilityLabel("More options")
                 }
                 .menuOrder(.fixed)
+                .bouncesOnTap()
 
                 Button(action: {
+                    tappedSubscribe = true
                     Task { await viewModel.toggleSubscribe() }
                 }, label: {
                     HeaderRoundIcon(
                         systemImage: viewModel.isSubscribed ? "bookmark.fill" : "bookmark",
-                        tint: viewModel.isSubscribed ? SettingsStore.shared.accentColor : .primary
+                        tint: viewModel.isSubscribed ? SettingsStore.shared.accentColor : .primary,
+                        motion: tappedSubscribe ? (viewModel.isSubscribed ? .bookmarkDrop : .deflate) : nil,
+                        trigger: viewModel.isSubscribed
                     )
                 })
                 .accessibilityLabel(viewModel.isSubscribed ? "Unsubscribe from podcast" : "Subscribe to podcast")
@@ -522,6 +529,7 @@ struct PodcastDetailView: View {
                     Button(action: { playOrResume(podcast) }, label: {
                         HeaderRoundIcon(systemImage: "play.fill", primary: SettingsStore.shared.accentColor)
                     })
+                    .buttonStyle(IconPressStyle(motion: .playAll))
                     .accessibilityLabel("Play")
                 }
             }
@@ -682,7 +690,12 @@ private struct CurrentEpisodeCard: View {
                     .shadow(color: .black.opacity(0.35), radius: 6, x: 2, y: 4)
 
                 VStack(alignment: .leading, spacing: 6) {
-                    EpisodeStatusTag(isCurrent: isCurrent, saved: saved)
+                    HStack(spacing: 4) {
+                        EpisodeStatusTag(isCurrent: isCurrent, saved: saved)
+                        Spacer(minLength: 0)
+                        DownloadedBadge(videoId: episode.videoId, onArtwork: true)
+                            .id(episode.videoId)
+                    }
                     Text(episode.title)
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(.white)
@@ -779,6 +792,7 @@ private struct EpisodeDialTile: View {
         HStack(spacing: 4) {
             EpisodeStatusTag(isCurrent: isCurrent, saved: saved)
             Spacer(minLength: 0)
+            DownloadedBadge(videoId: episode.videoId, onArtwork: true)
             if episode.duration > 0 {
                 Text(episode.duration.formattedDuration)
                     .font(.caption2.weight(.semibold))

@@ -114,6 +114,7 @@ struct LyricsView: View {
                     .font(.body.weight(.semibold))
                     .frame(width: 44, height: 44)
             }
+            .buttonStyle(IconPressStyle(disc: .white, motion: .deflate))
             .accessibilityLabel("Close lyrics")
         }
         .foregroundStyle(.white)
@@ -209,9 +210,9 @@ struct LyricsView: View {
         } label: {
             HStack(spacing: 6) {
                 Image(systemName: "arrow.triangle.2.circlepath")
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.subheadline.weight(.semibold))
                 Text("Re-sync")
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.subheadline.weight(.semibold))
             }
             .foregroundStyle(.white)
             .padding(.horizontal, 16)

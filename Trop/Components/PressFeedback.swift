@@ -17,6 +17,36 @@ struct ZoomPressStyle: ButtonStyle {
     }
 }
 
+/// Shrinks an icon button over a soft disc under the finger, then plays `motion` when it lifts.
+/// Use a white disc on the player, whose background is always dark.
+struct IconPressStyle: ButtonStyle {
+    var disc: Color = .primary
+    var motion: GlyphScript?
+
+    func makeBody(configuration: Configuration) -> some View {
+        IconPressLabel(configuration: configuration, disc: disc, motion: motion)
+    }
+}
+
+private struct IconPressLabel: View {
+    let configuration: ButtonStyleConfiguration
+    let disc: Color
+    let motion: GlyphScript?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var taps = 0
+
+    var body: some View {
+        configuration.label
+            .glyphMotion(motion, trigger: taps)
+            .background(disc.opacity(configuration.isPressed ? 0.12 : 0), in: Circle())
+            .scaleEffect(reduceMotion || !configuration.isPressed ? 1 : 0.85)
+            .animation(.spring(response: 0.3, dampingFraction: 0.7), value: configuration.isPressed)
+            .onChange(of: configuration.isPressed) { _, pressed in
+                if !pressed { taps += 1 }
+            }
+    }
+}
+
 private struct ZoomPressLabel: View {
     let configuration: ButtonStyleConfiguration
     let scale: CGFloat
@@ -40,6 +70,11 @@ private struct ZoomPressLabel: View {
 }
 
 extension View {
+    /// Grows the area that takes the tap by `outset`, without moving anything around the view.
+    func tapArea(outset: CGFloat) -> some View {
+        padding(outset).contentShape(Rectangle()).padding(-outset)
+    }
+
     /// Lights up the row's background and shrinks it slightly while it is touched.
     func rowPressFeedback() -> some View { modifier(RowPressFeedback()) }
 }

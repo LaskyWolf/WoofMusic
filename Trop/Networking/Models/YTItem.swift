@@ -305,9 +305,15 @@ struct SongItem: Codable, Hashable {
     var musicVideoType: String?
     /// Set on rows of a shared playlist.
     var addedBy: PlaylistContributor?
+    /// True when YouTube Music greys the row out. Optional so previously
+    /// persisted queues keep decoding.
+    var isUnavailable: Bool?
 
     /// True for music-video results (subtitle starts with "Video").
     var isMusicVideo: Bool { isVideo == true }
+
+    /// Unavailable songs show greyed out and never enter the queue or the download counts.
+    var isAvailable: Bool { isUnavailable != true }
 
     static func from(_ renderer: [String: Any]) -> SongItem? {
         guard let videoId = extractVideoId(renderer) else {
@@ -316,10 +322,16 @@ struct SongItem: Codable, Hashable {
         let duration = DurationFormat.parseRendererDuration(renderer)
         let playlistId = extractPlaylistId(renderer)
 
+        var song: SongItem?
         if let flexColumns = renderer["flexColumns"] as? [[String: Any]] {
-            return fromResponsiveListItem(renderer: renderer, flexColumns: flexColumns, videoId: videoId, duration: duration, playlistId: playlistId)
+            song = fromResponsiveListItem(renderer: renderer, flexColumns: flexColumns, videoId: videoId, duration: duration, playlistId: playlistId)
+        } else {
+            song = fromTwoRowItem(renderer: renderer, videoId: videoId, duration: duration, playlistId: playlistId)
         }
-        return fromTwoRowItem(renderer: renderer, videoId: videoId, duration: duration, playlistId: playlistId)
+        if renderer["musicItemRendererDisplayPolicy"] as? String == "MUSIC_ITEM_RENDERER_DISPLAY_POLICY_GREY_OUT" {
+            song?.isUnavailable = true
+        }
+        return song
     }
 
     private static func fromResponsiveListItem(
@@ -650,6 +662,7 @@ extension SongItem {
         self.playlistId = nil
         self.likeStatus = nil
         self.musicVideoType = entity.isEpisode ? "MUSIC_VIDEO_TYPE_PODCAST_EPISODE" : nil
+        self.isUnavailable = entity.isUnavailable ? true : nil
     }
 
     init(entity: DownloadedTrackEntity) {

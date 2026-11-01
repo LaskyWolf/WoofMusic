@@ -100,6 +100,10 @@ final class DiscordIntegration {
     @MainActor
     func syncDiscordState() async {
         guard isEnabled else { return }
+        if SettingsStore.shared.isIncognito {
+            DiscordRpcManager.shared.clear()
+            return
+        }
         guard let videoId = NowPlaying.shared.videoId else {
             DiscordRpcManager.shared.clear()
             return

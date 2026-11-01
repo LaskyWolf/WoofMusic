@@ -142,6 +142,10 @@ struct NewReleaseCard: View {
         album.artists.map(\.name).joined(separator: ", ")
     }
 
+    private var isDownloaded: Bool {
+        DownloadedCollections.shared.isComplete(.album(browseId: album.browseId))
+    }
+
     /// "Single", "Album · 2026".
     private var meta: String? {
         let parts = [kind, album.year.map { String($0) }].compactMap { $0 }
@@ -211,10 +215,16 @@ struct NewReleaseCard: View {
                     .foregroundStyle(.white.opacity(0.75))
                     .lineLimit(1)
             }
-            Text(album.title)
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.white)
-                .lineLimit(1)
+            HStack(spacing: 4) {
+                Text(album.title)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                if isDownloaded {
+                    Spacer(minLength: 0)
+                    DownloadedGlyph(onArtwork: true)
+                }
+            }
             if !artistLine.isEmpty {
                 Text(artistLine)
                     .font(.caption)
@@ -224,7 +234,8 @@ struct NewReleaseCard: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel([album.title, artistLine, kind ?? "Album"].filter { !$0.isEmpty }.joined(separator: ", "))
+        .accessibilityLabel([album.title, artistLine, kind ?? "Album", isDownloaded ? "Downloaded" : ""]
+            .filter { !$0.isEmpty }.joined(separator: ", "))
         .accessibilityAddTraits(.isButton)
         .accessibilityAction { onOpen() }
     }

@@ -12,7 +12,10 @@ enum SyncBridge {
     static let librarySync = LibrarySyncService(client: InnerTubeClient.tropShared, store: store)
     static let playlistDetail = PlaylistDetailService(client: InnerTubeClient.tropShared, store: store)
     static let mutations = MutationService(client: InnerTubeClient.tropShared, store: store)
-    static let incremental = IncrementalSyncService(client: InnerTubeClient.tropShared, librarySync: librarySync)
+    /// Built per request: its last sync date belongs to the active profile.
+    static var incremental: IncrementalSyncService {
+        IncrementalSyncService(client: InnerTubeClient.tropShared, librarySync: librarySync, defaults: ProfileStorage.defaults)
+    }
 
     static var options: LibrarySyncOptions {
         let settings = SettingsStore.shared
@@ -35,13 +38,25 @@ enum SyncBridge {
         let task = Task { await sync() }
         running = task
         await task.value
-        running = nil
+        if running == task { running = nil }
         NotificationCenter.default.post(name: .libraryDidChange, object: nil)
+    }
+
+    /// Stops the sync in progress, so it can't write its account's library into another profile.
+    @MainActor
+    static func cancelRunning() async {
+        guard let running else { return }
+        running.cancel()
+        await running.value
+        Self.running = nil
     }
 
     @MainActor
     static func checkAndSyncIfStale() async {
+        // The cookies and the database change one after the other: a sync between them would mix accounts.
+        guard !AccountState.shared.isChangingSession else { return }
         let options = Self.options
+        let incremental = Self.incremental
         await share {
             await incremental.checkAndSyncIfStale(options: options) {
                 await LikeStore.shared.refresh()
@@ -51,7 +66,9 @@ enum SyncBridge {
 
     @MainActor
     static func forceFullSync() async {
+        guard !AccountState.shared.isChangingSession else { return }
         let options = Self.options
+        let incremental = Self.incremental
         await share {
             await incremental.forceFullSync(options: options) {
                 await LikeStore.shared.refresh()
