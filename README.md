@@ -15,6 +15,8 @@ It plays without ads and mixes songs like a DJ.
 <img src=".github/assets/2.png" width="31%" alt="Player" />&nbsp;
 <img src=".github/assets/3.png" width="31%" alt="Queue" />
 
+<sub>The app's screens, with music content replaced by placeholders.</sub>
+
 </div>
 
 ## Highlights
