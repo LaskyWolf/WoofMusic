@@ -7,15 +7,13 @@
 
 import SwiftUI
 
-/// Shared large-title header with history and account buttons,
-/// used by the Home and Library tabs.
+/// Shared large-title header with history and account buttons, used by the
+/// four tabs. `path` is the tab's navigation stack.
 struct TabHeaderView: View {
     @Environment(SettingsStore.self) private var settings
+    private let account = AccountState.shared
     let title: String
-    var accountIsLoggedIn: Bool = false
-    var accountImageUrl: String?
-    var onHistory: () -> Void
-    var onAccount: () -> Void
+    @Binding var path: NavigationPath
     /// Shows a "+" button when set (Library: new playlist).
     var onAdd: (() -> Void)?
     /// Shows the Incognito button when set (Search).
@@ -55,7 +53,7 @@ struct TabHeaderView: View {
                     .sensoryFeedback(.selection, trigger: incognito.wrappedValue)
                 }
 
-                Button(action: onHistory) {
+                Button { path.append(DetailRoute.history) } label: {
                     Image(systemName: "clock.arrow.circlepath")
                         .font(.title3)
                         .foregroundStyle(.secondary)
@@ -66,9 +64,9 @@ struct TabHeaderView: View {
                 .accessibilityLabel("History")
 
                 AccountButtonView(
-                    isLoggedIn: accountIsLoggedIn,
-                    accountImageUrl: accountImageUrl,
-                    onTap: onAccount
+                    isLoggedIn: account.isLoggedIn,
+                    accountImageUrl: account.accountImageUrl,
+                    onTap: { path.append(DetailRoute.settings) }
                 )
                 .accessibilityLabel("Account")
             }

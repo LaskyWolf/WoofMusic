@@ -99,6 +99,25 @@ extension AlbumDetailViewModel {
         var playlistId: String?
         var songs: [SongItem] = []
 
+        // Year / songCount / duration from secondSubtitle
+        func applySecondSubtitle(_ header: [String: Any]) {
+            guard let secondSubtitle = header["secondSubtitle"] as? [String: Any],
+                  let runs = secondSubtitle["runs"] as? [[String: Any]] else { return }
+            for run in runs {
+                guard let text = run["text"] as? String else { continue }
+                let trimmed = text.trimmingCharacters(in: .whitespaces)
+                if let yearVal = Int(trimmed), trimmed.count == 4, yearVal > 1900, yearVal < 2100 {
+                    year = yearVal
+                } else if trimmed.contains("song") || trimmed.contains("Song") ||
+                          trimmed.contains("track") || trimmed.contains("Track") {
+                    let nums = trimmed.components(separatedBy: CharacterSet.decimalDigits.inverted).compactMap(Int.init)
+                    if let count = nums.first { songCount = count }
+                } else if trimmed.contains(":") {
+                    duration = DurationFormat.parseClock(trimmed) ?? 0
+                }
+            }
+        }
+
         // Resolve first tab section (exists in both layouts)
         let firstTabSection: [String: Any]? = BrowseLens.firstSectionItem(json)
 
@@ -118,23 +137,7 @@ extension AlbumDetailViewModel {
                 artists = ArtistCredits.parse(runs: runs).map { YTArtist(name: $0.name, id: $0.browseId) }
             }
 
-            // Year / songCount / duration from secondSubtitle
-            if let secondSubtitle = responsiveHeader["secondSubtitle"] as? [String: Any],
-               let runs = secondSubtitle["runs"] as? [[String: Any]] {
-                for run in runs {
-                    guard let text = run["text"] as? String else { continue }
-                    let trimmed = text.trimmingCharacters(in: .whitespaces)
-                    if let yearVal = Int(trimmed), trimmed.count == 4, yearVal > 1900, yearVal < 2100 {
-                        year = yearVal
-                    } else if trimmed.contains("song") || trimmed.contains("Song") ||
-                              trimmed.contains("track") || trimmed.contains("Track") {
-                        let nums = trimmed.components(separatedBy: CharacterSet.decimalDigits.inverted).compactMap(Int.init)
-                        if let count = nums.first { songCount = count }
-                    } else if trimmed.contains(":") {
-                        duration = DurationFormat.parseClock(trimmed) ?? 0
-                    }
-                }
-            }
+            applySecondSubtitle(responsiveHeader)
 
             thumbnailUrl = InnerTubeJSON.musicThumbnailURL(responsiveHeader)
         }
@@ -152,22 +155,7 @@ extension AlbumDetailViewModel {
                     artists += ArtistCredits.parse(runs: runs).map { YTArtist(name: $0.name, id: $0.browseId) }
                 }
 
-                if let secondSubtitle = detailHeader["secondSubtitle"] as? [String: Any],
-                   let runs = secondSubtitle["runs"] as? [[String: Any]] {
-                    for run in runs {
-                        guard let text = run["text"] as? String else { continue }
-                        let trimmed = text.trimmingCharacters(in: .whitespaces)
-                        if let yearVal = Int(trimmed), trimmed.count == 4, yearVal > 1900, yearVal < 2100 {
-                            year = yearVal
-                        } else if trimmed.contains("song") || trimmed.contains("Song") ||
-                                  trimmed.contains("track") || trimmed.contains("Track") {
-                            let nums = trimmed.components(separatedBy: CharacterSet.decimalDigits.inverted).compactMap(Int.init)
-                            if let count = nums.first { songCount = count }
-                        } else if trimmed.contains(":") {
-                            duration = DurationFormat.parseClock(trimmed) ?? 0
-                        }
-                    }
-                }
+                applySecondSubtitle(detailHeader)
 
                 if thumbnailUrl == nil { thumbnailUrl = InnerTubeJSON.musicThumbnailURL(detailHeader) }
 
@@ -268,20 +256,16 @@ struct AlbumDetailView: View {
     }
 
     var body: some View {
-        ScrollView {
-            DetailStateContainer(
-                isLoading: viewModel.isLoading,
-                error: viewModel.error,
-                data: viewModel.album,
-                noun: "album",
-                emptyIcon: "music.note",
-                retry: { await viewModel.load() }
-            ) { album in
-                albumContent(for: album)
-            }
+        DetailStateContainer(
+            isLoading: viewModel.isLoading,
+            error: viewModel.error,
+            data: viewModel.album,
+            noun: "album",
+            emptyIcon: "music.note",
+            retry: { await viewModel.load() }
+        ) { album in
+            albumContent(for: album)
         }
-        .scrollDisabled(viewModel.isLoading || viewModel.error != nil || viewModel.album == nil)
-        .miniPlayerTracksScroll()
         .detailBarTitle(
             viewModel.album?.title ?? "",
             pinnedTitle: selection.isActive ? "\(selection.selected.count) selected" : nil
@@ -310,12 +294,7 @@ struct AlbumDetailView: View {
                 .padding(.bottom, 8)
 
             if album.songs.isEmpty {
-                VStack(spacing: 8) {
-                    Spacer().frame(height: 40)
-                    Text("No songs found")
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-                }
+                DetailEmptyLabel(text: "No songs found")
             } else {
                 songList(for: album)
             }
@@ -372,23 +351,9 @@ struct AlbumDetailView: View {
             .menuOrder(.fixed)
             .bouncesOnTap()
 
-            Button(action: { shufflePlay(album) }, label: {
-                HeaderRoundIcon(systemImage: "shuffle")
-            })
-            .buttonStyle(IconPressStyle(motion: .crossSwap))
-            .accessibilityLabel("Shuffle")
-
-            Button(action: { playAll(album) }, label: {
-                HeaderRoundIcon(systemImage: "play.fill", primary: SettingsStore.shared.accentColor)
-            })
-            .buttonStyle(IconPressStyle(motion: .playAll))
-            .accessibilityLabel("Play all")
+            HeaderPlayButtons(onShuffle: { shufflePlay(album) }, onPlay: { playAll(album) })
         }
-        .padding(.vertical, 16)
-        .frame(maxWidth: .infinity)
-        .background(alignment: .top) {
-            BlurredArtworkBackdrop(url: album.thumbnailUrl)
-        }
+        .detailHeaderBackdrop(url: album.thumbnailUrl)
     }
 
     @ViewBuilder

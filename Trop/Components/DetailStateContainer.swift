@@ -46,7 +46,8 @@ struct RetryStateView: View {
     }
 }
 
-/// Loading / error / empty / content tri-state shared by the detail screens.
+/// The scrolling page with its loading / error / empty / content states,
+/// shared by the detail screens.
 /// `noun` derives the standard copy ("Loading album…", "Couldn't load album",
 /// "No album data", "Could not parse album details").
 struct DetailStateContainer<Data, Content: View>: View {
@@ -59,7 +60,7 @@ struct DetailStateContainer<Data, Content: View>: View {
     @ViewBuilder var content: (Data) -> Content
 
     var body: some View {
-        Group {
+        ScrollView {
             if isLoading {
                 LoadingStateView("Loading \(noun)...")
                     .containerRelativeFrame(.vertical)
@@ -82,6 +83,22 @@ struct DetailStateContainer<Data, Content: View>: View {
                 )
                 .containerRelativeFrame(.vertical)
             }
+        }
+        .scrollDisabled(isLoading || error != nil || data == nil)
+        .miniPlayerTracksScroll()
+    }
+}
+
+/// The line a detail page shows when it has nothing to list.
+struct DetailEmptyLabel: View {
+    let text: String
+
+    var body: some View {
+        VStack(spacing: 8) {
+            Spacer().frame(height: 40)
+            Text(text)
+                .font(.subheadline)
+                .foregroundColor(.secondary)
         }
     }
 }

@@ -175,7 +175,7 @@ struct ProfileView: View {
                 Button {
                     isEditingPicture = true
                 } label: {
-                    avatar.overlay(alignment: .bottomTrailing) {
+                    AccountAvatar(size: 96).overlay(alignment: .bottomTrailing) {
                         Image(systemName: "pencil")
                             .font(.system(size: 14, weight: .bold))
                             .foregroundStyle(.primary)
@@ -186,7 +186,7 @@ struct ProfileView: View {
                 .buttonStyle(ZoomPressStyle())
                 .accessibilityLabel("Change Profile Picture")
             } else {
-                avatar
+                AccountAvatar(size: 96)
             }
             Text(account.isLoggedIn ? account.accountName : "Not Signed In")
                 .font(.title2.weight(.bold))
@@ -197,20 +197,6 @@ struct ProfileView: View {
                 .multilineTextAlignment(.center)
         }
         .padding(.vertical, 8)
-    }
-
-    private var avatar: some View {
-        Group {
-            if account.isLoggedIn {
-                AsyncImageView(url: account.accountImageUrl)
-            } else {
-                Image(systemName: "person.crop.circle.fill")
-                    .resizable()
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .frame(width: 96, height: 96)
-        .clipShape(Circle())
     }
 
     private func recapRow(_ title: String, icon: String, interval: DateInterval) -> some View {

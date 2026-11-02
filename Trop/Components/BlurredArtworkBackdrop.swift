@@ -28,3 +28,14 @@ struct BlurredArtworkBackdrop: View {
             .accessibilityHidden(true)
     }
 }
+
+extension View {
+    /// The spacing and blurred cover shared by the detail page headers.
+    func detailHeaderBackdrop(url: String?) -> some View {
+        padding(.vertical, 16)
+            .frame(maxWidth: .infinity)
+            .background(alignment: .top) {
+                BlurredArtworkBackdrop(url: url)
+            }
+    }
+}

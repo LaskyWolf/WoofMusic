@@ -98,20 +98,15 @@ struct ShimmerSectionTitle: View {
 }
 
 /// Media card placeholder, sized like `YouTubeGridItemView`: square artwork,
-/// a title and an optional subtitle line, in the card's fixed height.
+/// a title and a subtitle line, in the card's fixed height.
 struct ShimmerCard: View {
-    var size: CGFloat = YouTubeGridItemView.artworkSize
-    var titleWidth: CGFloat = 130
-    var subtitleWidth: CGFloat = 90
-    var showsSubtitle = true
+    private let size = YouTubeGridItemView.artworkSize
 
     var body: some View {
         VStack(alignment: .leading, spacing: DesignTokens.cardInnerSpacing) {
             ShimmerBlock(width: size, height: size, radius: DesignTokens.cardRadius)
-            ShimmerBlock(width: titleWidth, height: 14, radius: 4)
-            if showsSubtitle {
-                ShimmerBlock(width: subtitleWidth, height: 12, radius: 4)
-            }
+            ShimmerBlock(width: 130, height: 14, radius: 4)
+            ShimmerBlock(width: 90, height: 12, radius: 4)
         }
         .frame(width: size, height: YouTubeGridItemView.cardHeight, alignment: .top)
     }
@@ -120,9 +115,6 @@ struct ShimmerCard: View {
 /// Song row placeholder, sized like `YouTubeListItemView`: 56pt artwork and
 /// two text lines in a 64pt row, with room for the ⋮ button on the right.
 struct ShimmerListItem: View {
-    var titleWidth: CGFloat = 170
-    var subtitleWidth: CGFloat = 110
-
     var body: some View {
         HStack(spacing: DesignTokens.rowSpacing) {
             ShimmerBlock(
@@ -131,8 +123,8 @@ struct ShimmerListItem: View {
                 radius: YouTubeListItemView.artRadius
             )
             VStack(alignment: .leading, spacing: 6) {
-                ShimmerBlock(width: titleWidth, height: 14, radius: 4)
-                ShimmerBlock(width: subtitleWidth, height: 12, radius: 4)
+                ShimmerBlock(width: 170, height: 14, radius: 4)
+                ShimmerBlock(width: 110, height: 12, radius: 4)
             }
             Spacer(minLength: 0)
         }
@@ -144,25 +136,21 @@ struct ShimmerListItem: View {
 }
 
 /// Library row placeholder, sized like `MediaListRow`: artwork (medium by
-/// default, round for artists), a title, a subtitle and a detail line.
+/// default), a title, a subtitle and a detail line.
 struct ShimmerMediaRow: View {
-    var isCircular = false
     var artSize = DesignTokens.artMedium
-    var titleWidth: CGFloat = 160
-    var subtitleWidth: CGFloat = 100
-    var detailWidth: CGFloat = 70
 
     var body: some View {
         HStack(spacing: DesignTokens.menuRowSpacing) {
             ShimmerBlock(
                 width: artSize,
                 height: artSize,
-                radius: isCircular ? artSize / 2 : DesignTokens.cardRadius
+                radius: DesignTokens.cardRadius
             )
             VStack(alignment: .leading, spacing: 8) {
-                ShimmerBlock(width: titleWidth, height: 16, radius: 4)
-                ShimmerBlock(width: subtitleWidth, height: 13, radius: 4)
-                ShimmerBlock(width: detailWidth, height: 11, radius: 4)
+                ShimmerBlock(width: 160, height: 16, radius: 4)
+                ShimmerBlock(width: 100, height: 13, radius: 4)
+                ShimmerBlock(width: 70, height: 11, radius: 4)
             }
             Spacer(minLength: 0)
         }

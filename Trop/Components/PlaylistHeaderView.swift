@@ -212,3 +212,25 @@ struct HeaderRoundIcon: View {
             .contentShape(Circle())
     }
 }
+
+/// The shuffle and play buttons of a detail page header.
+struct HeaderPlayButtons: View {
+    var shuffleLabel = "Shuffle"
+    var playLabel = "Play all"
+    let onShuffle: () -> Void
+    let onPlay: () -> Void
+
+    var body: some View {
+        Button(action: onShuffle, label: {
+            HeaderRoundIcon(systemImage: "shuffle")
+        })
+        .buttonStyle(IconPressStyle(motion: .crossSwap))
+        .accessibilityLabel(shuffleLabel)
+
+        Button(action: onPlay, label: {
+            HeaderRoundIcon(systemImage: "play.fill", primary: SettingsStore.shared.accentColor)
+        })
+        .buttonStyle(IconPressStyle(motion: .playAll))
+        .accessibilityLabel(playLabel)
+    }
+}

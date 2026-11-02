@@ -149,6 +149,13 @@ private struct SleepAnimationFrame: View {
         // ink outside its own box. En spaces on both ends widen that box.
         let text = "\u{2002}\(SleepTimer.shared.message)\u{2002}"
         let inkOffset = Self.inkCentreOffset(text, fontName: "GreatVibes-Regular", size: fontSize)
+        let horizontalPadding: CGFloat = fontSize * 0.25
+        let verticalPadding: CGFloat = fontSize * 0.15
+        let darkShadow = Color(red: 0.04, green: 0.03, blue: 0.24).opacity(0.6)
+        let glowShadow = Color(red: 0.67, green: 0.63, blue: 1).opacity(0.5)
+        let scale = CGFloat(0.94 + 0.06 * strength)
+        let blurRadius = CGFloat((1 - strength) * 12)
+        let centre = CGPoint(x: size.width / 2, y: size.height / 2)
         return Text(text)
             .font(.custom("GreatVibes-Regular", size: fontSize))
             .lineLimit(1)
@@ -156,17 +163,17 @@ private struct SleepAnimationFrame: View {
             .foregroundStyle(.white)
             // Blur and shadows draw only inside the box, so it gets room for
             // the swashes.
-            .padding(.horizontal, fontSize * 0.25)
-            .padding(.vertical, fontSize * 0.15)
-            .shadow(color: Color(red: 0.04, green: 0.03, blue: 0.24).opacity(0.6), radius: 8, y: 2)
-            .shadow(color: Color(red: 0.67, green: 0.63, blue: 1).opacity(0.5), radius: 12)
+            .padding(.horizontal, horizontalPadding)
+            .padding(.vertical, verticalPadding)
+            .shadow(color: darkShadow, radius: 8, y: 2)
+            .shadow(color: glowShadow, radius: 12)
             // Centre the letters' ink, not their box: the swashes lean left and up.
             .offset(inkOffset)
-            .scaleEffect(0.94 + 0.06 * strength)
-            .blur(radius: (1 - strength) * 12)
+            .scaleEffect(scale)
+            .blur(radius: blurRadius)
             .opacity(strength)
             .frame(width: size.width)
-            .position(x: size.width / 2, y: size.height / 2)
+            .position(centre)
     }
 
     /// How far to move the text so its drawn letters, not its layout box,

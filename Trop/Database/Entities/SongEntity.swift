@@ -63,13 +63,7 @@ extension SongEntity {
         artistName: String?,
         albumName: String?,
         duration: Int,
-        thumbnailUrl: String?,
-        liked: Bool = false,
-        libraryAddToken: String = "",
-        libraryRemoveToken: String = "",
-        isEpisode: Bool = false,
-        isUploaded: Bool = false,
-        isVideo: Bool = false
+        thumbnailUrl: String?
     ) -> SongEntity {
         SongEntity(
             id: id,
@@ -78,14 +72,14 @@ extension SongEntity {
             albumName: existing?.albumName ?? albumName,
             duration: duration > 0 ? duration : existing?.duration ?? 0,
             thumbnailUrl: thumbnailUrl ?? existing?.thumbnailUrl,
-            liked: existing?.liked ?? liked,
+            liked: existing?.liked ?? false,
             totalPlayTime: existing?.totalPlayTime ?? 0,
             inLibrary: existing?.inLibrary,
-            libraryAddToken: existing?.libraryAddToken ?? libraryAddToken,
-            libraryRemoveToken: existing?.libraryRemoveToken ?? libraryRemoveToken,
-            isEpisode: existing?.isEpisode ?? isEpisode,
-            isUploaded: existing?.isUploaded ?? isUploaded,
-            isVideo: existing?.isVideo ?? isVideo,
+            libraryAddToken: existing?.libraryAddToken ?? "",
+            libraryRemoveToken: existing?.libraryRemoveToken ?? "",
+            isEpisode: existing?.isEpisode ?? false,
+            isUploaded: existing?.isUploaded ?? false,
+            isVideo: existing?.isVideo ?? false,
             createDate: existing?.createDate ?? Date(),
             modifyDate: Date(),
             isUnavailable: existing?.isUnavailable ?? false
