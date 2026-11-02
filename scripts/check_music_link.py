@@ -55,9 +55,37 @@ checks = [
 # woofmusic://open wraps a link, percent-encoded so its own query survives.
 wrapped = f"https://music.youtube.com/watch?v={video}&list=PLabc"
 checks += [
-    f'precondition(MusicLink(openURL: URL(string: "woofmusic://open?url={quote(wrapped, safe="")}")!) == .song(videoId: "{video}"))',
-    'precondition(MusicLink(openURL: URL(string: "woofmusic://open")!) == nil)',
-    'precondition(MusicLink(openURL: URL(string: "woofmusic://open?url=")!) == nil)',
+    f'precondition(MusicLink.wrappedLink(in: URL(string: "woofmusic://open?url={quote(wrapped, safe="")}")!)?.absoluteString == "{wrapped}")',
+    'precondition(MusicLink.wrappedLink(in: URL(string: "woofmusic://open")!) == nil)',
+    'precondition(MusicLink.wrappedLink(in: URL(string: "woofmusic://open?url=")!) == nil)',
+]
+# Only Spotify and Apple Music links may leave the iPhone for Odesli.
+convertible = [
+    ("https://open.spotify.com/track/abc?si=x", "true"),
+    ("HTTPS://OPEN.SPOTIFY.COM/album/abc", "true"),
+    ("https://music.apple.com/us/album/x/1?i=2", "true"),
+    ("https://geo.music.apple.com/us/album/x/1", "true"),
+    ("https://example.com/secret", "false"),
+    ("https://open.spotify.com.evil.example/track/abc", "false"),
+    ("https://apple.com/music", "false"),
+    ("ftp://open.spotify.com/track/abc", "false"),
+]
+checks += [
+    f'precondition(MusicLink.isConvertible(URL(string: "{link}")!) == {want}, "{link}")'
+    for link, want in convertible
+]
+replies = [
+    (f'{{"linksByPlatform":{{"youtubeMusic":{{"url":"https://music.youtube.com/watch?v={video}"}},"youtube":{{"url":"https://www.youtube.com/watch?v=aaaaaaaaaaa"}}}}}}', f'.song(videoId: "{video}")'),
+    (f'{{"linksByPlatform":{{"youtube":{{"url":"https://www.youtube.com/watch?v={video}"}}}}}}', f'.song(videoId: "{video}")'),
+    ('{"linksByPlatform":{"youtubeMusic":{"url":"https://music.youtube.com/playlist?list=OLAK5uy_abc"}}}', '.playlist(id: "OLAK5uy_abc")'),
+    (f'{{"linksByPlatform":{{"youtubeMusic":{{"url":"https://example.com/"}},"youtube":{{"url":"https://youtu.be/{video}"}}}}}}', f'.song(videoId: "{video}")'),
+    ('{"linksByPlatform":{"spotify":{"url":"https://open.spotify.com/track/abc"}}}', "nil"),
+    ('{"statusCode":404}', "nil"),
+    ("not json", "nil"),
+]
+checks += [
+    f'precondition(MusicLink(odesliResponse: Data(#"{reply}"#.utf8)) == {want}, #"{reply}"#)'
+    for reply, want in replies
 ]
 with tempfile.TemporaryDirectory() as directory:
     path = Path(directory) / "main.swift"

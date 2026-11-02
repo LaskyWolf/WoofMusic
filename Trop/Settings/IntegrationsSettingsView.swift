@@ -22,6 +22,9 @@ struct IntegrationsSettingsView: View {
                 SettingsNavigationRow("ListenBrainz", icon: "headphones") {
                     ListenBrainzSettingsView()
                 }
+                SettingsNavigationRow("Odesli", icon: "link") {
+                    OdesliSettingsView()
+                }
             } footer: {
                 Text("Connect external services to enhance your experience.")
             }

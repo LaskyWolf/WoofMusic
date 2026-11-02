@@ -107,7 +107,7 @@ struct SearchMusicIntent: ShowInAppSearchResultsIntent {
 /// entry in WoofMusicShortcuts, which would only add Siri phrases for a link.
 struct OpenMusicLinkIntent: AudioPlaybackIntent {
     static var title: LocalizedStringResource = "Open Music Link"
-    static var description = IntentDescription("Opens a YouTube or YouTube Music link in Woof Music.")
+    static var description = IntentDescription("Opens a YouTube, YouTube Music, Spotify or Apple Music link in Woof Music.")
     static var openAppWhenRun: Bool = true
 
     @Parameter(title: "Link")
@@ -119,7 +119,7 @@ struct OpenMusicLinkIntent: AudioPlaybackIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult {
-        if let problem = await MusicLinkOpener.open(MusicLink(link: link)) { throw problem }
+        if let problem = await MusicLinkOpener.open(link) { throw problem }
         return .result()
     }
 }

@@ -279,6 +279,7 @@ final class AccountState {
         SearchViewModel.forgetRecency()
         LastFMTokenStore.shared.reloadForActiveProfile()
         ListenBrainz.shared.reloadForActiveProfile()
+        Odesli.shared.reloadForActiveProfile()
         DiscordRpcManager.shared.reloadForActiveProfile()
         AppRouter.shared.closeAllPages()
         generation += 1
