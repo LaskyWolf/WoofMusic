@@ -37,6 +37,9 @@ jobs:
       - name: Check player song titles
         run: python3 scripts/check_song_title.py
 
+      - name: Check music links
+        run: python3 scripts/check_music_link.py
+
       - name: Check track analyzer
         run: python3 scripts/check_track_analyzer.py
 

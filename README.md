@@ -69,6 +69,11 @@ It plays without ads and mixes songs like a DJ.
 - **Discord Rich Presence** (needs the Discord Social SDK, see [below](#discord-social-sdk))
 - **Siri and Shortcuts:** "Shuffle my liked songs in Woof Music", play/pause, next song, search and play a song or artist
 - **Home Screen quick actions:** Search, Shuffle Liked Songs, Downloads, Resume
+- **Open YouTube and YouTube Music links from the share sheet:**
+  1. In Shortcuts, create a shortcut and add the **Open Music Link** action from Woof Music.
+  2. In the shortcut's details, turn on **Show in Share Sheet**.
+  3. Tap the action's **Link** field and choose **Shortcut Input**.
+  4. Share a link from any app and pick the shortcut.
 
 ### Look
 - Custom app icons and accent colours

@@ -103,6 +103,27 @@ struct SearchMusicIntent: ShowInAppSearchResultsIntent {
     }
 }
 
+/// Shortcuts action for a share-sheet shortcut. Shortcuts lists it without an
+/// entry in WoofMusicShortcuts, which would only add Siri phrases for a link.
+struct OpenMusicLinkIntent: AudioPlaybackIntent {
+    static var title: LocalizedStringResource = "Open Music Link"
+    static var description = IntentDescription("Opens a YouTube or YouTube Music link in Woof Music.")
+    static var openAppWhenRun: Bool = true
+
+    @Parameter(title: "Link")
+    var link: URL
+
+    static var parameterSummary: some ParameterSummary {
+        Summary("Open \(\.$link) in Woof Music")
+    }
+
+    @MainActor
+    func perform() async throws -> some IntentResult {
+        if let problem = await MusicLinkOpener.open(MusicLink(link: link)) { throw problem }
+        return .result()
+    }
+}
+
 // PlayPauseIntent and NextSongIntent live in Shared/NowPlayingShared.swift:
 // the widget extension compiles them too.
 

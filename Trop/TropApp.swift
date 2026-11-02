@@ -90,6 +90,7 @@ struct TropApp: App {
     }
 
     /// Links from the widgets: woofmusic://player, home or recap.
+    /// woofmusic://open?url=<encoded link> opens a YouTube or YouTube Music link.
     private func openWidgetLink(_ url: URL) {
         guard url.scheme == WidgetLink.scheme else { return }
         switch url.host() {
@@ -98,6 +99,7 @@ struct TropApp: App {
             AppRouter.shared.collapsePlayer()
             AppRouter.shared.selectedTabIndex = 0
         case "recap": showsRecap = true
+        case "open": MusicLinkOpener.openShowingProblem(MusicLink(openURL: url))
         default: break
         }
     }
