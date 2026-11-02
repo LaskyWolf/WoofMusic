@@ -41,3 +41,23 @@ struct AccountButtonView: View {
         }
     }
 }
+
+/// The account picture, or a placeholder when signed out.
+struct AccountAvatar: View {
+    let size: CGFloat
+    private let account = AccountState.shared
+
+    var body: some View {
+        Group {
+            if account.isLoggedIn {
+                AsyncImageView(url: account.accountImageUrl)
+            } else {
+                Image(systemName: "person.crop.circle.fill")
+                    .resizable()
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(width: size, height: size)
+        .clipShape(Circle())
+    }
+}

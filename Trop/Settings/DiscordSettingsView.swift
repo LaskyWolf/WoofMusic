@@ -37,6 +37,16 @@ struct DiscordSettingsView: View {
 
     @State private var cancellables = Set<AnyCancellable>()
 
+    private func valueRow(_ title: String, value: String, lineLimit: Int? = 1, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack {
+                Text(title)
+                Spacer()
+                Text(value).foregroundStyle(.secondary).lineLimit(lineLimit)
+            }
+        }
+    }
+
     var body: some View {
         List {
             if !infoDismissed {
@@ -134,30 +144,9 @@ struct DiscordSettingsView: View {
                             DiscordRpcManager.shared.notifySettingsChanged()
                         }
 
-                        // swiftlint:disable:next multiple_closures_with_trailing_closure
-                        Button(action: { showActivityNameEditor = true }) {
-                            HStack {
-                                Text("Activity Name")
-                                Spacer()
-                                Text(displayActivityName).foregroundStyle(.secondary).lineLimit(1)
-                            }
-                        }
-                        // swiftlint:disable:next multiple_closures_with_trailing_closure
-                        Button(action: { showStateTemplateEditor = true }) {
-                            HStack {
-                                Text("State Template")
-                                Spacer()
-                                Text(stateTemplate).foregroundStyle(.secondary).lineLimit(1)
-                            }
-                        }
-                        // swiftlint:disable:next multiple_closures_with_trailing_closure
-                        Button(action: { showDetailsTemplateEditor = true }) {
-                            HStack {
-                                Text("Details Template")
-                                Spacer()
-                                Text(detailsTemplate).foregroundStyle(.secondary).lineLimit(1)
-                            }
-                        }
+                        valueRow("Activity Name", value: displayActivityName) { showActivityNameEditor = true }
+                        valueRow("State Template", value: stateTemplate) { showStateTemplateEditor = true }
+                        valueRow("Details Template", value: detailsTemplate) { showDetailsTemplateEditor = true }
                     }
 
                     Section("Buttons") {
@@ -166,44 +155,16 @@ struct DiscordSettingsView: View {
                                 DiscordRpcManager.shared.notifySettingsChanged()
                             }
                         if btn1Enabled {
-                            // swiftlint:disable:next multiple_closures_with_trailing_closure
-                            Button(action: { showBtn1LabelEditor = true }) {
-                                HStack {
-                                    Text("Label")
-                                    Spacer()
-                                    Text(btn1Label).foregroundStyle(.secondary)
-                                }
-                            }
-                            // swiftlint:disable:next multiple_closures_with_trailing_closure
-                            Button(action: { showBtn1UrlEditor = true }) {
-                                HStack {
-                                    Text("URL")
-                                    Spacer()
-                                    Text(btn1Url).foregroundStyle(.secondary).lineLimit(1)
-                                }
-                            }
+                            valueRow("Label", value: btn1Label, lineLimit: nil) { showBtn1LabelEditor = true }
+                            valueRow("URL", value: btn1Url) { showBtn1UrlEditor = true }
                         }
                         Toggle("Button 2", isOn: $btn2Enabled)
                             .onChange(of: btn2Enabled) { _, _ in
                                 DiscordRpcManager.shared.notifySettingsChanged()
                             }
                         if btn2Enabled {
-                            // swiftlint:disable:next multiple_closures_with_trailing_closure
-                            Button(action: { showBtn2LabelEditor = true }) {
-                                HStack {
-                                    Text("Label")
-                                    Spacer()
-                                    Text(btn2Label).foregroundStyle(.secondary)
-                                }
-                            }
-                            // swiftlint:disable:next multiple_closures_with_trailing_closure
-                            Button(action: { showBtn2UrlEditor = true }) {
-                                HStack {
-                                    Text("URL")
-                                    Spacer()
-                                    Text(btn2Url).foregroundStyle(.secondary).lineLimit(1)
-                                }
-                            }
+                            valueRow("Label", value: btn2Label, lineLimit: nil) { showBtn2LabelEditor = true }
+                            valueRow("URL", value: btn2Url) { showBtn2UrlEditor = true }
                         }
                     }
 

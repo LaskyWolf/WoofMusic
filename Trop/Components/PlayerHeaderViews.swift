@@ -91,14 +91,13 @@ private struct LikeRun: Equatable {
     static let colors: [Color] = [.orange, .yellow, .green, .blue, .purple, .pink, .mint, .cyan, .indigo, .teal]
 }
 
-/// White heart toggle for player surfaces (FullPlayer, Queue).
+/// White heart toggle for the full player.
 /// Liking squashes the heart and plays a bouncy animation.
 struct PlayerLikeButton: View {
     var isLiked: Bool
     var flavor: LikeFlavor = .unknown
-    var activeColor: Color = .red
-    var inactiveColor: Color = .white
-    var fontSize: CGFloat = 26
+    private let activeColor = Color.red
+    private let fontSize: CGFloat = 26
     let onToggle: () -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -172,7 +171,7 @@ struct PlayerLikeButton: View {
     ) -> some View {
         Image(systemName: filled ?? isLiked ? "heart.fill" : "heart")
             .font(.system(size: fontSize, weight: .regular))
-            .foregroundStyle(tint ?? (isLiked ? activeColor : inactiveColor))
+            .foregroundStyle(tint ?? (isLiked ? activeColor : .white))
             .rotation3DEffect(.degrees(flip), axis: (x: 0, y: 1, z: 0), perspective: 0.5)
             .scaleEffect(x: scale * scaleX, y: scale * scaleY)
             .rotationEffect(.degrees(rotation))
@@ -316,12 +315,16 @@ struct PlayerLikeButton: View {
                 let sway = Double(5 + (index % 3) * 2)
                 let size = 0.6 + Double(index % 3) * 0.2
                 let u = clamp((t - 0.1 - Double(index) * 0.1) / 1.1)
+                let heartScale = CGFloat(size * (0.7 + 0.5 * u))
+                let offsetX = CGFloat(drift + sin(u * 6 + drift) * sway)
+                let offsetY = CGFloat(-ease(u) * rise)
+                let alpha: Double = u > 0 && u < 1 ? sin(u * .pi) * 0.95 : 0
                 Image(systemName: "heart.fill")
                     .font(.system(size: 14))
                     .foregroundStyle(run.palette[index % run.palette.count])
-                    .scaleEffect(size * (0.7 + 0.5 * u))
-                    .offset(x: drift + sin(u * 6 + drift) * sway, y: -ease(u) * rise)
-                    .opacity(u > 0 && u < 1 ? sin(u * .pi) * 0.95 : 0)
+                    .scaleEffect(heartScale)
+                    .offset(x: offsetX, y: offsetY)
+                    .opacity(alpha)
             }
             heart(scale: scale, filled: true, tint: tint)
         }

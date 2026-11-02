@@ -488,20 +488,16 @@ struct PlaylistDetailView: View {
     }
 
     var body: some View {
-        ScrollView {
-            DetailStateContainer(
-                isLoading: viewModel.isLoading,
-                error: viewModel.error,
-                data: viewModel.playlist,
-                noun: "playlist",
-                emptyIcon: "music.note.list",
-                retry: { await viewModel.load() }
-            ) { playlist in
-                playlistContent(for: playlist)
-            }
+        DetailStateContainer(
+            isLoading: viewModel.isLoading,
+            error: viewModel.error,
+            data: viewModel.playlist,
+            noun: "playlist",
+            emptyIcon: "music.note.list",
+            retry: { await viewModel.load() }
+        ) { playlist in
+            playlistContent(for: playlist)
         }
-        .scrollDisabled(viewModel.isLoading || viewModel.error != nil || viewModel.playlist == nil)
-        .miniPlayerTracksScroll()
         .detailBarTitle(
             viewModel.playlist?.title ?? "",
             pinnedTitle: selection.isActive ? "\(selection.selected.count) selected" : nil
@@ -588,12 +584,7 @@ struct PlaylistDetailView: View {
             }
 
             if playlist.songs.isEmpty {
-                VStack(spacing: 8) {
-                    Spacer().frame(height: 40)
-                    Text("No songs found")
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-                }
+                DetailEmptyLabel(text: "No songs found")
             } else {
                 songList(for: playlist)
             }
@@ -622,17 +613,7 @@ struct PlaylistDetailView: View {
                         .accessibilityLabel("More options")
                 }
 
-                Button(action: { shufflePlay(playlist) }, label: {
-                    HeaderRoundIcon(systemImage: "shuffle")
-                })
-                .buttonStyle(IconPressStyle(motion: .crossSwap))
-                .accessibilityLabel("Shuffle")
-
-                Button(action: { playAll(playlist) }, label: {
-                    HeaderRoundIcon(systemImage: "play.fill", primary: SettingsStore.shared.accentColor)
-                })
-                .buttonStyle(IconPressStyle(motion: .playAll))
-                .accessibilityLabel("Play all")
+                HeaderPlayButtons(onShuffle: { shufflePlay(playlist) }, onPlay: { playAll(playlist) })
             }
 
             // Description (only if fetched, no fallback)
@@ -645,11 +626,7 @@ struct PlaylistDetailView: View {
                     .padding(.horizontal, DesignTokens.screenHPadding + 4)
             }
         }
-        .padding(.vertical, 16)
-        .frame(maxWidth: .infinity)
-        .background(alignment: .top) {
-            BlurredArtworkBackdrop(url: playlist.thumbnailUrl ?? playlist.songs.first?.thumbnailUrl)
-        }
+        .detailHeaderBackdrop(url: playlist.thumbnailUrl ?? playlist.songs.first?.thumbnailUrl)
     }
 
     /// Playlist art, else a mosaic or the first song's art, else a gradient.

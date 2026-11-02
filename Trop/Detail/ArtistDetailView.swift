@@ -296,20 +296,16 @@ struct ArtistDetailView: View {
     }
 
     var body: some View {
-        ScrollView {
-            DetailStateContainer(
-                isLoading: viewModel.isLoading,
-                error: viewModel.error,
-                data: viewModel.artist,
-                noun: "artist",
-                emptyIcon: "music.mic",
-                retry: { await viewModel.load() }
-            ) { artist in
-                artistContent(for: artist)
-            }
+        DetailStateContainer(
+            isLoading: viewModel.isLoading,
+            error: viewModel.error,
+            data: viewModel.artist,
+            noun: "artist",
+            emptyIcon: "music.mic",
+            retry: { await viewModel.load() }
+        ) { artist in
+            artistContent(for: artist)
         }
-        .scrollDisabled(viewModel.isLoading || viewModel.error != nil || viewModel.artist == nil)
-        .miniPlayerTracksScroll()
         // System bar, as on the playlist and album pages: its back button is the only one.
         .detailBarTitle(viewModel.artist?.name ?? "")
         .navigationBarTitleDisplayMode(.inline)
@@ -352,11 +348,11 @@ struct ArtistDetailView: View {
             }
 
             if !artist.albums.isEmpty {
-                albumsSection(albums: artist.albums)
+                albumCarousel(title: "Albums", albums: artist.albums)
             }
 
             if !artist.singles.isEmpty {
-                singlesSection(singles: artist.singles)
+                albumCarousel(title: "Singles & EPs", albums: artist.singles)
             }
 
             if !artist.playlists.isEmpty {
@@ -380,12 +376,7 @@ struct ArtistDetailView: View {
 
             if artist.songs.isEmpty && artist.albums.isEmpty && artist.singles.isEmpty
                 && artist.playlists.isEmpty && artist.relatedArtists.isEmpty {
-                VStack(spacing: 8) {
-                    Spacer().frame(height: 40)
-                    Text(artist.hasMusic ? "No content found" : "Nothing public on this profile yet")
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-                }
+                DetailEmptyLabel(text: artist.hasMusic ? "No content found" : "Nothing public on this profile yet")
             }
         }
     }
@@ -419,24 +410,15 @@ struct ArtistDetailView: View {
 
             // A profile with no songs has nothing to play.
             if !artist.songs.isEmpty {
-                Button(action: { shufflePlay(artist) }, label: {
-                    HeaderRoundIcon(systemImage: "shuffle")
-                })
-                .buttonStyle(IconPressStyle(motion: .crossSwap))
-                .accessibilityLabel("Shuffle artist")
-
-                Button(action: { playAll(artist) }, label: {
-                    HeaderRoundIcon(systemImage: "play.fill", primary: SettingsStore.shared.accentColor)
-                })
-                .buttonStyle(IconPressStyle(motion: .playAll))
-                .accessibilityLabel("Play songs")
+                HeaderPlayButtons(
+                    shuffleLabel: "Shuffle artist",
+                    playLabel: "Play songs",
+                    onShuffle: { shufflePlay(artist) },
+                    onPlay: { playAll(artist) }
+                )
             }
         }
-        .padding(.vertical, 16)
-        .frame(maxWidth: .infinity)
-        .background(alignment: .top) {
-            BlurredArtworkBackdrop(url: ArtworkURLs.sized(artist.thumbnailUrl, width: 1200, height: 1200))
-        }
+        .detailHeaderBackdrop(url: ArtworkURLs.sized(artist.thumbnailUrl, width: 1200, height: 1200))
         .task(id: artist.name) {
             // A listener's name could match an unrelated MusicBrainz artist.
             guard artist.hasMusic else { return }
@@ -494,8 +476,8 @@ struct ArtistDetailView: View {
     }
 
     @ViewBuilder
-    private func albumsSection(albums: [AlbumItem]) -> some View {
-        carouselSection(title: "Albums") {
+    private func albumCarousel(title: String, albums: [AlbumItem]) -> some View {
+        carouselSection(title: title) {
             ForEach(albums.indices, id: \.self) { i in
                 let album = albums[i]
                 let route = DetailRoute.album(browseId: album.browseId)
@@ -509,26 +491,6 @@ struct ArtistDetailView: View {
                 }
                 .buttonStyle(ZoomPressStyle())
                 .albumCardMenu(browseId: album.browseId, artists: album.artists)
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func singlesSection(singles: [AlbumItem]) -> some View {
-        carouselSection(title: "Singles & EPs") {
-            ForEach(singles.indices, id: \.self) { i in
-                let single = singles[i]
-                let route = DetailRoute.album(browseId: single.browseId)
-                NavigationLink(value: route) {
-                    MediaGridCell(
-                        thumbnailUrl: single.thumbnailUrl,
-                        title: single.title,
-                        subtitle: single.artists.map(\.name).joined(separator: ", "),
-                        zoomRoute: route
-                    )
-                }
-                .buttonStyle(ZoomPressStyle())
-                .albumCardMenu(browseId: single.browseId, artists: single.artists)
             }
         }
     }

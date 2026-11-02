@@ -11,12 +11,14 @@ protocol SettingsOption: CaseIterable, Hashable, Identifiable, RawRepresentable 
     var displayName: String { get }
 }
 
+extension SettingsOption {
+    var id: String { rawValue }
+}
+
 enum ThemeMode: String, CaseIterable, Identifiable, SettingsOption {
     case system
     case light
     case dark
-
-    var id: String { rawValue }
 
     var displayName: String {
         switch self {
@@ -30,8 +32,6 @@ enum ThemeMode: String, CaseIterable, Identifiable, SettingsOption {
 enum PlayerBackgroundStyle: String, CaseIterable, Identifiable, SettingsOption {
     case dynamic
     case solid
-
-    var id: String { rawValue }
 
     var displayName: String {
         switch self {
@@ -47,8 +47,6 @@ enum PlayerStyle: String, CaseIterable, Identifiable, SettingsOption {
     case immersive
     case card
 
-    var id: String { rawValue }
-
     var displayName: String {
         switch self {
         case .immersive: return "Immersive"
@@ -61,8 +59,6 @@ enum LyricsAlignment: String, CaseIterable, Identifiable, SettingsOption {
     case left
     case center
     case right
-
-    var id: String { rawValue }
 
     var displayName: String {
         switch self {
@@ -101,8 +97,6 @@ enum LyricsAlignment: String, CaseIterable, Identifiable, SettingsOption {
 enum LibraryLayout: String, CaseIterable, Identifiable, SettingsOption {
     case grid
     case list
-
-    var id: String { rawValue }
 
     var displayName: String {
         switch self {

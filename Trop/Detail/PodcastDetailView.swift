@@ -431,20 +431,16 @@ struct PodcastDetailView: View {
     }
 
     var body: some View {
-        ScrollView {
-            DetailStateContainer(
-                isLoading: viewModel.isLoading,
-                error: viewModel.error,
-                data: viewModel.podcast,
-                noun: "podcast",
-                emptyIcon: "antenna.radiowaves.left.and.right",
-                retry: { await viewModel.load() }
-            ) { podcast in
-                podcastContent(for: podcast)
-            }
+        DetailStateContainer(
+            isLoading: viewModel.isLoading,
+            error: viewModel.error,
+            data: viewModel.podcast,
+            noun: "podcast",
+            emptyIcon: "antenna.radiowaves.left.and.right",
+            retry: { await viewModel.load() }
+        ) { podcast in
+            podcastContent(for: podcast)
         }
-        .scrollDisabled(viewModel.isLoading || viewModel.error != nil || viewModel.podcast == nil)
-        .miniPlayerTracksScroll()
         .detailBarTitle(viewModel.podcast?.title ?? "")
         .navigationBarTitleDisplayMode(.inline)
         .task {
@@ -462,12 +458,7 @@ struct PodcastDetailView: View {
             CurrentEpisodeCard(episodes: podcast.episodes) { playEpisode($0, in: podcast) }
 
             if podcast.episodes.isEmpty {
-                VStack(spacing: 8) {
-                    Spacer().frame(height: 40)
-                    Text("No episodes found")
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-                }
+                DetailEmptyLabel(text: "No episodes found")
             } else {
                 // Episodes come newest first.
                 episodeRow("Latest", podcast.episodes.prefix(Self.latestCount), in: podcast)
@@ -540,12 +531,7 @@ struct PodcastDetailView: View {
                     .padding(.horizontal, DesignTokens.screenHPadding + 4)
             }
         }
-        .padding(.vertical, 16)
-        .frame(maxWidth: .infinity)
-        // Same backdrop as the playlist and album headers.
-        .background(alignment: .top) {
-            BlurredArtworkBackdrop(url: podcast.thumbnailUrl)
-        }
+        .detailHeaderBackdrop(url: podcast.thumbnailUrl)
     }
 
     private func kindLine(for podcast: PodcastDetailInfo) -> String {

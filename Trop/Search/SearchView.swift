@@ -24,17 +24,12 @@ struct SearchView: View {
     /// Shared by this tab's covers and the pages they open, for the zoom transition.
     @Namespace private var coverZoom
 
-    private let accountState = AccountState.shared
-
     var body: some View {
         NavigationStack(path: $router.searchPath) {
             VStack(spacing: 0) {
                 TabHeaderView(
                     title: "Search",
-                    accountIsLoggedIn: accountState.isLoggedIn,
-                    accountImageUrl: accountState.accountImageUrl,
-                    onHistory: { router.searchPath.append(DetailRoute.history) },
-                    onAccount: { router.searchPath.append(DetailRoute.settings) },
+                    path: $router.searchPath,
                     incognito: $settings.isIncognito
                 )
 

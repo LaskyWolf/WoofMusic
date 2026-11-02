@@ -22,13 +22,7 @@ struct HomeScreenView: View {
     var body: some View {
         NavigationStack(path: $router.homePath) {
             VStack(spacing: 0) {
-                TabHeaderView(
-                    title: "Home",
-                    accountIsLoggedIn: account.isLoggedIn,
-                    accountImageUrl: account.accountImageUrl,
-                    onHistory: { router.homePath.append(DetailRoute.history) },
-                    onAccount: { router.homePath.append(DetailRoute.settings) }
-                )
+                TabHeaderView(title: "Home", path: $router.homePath)
 
                 Group {
                     if viewModel.isLoading {

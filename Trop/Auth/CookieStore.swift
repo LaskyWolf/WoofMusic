@@ -9,15 +9,11 @@ import Foundation
 
 // High-level session wrapper — delegates persistence to KeychainStorage
 actor CookieStore {
-  private let keychain: KeychainStorage
-
-  init(keychain: KeychainStorage = KeychainStorage()) {
-    self.keychain = keychain
-  }
+  private let keychain = KeychainStorage()
 
     func cookies() async -> [String: String] {
         guard let state = await state(), let cookie = state.cookie, !cookie.isEmpty else { return [:] }
-        return parseCookieString(cookie)
+        return CookieParser.parse(cookie)
     }
 
     func sapisid() async -> String? {
@@ -70,8 +66,4 @@ actor CookieStore {
     func clear() {
         try? keychain.clear()
     }
-
-  private func parseCookieString(_ cookieString: String) -> [String: String] {
-    CookieParser.parse(cookieString)
-  }
 }

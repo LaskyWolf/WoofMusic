@@ -16,18 +16,10 @@ struct ExploreView: View {
     /// Shared by this tab's covers and the pages they open, for the zoom transition.
     @Namespace private var coverZoom
 
-    private let accountState = AccountState.shared
-
     var body: some View {
         NavigationStack(path: $router.explorePath) {
             VStack(spacing: 0) {
-                TabHeaderView(
-                    title: "Explore",
-                    accountIsLoggedIn: accountState.isLoggedIn,
-                    accountImageUrl: accountState.accountImageUrl,
-                    onHistory: { router.explorePath.append(DetailRoute.history) },
-                    onAccount: { router.explorePath.append(DetailRoute.settings) }
-                )
+                TabHeaderView(title: "Explore", path: $router.explorePath)
 
                 content
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)

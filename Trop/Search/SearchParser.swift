@@ -193,34 +193,38 @@ enum SearchParser {
         let musicConfig = supportedConfigs?["browseEndpointContextMusicConfig"] as? [String: Any]
         let pageType = musicConfig?["pageType"] as? String
 
+        let album = AlbumItem(
+            browseId: browseId,
+            title: title,
+            artists: [],
+            year: nil,
+            thumbnailUrl: thumbnailUrl,
+            playlistId: nil,
+            isExplicit: false
+        )
+        let artist = ArtistItem(
+            browseId: browseId,
+            name: title,
+            thumbnailUrl: thumbnailUrl,
+            isSubscribed: false
+        )
+        let playlist = PlaylistItem(
+            id: browseId.replacingOccurrences(of: "VL", with: ""),
+            title: title,
+            author: nil,
+            thumbnailUrl: thumbnailUrl,
+            songCount: nil
+        )
+
         switch pageType {
         case "MUSIC_PAGE_TYPE_ALBUM", "MUSIC_PAGE_TYPE_AUDIOBOOK":
-            return .album(AlbumItem(
-                browseId: browseId,
-                title: title,
-                artists: [],
-                year: nil,
-                thumbnailUrl: thumbnailUrl,
-                playlistId: nil,
-                isExplicit: false
-            ))
+            return .album(album)
 
         case "MUSIC_PAGE_TYPE_ARTIST", "MUSIC_PAGE_TYPE_USER_CHANNEL":
-            return .artist(ArtistItem(
-                browseId: browseId,
-                name: title,
-                thumbnailUrl: thumbnailUrl,
-                isSubscribed: false
-            ))
+            return .artist(artist)
 
         case "MUSIC_PAGE_TYPE_PLAYLIST":
-            return .playlist(PlaylistItem(
-                id: browseId.replacingOccurrences(of: "VL", with: ""),
-                title: title,
-                author: nil,
-                thumbnailUrl: thumbnailUrl,
-                songCount: nil
-            ))
+            return .playlist(playlist)
 
         case "MUSIC_PAGE_TYPE_PODCAST_SHOW_DETAIL_PAGE":
             return .podcast(PodcastItem(
@@ -232,30 +236,11 @@ enum SearchParser {
 
         default:
             if browseId.hasPrefix("VL") {
-                return .playlist(PlaylistItem(
-                    id: browseId.replacingOccurrences(of: "VL", with: ""),
-                    title: title,
-                    author: nil,
-                    thumbnailUrl: thumbnailUrl,
-                    songCount: nil
-                ))
+                return .playlist(playlist)
             } else if browseId.hasPrefix("UC") || browseId.hasPrefix("MPCH") {
-                return .artist(ArtistItem(
-                    browseId: browseId,
-                    name: title,
-                    thumbnailUrl: thumbnailUrl,
-                    isSubscribed: false
-                ))
+                return .artist(artist)
             } else if browseId.hasPrefix("MPREb_") {
-                return .album(AlbumItem(
-                    browseId: browseId,
-                    title: title,
-                    artists: [],
-                    year: nil,
-                    thumbnailUrl: thumbnailUrl,
-                    playlistId: nil,
-                    isExplicit: false
-                ))
+                return .album(album)
             }
 
             return nil

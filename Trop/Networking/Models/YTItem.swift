@@ -99,35 +99,15 @@ enum YTItem {
 
         // Determine isEpisode
         let isNonMusicAudioTrack = (pageType == "MUSIC_PAGE_TYPE_NON_MUSIC_AUDIO_TRACK_PAGE")
-        var isFirstSubtitleEpisode = false
-        if flexColumns.count > 1 {
-            let runs = flexTextRuns(flexColumns, index: 1)
-            if let firstRun = runs.first, let text = firstRun["text"] as? String, text.trimmingCharacters(in: .whitespaces) == "Episode" {
-                isFirstSubtitleEpisode = true
-            }
-        }
-        var hasPodcastLink = false
-        if flexColumns.count > 1 {
-            let runs = flexTextRuns(flexColumns, index: 1)
-            for run in runs {
-                if let nav = run["navigationEndpoint"] as? [String: Any],
-                   let browse = nav["browseEndpoint"] as? [String: Any],
-                   let configs = browse["browseEndpointContextSupportedConfigs"] as? [String: Any],
-                   let musicConfig = configs["browseEndpointContextMusicConfig"] as? [String: Any],
-                   let pType = musicConfig["pageType"] as? String,
-                   pType == "MUSIC_PAGE_TYPE_PODCAST_SHOW_DETAIL_PAGE" {
-                    hasPodcastLink = true
-                    break
-                }
-            }
-        }
+        let subtitleRuns = flexTextRuns(flexColumns, index: 1)
+        let isFirstSubtitleEpisode = (subtitleRuns.first?["text"] as? String)?.trimmingCharacters(in: .whitespaces) == "Episode"
+        let hasPodcastLink = subtitleRuns.contains { HomePageParser.extractPageType($0) == "MUSIC_PAGE_TYPE_PODCAST_SHOW_DETAIL_PAGE" }
         let isEpisode = isNonMusicAudioTrack || isFirstSubtitleEpisode || hasPodcastLink
 
         if isEpisode {
             let videoId = extractVideoId(renderer) ?? ""
             if !videoId.isEmpty {
-                let runs = flexTextRuns(flexColumns, index: 1)
-                let segments = splitRunsBySeparator(runs)
+                let segments = splitRunsBySeparator(subtitleRuns)
                 var podcastName: String?
                 if let lastSeg = segments.last {
                     podcastName = lastSeg.joined(separator: " ")

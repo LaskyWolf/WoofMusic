@@ -70,10 +70,7 @@ struct LibraryView: View {
             VStack(spacing: 0) {
                 TabHeaderView(
                     title: "Library",
-                    accountIsLoggedIn: accountState.isLoggedIn,
-                    accountImageUrl: accountState.accountImageUrl,
-                    onHistory: { router.libraryPath.append(DetailRoute.history) },
-                    onAccount: { router.libraryPath.append(DetailRoute.settings) },
+                    path: $router.libraryPath,
                     onAdd: { showCreateDialog = true }
                 )
 

@@ -63,27 +63,13 @@ struct SettingsView: View {
         .miniPlayerTracksScroll()
     }
 
-    private var avatar: some View {
-        Group {
-            if account.isLoggedIn {
-                AsyncImageView(url: account.accountImageUrl)
-            } else {
-                Image(systemName: "person.crop.circle.fill")
-                    .resizable()
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .frame(width: 48, height: 48)
-        .clipShape(Circle())
-    }
-
     /// Opens the profile: sign in or out, the picture, Woof Recap and badges.
     private var accountRow: some View {
         NavigationLink {
             ProfileView()
         } label: {
             HStack(spacing: 14) {
-                avatar
+                AccountAvatar(size: 48)
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(account.isLoggedIn ? account.accountName : "Not Signed In")
