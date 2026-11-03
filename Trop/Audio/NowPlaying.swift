@@ -97,6 +97,10 @@ final class NowPlaying {
     private var isResolvingNext = false
     /// Timestamps of the last mid-play failure per videoId, to bound retries.
     private var lastFailureAt: [String: Date] = [:]
+    /// Position the progress timer last saw move, and since when it stands still.
+    private var stallWatch: (position: TimeInterval, since: Date)?
+    /// Seconds a playing song may stand still before its stream is reloaded.
+    private static let stallTimeout: TimeInterval = 8
 
     private static let queueKey = "nowPlaying.queue"
     private static let queueIndexKey = "nowPlaying.queueIndex"
@@ -719,6 +723,7 @@ final class NowPlaying {
     private func timerTick() {
         // Also writes currentTime and duration.
         PlayerController.shared.updateNowPlayingProgress(onlyIfDrifted: true)
+        checkForStall()
         Crossfade.shared.tick()
         SponsorBlock.shared.tick()
         ListenBrainz.shared.tick()
@@ -735,6 +740,24 @@ final class NowPlaying {
     private func stopTimer() {
         timer?.invalidate()
         timer = nil
+        stallWatch = nil
+    }
+
+    /// A song that should play but stopped moving (a stream that stopped
+    /// sending data): reload it from where it stands.
+    private func checkForStall() {
+        guard !isLoadingTrack, !PlayerController.shared.isCrossfading, let videoId else {
+            stallWatch = nil
+            return
+        }
+        guard let watch = stallWatch, watch.position == currentTime else {
+            stallWatch = (currentTime, Date())
+            return
+        }
+        guard Date().timeIntervalSince(watch.since) >= Self.stallTimeout else { return }
+        stallWatch = nil
+        Log.nowPlaying.notice("Playback stalled for \(Int(Self.stallTimeout))s, reloading \(videoId)")
+        recoverFromPlaybackFailure(videoId: videoId)
     }
 
     private func resetDominantColors() {

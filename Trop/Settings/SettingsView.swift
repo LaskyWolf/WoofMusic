@@ -48,11 +48,14 @@ struct SettingsView: View {
                 SettingsNavigationRow("Integrations", icon: "puzzlepiece.extension") {
                     IntegrationsSettingsView()
                 }
-                // Hidden: a long press opens Diagnostics.
-                .simultaneousGesture(LongPressGesture(minimumDuration: 0.8).onEnded { _ in showsDiagnostics = true })
-                .sensoryFeedback(.impact(weight: .medium), trigger: showsDiagnostics) { _, isShown in isShown }
             } header: {
                 Text("Integrations")
+            }
+
+            Section {
+                AppUpdateRow()
+            } header: {
+                Text("Updates")
             }
         }
         .listSectionSpacing(.compact)
@@ -83,5 +86,8 @@ struct SettingsView: View {
             }
             .padding(.vertical, 4)
         }
+        // Hidden: a long press opens Diagnostics.
+        .simultaneousGesture(LongPressGesture(minimumDuration: 0.8).onEnded { _ in showsDiagnostics = true })
+        .sensoryFeedback(.impact(weight: .medium), trigger: showsDiagnostics) { _, isShown in isShown }
     }
 }

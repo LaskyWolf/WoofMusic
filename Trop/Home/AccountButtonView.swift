@@ -21,9 +21,24 @@ struct AccountButtonView: View {
                 .frame(width: 36, height: 36)
                 .glassEffect(.regular.interactive(), in: .circle)
                 .contentShape(Circle())
+                .overlay(alignment: .topTrailing) {
+                    if updater.hasUpdate {
+                        // Red like an iOS badge; the ring keeps it apart from the glass.
+                        Circle()
+                            .fill(.red)
+                            .frame(width: 10, height: 10)
+                            .overlay(Circle().stroke(Color(.systemBackground), lineWidth: 2))
+                            .transition(.scale.combined(with: .opacity))
+                    }
+                }
+                .animation(.spring(duration: 0.35, bounce: 0.4), value: updater.hasUpdate)
         }
         .buttonStyle(.plain)
+        .accessibilityValue(updater.hasUpdate ? "Update available" : "")
+        .task { await updater.check() }
     }
+
+    private var updater: AppUpdater { .shared }
 
     @ViewBuilder
     private var avatar: some View {
