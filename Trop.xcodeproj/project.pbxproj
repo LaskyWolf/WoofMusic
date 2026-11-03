@@ -29,6 +29,7 @@
 		14B578E52FF20DCF006B3990 /* Marquee in Frameworks */ = {isa = PBXBuildFile; productRef = 14B578E42FF20DCF006B3990 /* Marquee */; };
 		14B578F32FF21002006B3990 /* SwiftyTube in Frameworks */ = {isa = PBXBuildFile; productRef = 14B578F22FF21001006B3990 /* SwiftyTube */; };
 		3112BB2A415EE13CE091285B /* WoofWidgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = B70244B26F0C866E3505D33A /* WoofWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		5A11E0010000000000000001 /* WoofShare.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 5A11E0010000000000000003 /* WoofShare.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -38,6 +39,13 @@
 			proxyType = 1;
 			remoteGlobalIDString = 7E6B3BA40E2DAAFEEB1FCC15;
 			remoteInfo = WoofWidgets;
+		};
+		5A11E0010000000000000002 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 14B576272FF190EF006B3990 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 5A11E0010000000000000007;
+			remoteInfo = WoofShare;
 		};
 /* End PBXContainerItemProxy section */
 
@@ -67,6 +75,7 @@
 			dstSubfolderSpec = 13;
 			files = (
 				3112BB2A415EE13CE091285B /* WoofWidgets.appex in Embed Foundation Extensions */,
+				5A11E0010000000000000001 /* WoofShare.appex in Embed Foundation Extensions */,
 			);
 			name = "Embed Foundation Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -84,6 +93,7 @@
 		144200083040C1BE0032F8CD /* ffmpegkit.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = ffmpegkit.xcframework; path = "build/ffmpeg-kit-xcframeworks/ffmpegkit.xcframework"; sourceTree = SOURCE_ROOT; };
 		14B5762F2FF190EF006B3990 /* Music.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Music.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		B70244B26F0C866E3505D33A /* WoofWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = WoofWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		5A11E0010000000000000003 /* WoofShare.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = WoofShare.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -103,6 +113,13 @@
 			);
 			target = 7E6B3BA40E2DAAFEEB1FCC15 /* WoofWidgets */;
 		};
+		5A11E0010000000000000004 /* Exceptions for "WoofShare" folder in "WoofShare" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 5A11E0010000000000000007 /* WoofShare */;
+		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -120,6 +137,14 @@
 				A5FD4F1ABA479726E83C6DFF /* Exceptions for "WoofWidgets" folder in "WoofWidgets" target */,
 			);
 			path = WoofWidgets;
+			sourceTree = "<group>";
+		};
+		5A11E0010000000000000005 /* WoofShare */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				5A11E0010000000000000004 /* Exceptions for "WoofShare" folder in "WoofShare" target */,
+			);
+			path = WoofShare;
 			sourceTree = "<group>";
 		};
 		7EC20224E35592083EF590B9 /* Shared */ = {
@@ -157,6 +182,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		5A11E0010000000000000006 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -181,6 +213,7 @@
 				14B576312FF190EF006B3990 /* Trop */,
 				7EC20224E35592083EF590B9 /* Shared */,
 				418A763576E5C398554A52DE /* WoofWidgets */,
+				5A11E0010000000000000005 /* WoofShare */,
 				144200003040C1BE0032F8CD /* Frameworks */,
 				14B576302FF190EF006B3990 /* Products */,
 			);
@@ -191,6 +224,7 @@
 			children = (
 				14B5762F2FF190EF006B3990 /* Music.app */,
 				B70244B26F0C866E3505D33A /* WoofWidgets.appex */,
+				5A11E0010000000000000003 /* WoofShare.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -214,6 +248,7 @@
 			);
 			dependencies = (
 				F8BBDB284F7A118645B984F0 /* PBXTargetDependency */,
+				5A11E001000000000000000A /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				14B576312FF190EF006B3990 /* Trop */,
@@ -254,6 +289,28 @@
 			productReference = B70244B26F0C866E3505D33A /* WoofWidgets.appex */;
 			productType = "com.apple.product-type.app-extension";
 		};
+		5A11E0010000000000000007 /* WoofShare */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 5A11E001000000000000000D /* Build configuration list for PBXNativeTarget "WoofShare" */;
+			buildPhases = (
+				5A11E0010000000000000009 /* Sources */,
+				5A11E0010000000000000006 /* Frameworks */,
+				5A11E0010000000000000008 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				5A11E0010000000000000005 /* WoofShare */,
+			);
+			name = WoofShare;
+			packageProductDependencies = (
+			);
+			productName = WoofShare;
+			productReference = 5A11E0010000000000000003 /* WoofShare.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -268,6 +325,9 @@
 						CreatedOnToolsVersion = 26.3;
 					};
 					7E6B3BA40E2DAAFEEB1FCC15 = {
+						CreatedOnToolsVersion = 26.3;
+					};
+					5A11E0010000000000000007 = {
 						CreatedOnToolsVersion = 26.3;
 					};
 				};
@@ -295,6 +355,7 @@
 			targets = (
 				14B5762E2FF190EF006B3990 /* Trop */,
 				7E6B3BA40E2DAAFEEB1FCC15 /* WoofWidgets */,
+				5A11E0010000000000000007 /* WoofShare */,
 			);
 		};
 /* End PBXProject section */
@@ -308,6 +369,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		592204B814B3CF42EECA87B0 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		5A11E0010000000000000008 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -373,6 +441,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		5A11E0010000000000000009 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -380,6 +455,11 @@
 			isa = PBXTargetDependency;
 			target = 7E6B3BA40E2DAAFEEB1FCC15 /* WoofWidgets */;
 			targetProxy = B4E1BB83753DE556F4ED597F /* PBXContainerItemProxy */;
+		};
+		5A11E001000000000000000A /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 5A11E0010000000000000007 /* WoofShare */;
+			targetProxy = 5A11E0010000000000000002 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -639,6 +719,56 @@
 			};
 			name = Release;
 		};
+		5A11E001000000000000000B /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = WoofShare/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "Woof Music";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.5;
+				PRODUCT_BUNDLE_IDENTIFIER = com.laskywolf.Music.WoofShare;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		5A11E001000000000000000C /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = WoofShare/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "Woof Music";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.5;
+				PRODUCT_BUNDLE_IDENTIFIER = com.laskywolf.Music.WoofShare;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -665,6 +795,15 @@
 			buildConfigurations = (
 				DC5D9AF5893745D7AF77A419 /* Debug */,
 				4F3BD71562CB7629A413AF9B /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		5A11E001000000000000000D /* Build configuration list for PBXNativeTarget "WoofShare" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				5A11E001000000000000000B /* Debug */,
+				5A11E001000000000000000C /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

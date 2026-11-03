@@ -296,10 +296,14 @@ fi
 sign_with_entitlements() {
     local app="$PAYLOAD_DIR/$APPLICATION_NAME.app"
     local widget="$app/PlugIns/WoofWidgets.appex"
+    local share="$app/PlugIns/WoofShare.appex"
     find "$app/Frameworks" -maxdepth 1 \( -name "*.framework" -o -name "*.dylib" \) \
         -exec codesign -f -s - {} \; 2>/dev/null || true
     if [ -d "$widget" ]; then
         codesign -f -s - --entitlements "$WORKING_LOCATION/WoofWidgets/WoofWidgets.entitlements" "$widget" || return 1
+    fi
+    if [ -d "$share" ]; then
+        codesign -f -s - "$share" || return 1
     fi
     codesign -f -s - --entitlements "$WORKING_LOCATION/Trop/Trop.entitlements" "$app"
 }
