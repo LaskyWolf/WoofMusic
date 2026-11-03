@@ -53,6 +53,8 @@ struct ProfileView: View {
                 }
             }
 
+            AppUpdateSection()
+
             Section {
                 recapRow("This Month's Recap", icon: "sparkles", interval: RecapService.monthToDate())
                 if lastMonthHasHistory {

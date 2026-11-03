@@ -23,12 +23,15 @@ final class AppUpdater {
     private(set) var status: Status = .idle
     private var lastCheck: Date?
 
-    var hasUpdate: Bool {
-        if case .available = status { return true }
-        return false
+    var availableVersion: String? {
+        if case .available(let version, _) = status { return version }
+        return nil
     }
 
+    var hasUpdate: Bool { availableVersion != nil }
+
     static let installedVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0"
+    static let installedBuild = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "0"
     private static let latestReleaseURL = URL(string: "https://api.github.com/repos/LaskyWolf/WoofMusic/releases/latest")!
     /// Opening the app often does not ask GitHub every time.
     private static let recheckInterval: TimeInterval = 6 * 60 * 60
@@ -71,67 +74,45 @@ final class AppUpdater {
     }
 }
 
-/// The Updates row in Settings: the installed version and what GitHub has.
-struct AppUpdateRow: View {
+/// The App section of the profile: the installed version and what GitHub has.
+struct AppUpdateSection: View {
     private let updater = AppUpdater.shared
     @Environment(SettingsStore.self) private var settings
-    @Environment(\.openURL) private var openURL
 
     var body: some View {
-        Group {
+        Section {
+            LabeledContent("Version", value: "\(AppUpdater.installedVersion) (\(AppUpdater.installedBuild))")
             if case .available(let version, let page) = updater.status {
-                Button { openURL(page) } label: {
-                    row(detail: "Version \(version) is out") {
-                        Image(systemName: "arrow.up.right")
-                            .font(.footnote.weight(.semibold))
-                            .foregroundStyle(settings.accentColor)
-                    }
+                Link(destination: page) {
+                    Label("Woof Music \(version) Is Available", systemImage: "arrow.down.app")
                 }
-                .accessibilityHint("Opens the release on GitHub")
             } else {
                 Button { Task { await updater.check(force: true) } } label: {
-                    row(detail: detail) {
-                        if updater.status == .checking {
-                            ProgressView()
-                        } else {
-                            Text("Check Now")
-                                .font(.subheadline)
-                                .foregroundStyle(settings.accentColor)
+                    HStack {
+                        Label("Check for Updates", systemImage: "arrow.triangle.2.circlepath")
+                        Spacer(minLength: 8)
+                        switch updater.status {
+                        case .checking: ProgressView()
+                        case .upToDate: statusText("Up to Date")
+                        case .failed: statusText("GitHub can't be reached right now.")
+                        case .idle, .available: EmptyView()
                         }
                     }
                 }
                 .disabled(updater.status == .checking)
             }
+        } header: {
+            Text("App")
+        } footer: {
+            Text("Compares this version with the newest release on GitHub.")
         }
-        .tint(.primary)
+        .tint(settings.accentColor)
         .task { await updater.check() }
     }
 
-    private var detail: String {
-        switch updater.status {
-        case .idle, .checking: return "Checking GitHub…"
-        case .upToDate: return "Up to date"
-        case .failed: return "Couldn't reach GitHub"
-        case .available: return ""
-        }
-    }
-
-    private func row<Trailing: View>(detail: String, @ViewBuilder trailing: () -> Trailing) -> some View {
-        HStack {
-            Label {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Woof Music \(AppUpdater.installedVersion)")
-                    Text(detail)
-                        .font(.caption)
-                        .foregroundStyle(updater.hasUpdate ? AnyShapeStyle(settings.accentColor) : AnyShapeStyle(.secondary))
-                }
-            } icon: {
-                Image(systemName: updater.hasUpdate ? "arrow.down.circle.fill" : "arrow.triangle.2.circlepath")
-                    .foregroundStyle(settings.accentColor)
-            }
-            Spacer()
-            trailing()
-        }
-        .contentShape(Rectangle())
+    private func statusText(_ text: String) -> some View {
+        Text(text)
+            .font(.footnote)
+            .foregroundStyle(.secondary)
     }
 }
