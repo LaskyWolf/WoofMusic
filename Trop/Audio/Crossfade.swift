@@ -84,9 +84,11 @@ final class Crossfade {
     /// start of the incoming one.
     private static let tailSeconds = 60.0
     private static let headSeconds = 45.0
-    /// How long before the end analysis starts at the latest, and before the
-    /// transition the next song is loaded so it is buffered in time.
-    private static let planLead = 80.0
+    /// How far into a song analysis starts: reading the end of a stream over
+    /// the network can take minutes, the analysis itself well under a second.
+    /// Late enough that a song skipped at once costs no download.
+    private static let planDelay = 10.0
+    /// How long before the transition the next song is loaded so it is buffered in time.
     private static let prepareLead = 12.0
     /// Time to ease a changed tempo back to normal after the transition.
     private static let speedEaseSeconds = 8.0
@@ -134,9 +136,7 @@ final class Crossfade {
 
         switch phase {
         case .idle:
-            // From halfway, or `planLead` before the end on a short song: the
-            // network decode and analysis can take most of a minute.
-            guard np.duration - position < max(Self.planLead, np.duration / 2), failedFor != current else { return }
+            guard position >= Self.planDelay, failedFor != current else { return }
             phase = .planning
             let token = planToken
             let duration = np.duration
