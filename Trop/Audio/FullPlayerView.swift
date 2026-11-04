@@ -58,6 +58,8 @@ struct FullPlayerView: View {
     /// The controls row and the secondary row, for the Radio Bloom. Boxes, like `coverFrame`.
     @State private var controlsFrame = CoverFrameBox()
     @State private var secondaryFrame = CoverFrameBox()
+    /// The cover pager's frame, so the skip buttons slide it one page.
+    @State private var pagerFrame = CoverFrameBox()
     @State private var karaokeReplacesPlay = false
     @State private var isLandscape = false
     @State private var radioReplacesPlay = false
@@ -330,9 +332,9 @@ struct FullPlayerView: View {
             isPlaying: np.isPlaying,
             hasPrevious: np.hasPrevious,
             hasNext: np.hasNext,
-            onPrevious: { np.playPrevious() },
+            onPrevious: { skip(.previous) },
             onPlayPause: { player.togglePlayPause() },
-            onNext: { np.playNext() },
+            onNext: { skip(.next) },
             hidesPlayPause: karaokeReplacesPlay || radioReplacesPlay
         )
         // The karaoke mascot takes the play button's place.
@@ -409,6 +411,17 @@ struct FullPlayerView: View {
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { pullDistance = 0 }
             }
         }
+    }
+
+    /// The skip buttons slide the covers like a swipe. A tap during a slide,
+    /// or with the cover off screen, changes song at once.
+    private func skip(_ direction: TrackSwipe.Direction) {
+        let width = pagerFrame.rect.width
+        guard width > 0, !isCommittingSwipe, !showQueue, !showLyrics else {
+            direction == .next ? np.playNext() : np.playPrevious()
+            return
+        }
+        TrackSwipe.commit(direction, pageWidth: width, offset: $artworkDragOffset, isCommitting: $isCommittingSwipe)
     }
 
     /// The cover follows the finger, like the mini player's pages, and the
@@ -586,8 +599,7 @@ struct FullPlayerView: View {
                 artworkPage(for: current, size: pageSize)
                     // The full-screen copy lifts off from here; Reduce Motion fades it in over this one.
                     .opacity(showsFullscreenCover && !reduceMotion ? 0 : 1)
-                    // A song change the user didn't swipe (AutoMix, a crossfade, the
-                    // skip buttons) dissolves the old cover into the new one.
+                    // AutoMix and crossfades dissolve the old cover into the new one.
                     .id(current.videoId)
                     .transition(.opacity)
             }
@@ -596,8 +608,9 @@ struct FullPlayerView: View {
                     .offset(x: pageSize.width)
             }
         }
-        .animation(.easeInOut(duration: 0.8), value: np.currentSong?.videoId)
+        .animation(np.coverDissolves ? .easeInOut(duration: 0.8) : nil, value: np.currentSong?.videoId)
         .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { page in
+            pagerFrame.rect = page
             if showsCardCover {
                 let side = Self.cardCoverSide(in: page.size)
                 coverFrame.rect = CGRect(x: page.midX - side / 2, y: page.midY - side / 2, width: side, height: side)

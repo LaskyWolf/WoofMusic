@@ -22,6 +22,9 @@ final class NowPlaying {
     var albumTitle = ""
     var videoId: String?
     var artists: [YTArtist] = []
+    /// True when the song changed through a crossfade or AutoMix: the player
+    /// dissolves the old cover into the new one instead of sliding.
+    var coverDissolves = false
     /// The progress timer runs only while playing; pause and seek publish the
     /// position themselves.
     var isPlaying = false {
@@ -316,6 +319,8 @@ final class NowPlaying {
         guard let index = queueSongs.indices.first(where: { $0 > queueIndex && queueSongs[$0].videoId == videoId }) else { return }
         queueIndex = index
         update(with: queueSongs[queueIndex])
+        // After `update`, which clears it: only a mixed transition dissolves the cover.
+        coverDissolves = true
         isPlaying = true
         persistQueueState()
     }
@@ -367,6 +372,7 @@ final class NowPlaying {
     }
 
     func update(title: String, artist: String?, videoId: String, album: String? = nil, artists: [YTArtist] = [], thumbnailUrl: String? = nil) {
+        coverDissolves = false
         self.title = title
         self.artists = artists
         self.artist = cleanArtist(artist ?? "")

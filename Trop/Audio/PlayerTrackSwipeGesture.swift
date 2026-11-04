@@ -80,14 +80,9 @@ enum TrackSwipe {
         withAnimation(.spring(duration: 0.3, bounce: 0), completionCriteria: .logicallyComplete) {
             offset.wrappedValue = direction == .next ? -pageWidth : pageWidth
         } completion: {
-            // The swipe already slid the new cover into place: no dissolve on top.
-            var instant = Transaction()
-            instant.disablesAnimations = true
-            withTransaction(instant) {
-                switch direction {
-                case .next: NowPlaying.shared.playNext()
-                case .previous: NowPlaying.shared.playPrevious()
-                }
+            switch direction {
+            case .next: NowPlaying.shared.playNext()
+            case .previous: NowPlaying.shared.playPrevious()
             }
             withAnimation(nil) { offset.wrappedValue = 0 }
             isCommitting.wrappedValue = false
