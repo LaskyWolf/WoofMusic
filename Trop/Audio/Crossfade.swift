@@ -34,7 +34,25 @@ final class Crossfade {
         let style: MixPlanner.Style
         /// The incoming song's beat, which its echo filter is built for.
         let echoDelay: Double?
+        /// Length of the outgoing song when the plan was made.
+        let duration: Double
+        /// Why an AutoMix became a crossfade, nil for a mix or with AutoMix off.
+        let fallback: String?
     }
+
+    /// A transition and how it went, for Diagnostics.
+    struct Transition: Identifiable {
+        let id = UUID()
+        let date = Date()
+        let plan: String
+        var outcome: String
+    }
+
+    /// The last few transitions, newest first.
+    private(set) var history: [Transition] = []
+    private static let historyLength = 5
+    /// Seconds a plan needs before its start to load the next song.
+    private static let minLead = 3.0
 
     private enum Phase { case idle, planning, planned, prepared, fading }
 
@@ -99,17 +117,17 @@ final class Crossfade {
         }
         if phase == .fading {
             // Play Next or a reorder changed what follows: the mix can still be called off.
-            if !promoted, let plan, np.nextSong?.videoId != plan.toId { reset() }
+            if !promoted, let plan, np.nextSong?.videoId != plan.toId { reset(reason: "queue changed") }
             return
         }
         guard isEnabled, np.hasNext, !np.isRepeatOn, !SleepTimer.shared.stopsAtSongEnd,
               let current = np.videoId, np.duration > 30, np.duration < 600 else {
-            if phase != .idle { reset() }
+            if phase != .idle { reset(reason: "transitions turned off, repeat, sleep timer or no next song") }
             return
         }
         let next = np.queueSongs[np.queueIndex + 1].videoId
         if let plan, plan.fromId != current || plan.toId != next {
-            reset()
+            reset(reason: "queue changed")
         }
         guard np.isPlaying else { return }
         let position = np.currentTime
@@ -126,7 +144,14 @@ final class Crossfade {
             phase = .prepared
             Task { await loadIncoming(plan) }
         case .prepared:
-            guard let plan, incomingReady, position >= plan.mix.fadeStart - 0.4 else { return }
+            guard let plan else { return }
+            // The next song is still loading past the start: a mix begun late
+            // would jump straight to its end. Let the song end on its own.
+            if !incomingReady, position > plan.mix.fadeStart + 1 {
+                fail(current, "next song not loaded \(Int(position - plan.mix.fadeStart))s after the mix start")
+                return
+            }
+            guard incomingReady, position >= plan.mix.fadeStart - 0.4 else { return }
             phase = .fading
             // The tick is coarse; sleep the rest so the start lands on the beat.
             let wait = max(0, plan.mix.fadeStart - player.currentTime)
@@ -146,7 +171,8 @@ final class Crossfade {
 
     /// Cancels any planned or running transition. Called when a new song is
     /// loaded the normal way.
-    func reset() {
+    func reset(reason: String = "cancelled") {
+        if phase != .idle { outcome("cancelled: \(reason)") }
         fadeTask?.cancel()
         speedTask?.cancel()
         planTask?.cancel()
@@ -178,11 +204,32 @@ final class Crossfade {
         fadeTask?.cancel()
         guard outgoing != nil else {
             // The transition was scheduled but hadn't started; keep the song going.
-            reset()
+            reset(reason: "pause, seek or speed change")
             return
         }
         if !promoted { promote() }
+        outcome("cut short by a pause, seek or speed change")
         complete()
+    }
+
+    /// Gives up on the transition for `songId`: the song ends on its own and
+    /// the next one loads the normal way.
+    private func fail(_ songId: String, _ reason: String) {
+        Log.player.warning("Transition failed: \(reason); the song ends normally")
+        outcome("failed: \(reason)")
+        failedFor = songId
+        reset()
+    }
+
+    private func record(_ plan: String, outcome: String = "running") {
+        history.insert(Transition(plan: plan, outcome: outcome), at: 0)
+        history = Array(history.prefix(Self.historyLength))
+    }
+
+    /// How the transition in flight ended. Only the first outcome counts.
+    private func outcome(_ text: String) {
+        guard history.first?.outcome == "running" else { return }
+        history[0].outcome = text
     }
 
     // MARK: Deck events
@@ -194,10 +241,8 @@ final class Crossfade {
     }
 
     func deckFailed() {
-        guard phase == .prepared || (phase == .fading && !promoted) else { return }
-        Log.player.notice("Crossfade: next song failed to load, falling back to a normal transition")
-        failedFor = plan?.fromId
-        reset()
+        guard phase == .prepared || (phase == .fading && !promoted), let plan else { return }
+        fail(plan.fromId, "next song failed to load on the spare deck")
     }
 
     /// The decks have swapped: an ended song is the incoming one, shorter than the mix.
@@ -214,7 +259,12 @@ final class Crossfade {
 
     private func makePlan(from current: String, to next: String, duration: Double, token: UUID) async {
         guard let source = await Self.source(for: next), let outURL = player.activePath else {
-            if token == planToken { failedFor = current; phase = .idle }
+            if token == planToken {
+                record("Transition to \(next)", outcome: "failed: next song could not be resolved")
+                Log.player.warning("Transition plan failed: no source for the next song; the song ends normally")
+                failedFor = current
+                phase = .idle
+            }
             return
         }
         async let tail = Self.analyze(url: outURL, seconds: Self.tailSeconds, fromEnd: true)
@@ -223,9 +273,18 @@ final class Crossfade {
         guard token == planToken else { return }
 
         let tailStart = max(0, duration - Self.tailSeconds)
-        let autoMix = songSettings?.autoMix == true
+        let wantsAutoMix = songSettings?.autoMix == true
+        var autoMix = wantsAutoMix
             ? MixPlanner.autoMix(duration: duration, tail: outInfo, tailStart: tailStart, head: inInfo)
             : nil
+        var fallback = wantsAutoMix && autoMix == nil ? Self.autoMixBlocker(tail: outInfo, head: inInfo) : nil
+        // Analysis took too long (slow stream, first decode): a mix begun
+        // past its start would jump to its end. A plain fade may still fit.
+        let now = player.currentTime
+        if let late = autoMix, late.fadeStart < now + Self.minLead {
+            fallback = "analysis finished \(Int(now - late.fadeStart + Self.minLead))s too late for the mix"
+            autoMix = nil
+        }
         let mix = autoMix ?? MixPlanner.smart(
             duration: duration,
             fadeLength: songSettings?.seconds ?? 6,
@@ -233,6 +292,14 @@ final class Crossfade {
             tailStart: tailStart,
             head: inInfo
         )
+        if mix.fadeStart < now + Self.minLead {
+            record("Transition to \(next)", outcome: "failed: analysis finished too late, \(Int(duration - now))s left")
+            Log.player.warning("Transition plan too late: \(Int(duration - now))s left in the song; it ends normally")
+            failedFor = current
+            phase = .idle
+            return
+        }
+        if let fallback { Log.player.warning("AutoMix fell back to a crossfade: \(fallback)") }
         var style = MixPlanner.Style.blend
         if mix.isBeatMatched, player.hasEffectFilters {
             mixCount += 1
@@ -243,23 +310,33 @@ final class Crossfade {
         }
         let keys = "\(outInfo?.key?.camelot ?? "?") → \(inInfo?.key?.camelot ?? "?")"
         let keyMatch = mix.keysCompatible.map { $0 ? "compatible" : "clash" } ?? "unknown"
-        Log.player.info(
-            "Transition plan: \(mix.isBeatMatched ? "AutoMix \(mix.beats ?? 0) beats, style \(style.rawValue)," : "crossfade") " +
+        let summary = "\(mix.isBeatMatched ? "AutoMix \(mix.beats ?? 0) beats, style \(style.rawValue)," : "crossfade") " +
             "at \(mix.fadeStart)s for \(mix.fadeLength)s, next from \(mix.inStart)s, speed \(mix.speed), " +
             "bpm \(outInfo?.bpm ?? 0) → \(inInfo?.bpm ?? 0), key \(keys) (\(keyMatch)), " +
             "duck until \(mix.duckUntil.map { "\($0)" } ?? "none")"
-        )
+        Log.player.info("Transition plan: \(summary)")
+        record(summary)
         plan = Plan(
             fromId: current, toId: next, url: source.url, loudness: source.loudness,
-            mix: mix, style: style, echoDelay: inInfo?.beatPeriod
+            mix: mix, style: style, echoDelay: inInfo?.beatPeriod, duration: duration, fallback: fallback
         )
         phase = .planned
     }
 
+    /// Why `MixPlanner.autoMix` found no mix, for the log and Diagnostics.
+    private static func autoMixBlocker(tail: TrackAnalyzer.Result?, head: TrackAnalyzer.Result?) -> String {
+        guard let tail else { return "the outgoing song could not be analysed" }
+        guard let head else { return "the next song could not be analysed" }
+        guard let outBPM = tail.bpm else { return "no steady beat in the outgoing song" }
+        guard let inBPM = head.bpm else { return "no steady beat in the next song" }
+        let gap = abs(outBPM / inBPM - 1)
+        if gap > MixPlanner.maxTempoMatch { return "tempo gap of \(Int((gap * 100).rounded()))%" }
+        return "no room for a mix before the song goes quiet"
+    }
+
     private func loadIncoming(_ plan: Plan) async {
         guard let deck = await player.spareDeck() else {
-            failedFor = plan.fromId
-            reset()
+            fail(plan.fromId, "no spare deck for the next song")
             return
         }
         guard phase == .prepared, self.plan?.toId == plan.toId else { return }
@@ -322,8 +399,15 @@ final class Crossfade {
         // position so the mix keeps counting forward.
         var loopOffset: Double = 0
         var lastOutgoing: Double?
+        var style = plan.style
 
         while !Task.isCancelled {
+            // mpv dropped the effect filters mid-song: without them the dry
+            // cut and sweeps go nowhere, so the mix carries on by volume alone.
+            if style != .blend, style != .loop, !player.hasEffectFilters {
+                Log.player.warning("AutoMix style \(style.rawValue) lost its filters mid-mix; finishing as a blend")
+                style = .blend
+            }
             let wallBeats = Date().timeIntervalSince(start) / period
             let positions = outgoingFinished ? nil : player.positions(outgoing, incoming)
             if let loop, let position = positions?.outgoing {
@@ -338,7 +422,7 @@ final class Crossfade {
             let elapsedBeats = outPosition.map { ($0 - mix.fadeStart) / period } ?? wallBeats
             let t = min(1, max(0, elapsedBeats / Double(beats)))
 
-            applyStyle(plan.style, t: t, beats: beats)
+            applyStyle(style, t: t, beats: beats)
             if !bassSwapped, t >= 0.5 {
                 bassSwapped = true
                 setBass(incoming, gain: 0)
@@ -365,12 +449,16 @@ final class Crossfade {
             try? await Task.sleep(for: .milliseconds(50))
         }
         guard !Task.isCancelled else { return }
-        if let tail = tailSeconds(plan.style, period: period), !outgoingFinished {
+        if let tail = tailSeconds(style, period: period), !outgoingFinished {
             // The song is cut and its sends closed: only the echo or reverb is left.
             effect(outgoing, PlayerController.effectsLabel, "volume@dry", "volume", 0)
             effect(outgoing, PlayerController.effectsLabel, "volume@echosend", "volume", 0)
             effect(outgoing, PlayerController.effectsLabel, "volume@verbsend", "volume", 0)
-            try? await Task.sleep(for: .seconds(tail))
+            // Never ring past the song's end: a deck that runs out goes idle
+            // and takes the audio session down with it.
+            let left = player.positions(outgoing, incoming).map { plan.duration - $0.outgoing - 0.5 } ?? 0
+            if left < tail { Log.player.warning("AutoMix \(style.rawValue) tail cut to \(max(0, left))s: the song ends") }
+            if left > 0 { try? await Task.sleep(for: .seconds(min(tail, left))) }
             guard !Task.isCancelled else { return }
         }
         complete(speed: lastSpeed)
@@ -450,6 +538,8 @@ final class Crossfade {
     /// Starts the incoming deck. False (and reset) when a deck is missing.
     private func begin() -> Bool {
         guard let incoming, let active = player.activeDeck else {
+            outcome("failed: a deck went missing at the mix start")
+            Log.player.warning("Transition failed: a deck went missing at the mix start; the song ends normally")
             reset()
             return false
         }
@@ -470,6 +560,9 @@ final class Crossfade {
     }
 
     private func complete(speed: Double? = nil) {
+        if let plan {
+            outcome(plan.fallback.map { "fell back to crossfade: \($0)" } ?? (plan.mix.isBeatMatched ? "mixed" : "crossfaded"))
+        }
         if let outgoing {
             // Pause, never stop: a stopped mpv goes idle and switches off the
             // app's audio session, which silences the deck still playing.

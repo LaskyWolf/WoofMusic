@@ -195,7 +195,7 @@ sung.barVocal = [Float](repeating: 1, count: 28)
 var singing = rising
 singing.barVocal = [Float](repeating: 1, count: 20)
 guard let ducked = MixPlanner.autoMix(duration: 200, tail: sung, tailStart: 140, head: singing) else { fatalError("No ducked mix") }
-precondition(ducked.beats == 8 && (ducked.duckUntil ?? 0) > 0.999, "Vocals on both sides: \(ducked)")
+precondition(ducked.beats == 8 && abs((ducked.duckUntil ?? 0) - 0.75) < 1e-9, "Vocals on both sides: \(ducked)")
 // Keys: a clash drops the longest mix.
 var keyed = phrased
 keyed.key = cMajor

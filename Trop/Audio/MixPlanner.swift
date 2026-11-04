@@ -151,7 +151,8 @@ enum MixPlanner {
             let outVocals = tail.lastVocalEnd(in: (start - tailStart)..<(start - tailStart + length))
             if let outVocals, head.hasVocals(in: inStart..<(inStart + length * speed)) {
                 if beats != options.last { continue }
-                duckUntil = min(1, (outVocals + tailStart - start) / length)
+                // Released over 2 beats, so it is back up before the mix ends.
+                duckUntil = min(1 - 2 / Double(beats), (outVocals + tailStart - start) / length)
             }
             return Mix(
                 fadeStart: start, fadeLength: length, inStart: inStart, speed: speed, beats: beats,

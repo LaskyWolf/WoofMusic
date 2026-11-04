@@ -136,7 +136,7 @@ extension PlayerController {
     ) async {
         playGeneration &+= 1
         let generation = playGeneration
-        Crossfade.shared.reset()
+        Crossfade.shared.reset(reason: "a new song started")
         currentLoudnessDb = loudnessDb
         currentEchoDelay = nil
         guard let url = URL(string: url) else {
@@ -224,7 +224,7 @@ extension PlayerController {
         resumeAfterLoad = nil
         pausedWhileLoading = false
         desiredPlaying = false
-        Crossfade.shared.reset()
+        Crossfade.shared.reset(reason: "playback stopped")
         withMpv { mpv in _ = ["stop"].withUnsafeCArg { mpv_command(mpv, $0) } }
         playState.send(.stopped)
         NowPlaying.shared.isLoadingTrack = false
