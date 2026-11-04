@@ -174,7 +174,13 @@ final class Crossfade {
     /// Cancels any planned or running transition. Called when a new song is
     /// loaded the normal way.
     func reset(reason: String = "cancelled") {
-        if phase != .idle { outcome("cancelled: \(reason)") }
+        if phase == .fading {
+            outcome("cancelled: \(reason)")
+        } else if history.first?.outcome == "running" {
+            // Planned early in the song, never started (a skip, a queue change):
+            // not a transition, so it leaves no line in Diagnostics.
+            history.removeFirst()
+        }
         fadeTask?.cancel()
         speedTask?.cancel()
         planTask?.cancel()
@@ -261,6 +267,7 @@ final class Crossfade {
     // MARK: Steps
 
     private func makePlan(from current: String, to next: String, duration: Double, token: UUID) async {
+        let resolveStart = Date()
         guard let source = await Self.source(for: next), let outURL = player.activePath else {
             if token == planToken {
                 record("Transition to \(next)", outcome: "failed: next song could not be resolved")
@@ -270,6 +277,7 @@ final class Crossfade {
             }
             return
         }
+        let resolveSeconds = Int(Date().timeIntervalSince(resolveStart).rounded())
         let analysisStart = Date()
         async let tail = Self.analyze(url: outURL, seconds: Self.tailSeconds, fromEnd: true)
         async let head = Self.analyze(url: source.url, seconds: Self.headSeconds, fromEnd: false)
@@ -287,7 +295,7 @@ final class Crossfade {
         // past its start would jump to its end. A plain fade may still fit.
         let now = player.currentTime
         if let late = autoMix, late.fadeStart < now + Self.minLead {
-            fallback = "analysis took \(analysisSeconds)s and finished too late for the mix"
+            fallback = "finished too late for the mix (resolve \(resolveSeconds)s, analysis \(analysisSeconds)s)"
             autoMix = nil
         }
         let mix = autoMix ?? MixPlanner.smart(
@@ -298,7 +306,7 @@ final class Crossfade {
             head: inInfo
         )
         if mix.fadeStart < now + Self.minLead {
-            record("Transition to \(next)", outcome: "failed: analysis took \(analysisSeconds)s, \(Int(duration - now))s left")
+            record("Transition to \(next)", outcome: "failed: finished too late (resolve \(resolveSeconds)s, analysis \(analysisSeconds)s), \(Int(duration - now))s left")
             Log.player.warning("Transition plan too late: \(Int(duration - now))s left in the song; it ends normally")
             failedFor = current
             phase = .idle
@@ -322,7 +330,7 @@ final class Crossfade {
             "at \(short(mix.fadeStart))s for \(short(mix.fadeLength))s, next from \(short(mix.inStart))s, " +
             "speed \(short(mix.speed, 3)), bpm \(short(outInfo?.bpm ?? 0, 0)) → \(short(inInfo?.bpm ?? 0, 0)), " +
             "key \(keys) (\(keyMatch)), duck until \(mix.duckUntil.map { short($0, 2) } ?? "none"), " +
-            "analysed in \(analysisSeconds)s"
+            "resolved in \(resolveSeconds)s, analysed in \(analysisSeconds)s"
         Log.player.info("Transition plan: \(summary)")
         record(summary)
         plan = Plan(
