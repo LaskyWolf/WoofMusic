@@ -35,8 +35,11 @@ enum MusicLink: Equatable {
             switch path.first {
             case "watch" where query("v") != nil: self.init(videoId: query("v") ?? "")
             case "watch", "playlist": self.init(playlistId: query("list") ?? "")
-            // The app's own artist share links use /channel.
-            case "browse", "channel":
+            case "shorts", "embed", "live":
+                guard path.count == 2 else { return nil }
+                self.init(videoId: path[1])
+            // The app's own artist share links use /channel; YouTube Music shares podcasts as /podcast.
+            case "browse", "channel", "podcast":
                 guard path.count == 2 else { return nil }
                 self.init(browseId: path[1])
             default: return nil

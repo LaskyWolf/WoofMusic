@@ -46,6 +46,8 @@ final class AppUpdater {
         guard status != .checking else { return }
         if !force, let lastCheck, Date().timeIntervalSince(lastCheck) < Self.recheckInterval { return }
         status = .checking
+        // Set before the request: a failed check also waits out the interval.
+        lastCheck = Date()
         var request = URLRequest(url: Self.latestReleaseURL)
         request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
         guard let (data, response) = try? await URLSession.shared.data(for: request),
@@ -54,7 +56,6 @@ final class AppUpdater {
             status = .failed
             return
         }
-        lastCheck = Date()
         let latest = release.tag_name.hasPrefix("v") ? String(release.tag_name.dropFirst()) : release.tag_name
         status = Self.isNewer(latest, than: Self.installedVersion)
             ? .available(version: latest, page: release.html_url)

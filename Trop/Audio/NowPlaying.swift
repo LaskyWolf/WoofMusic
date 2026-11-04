@@ -746,7 +746,9 @@ final class NowPlaying {
     /// A song that should play but stopped moving (a stream that stopped
     /// sending data): reload it from where it stands.
     private func checkForStall() {
-        guard !isLoadingTrack, !PlayerController.shared.isCrossfading, let videoId else {
+        // Only a deck that says it plays can stall; a pause (user or interruption) is not one.
+        let player = PlayerController.shared
+        guard !isLoadingTrack, !player.isCrossfading, player.playState.value == .playing, let videoId else {
             stallWatch = nil
             return
         }
