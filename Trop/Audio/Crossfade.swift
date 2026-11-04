@@ -237,12 +237,17 @@ final class Crossfade {
         if mix.isBeatMatched, player.hasEffectFilters {
             mixCount += 1
             let room = duration - mix.fadeStart - mix.fadeLength
-            style = MixPlanner.style(for: mix, echoPeriod: player.currentEchoDelay, room: room, variety: mixCount)
+            var cues = MixPlanner.Cues()
+            if let outInfo, let inInfo { cues = MixPlanner.cues(for: mix, tail: outInfo, tailStart: tailStart, head: inInfo) }
+            style = MixPlanner.style(for: mix, echoPeriod: player.currentEchoDelay, room: room, cues: cues, variety: mixCount)
         }
+        let keys = "\(outInfo?.key?.camelot ?? "?") → \(inInfo?.key?.camelot ?? "?")"
+        let keyMatch = mix.keysCompatible.map { $0 ? "compatible" : "clash" } ?? "unknown"
         Log.player.info(
             "Transition plan: \(mix.isBeatMatched ? "AutoMix \(mix.beats ?? 0) beats, style \(style.rawValue)," : "crossfade") " +
             "at \(mix.fadeStart)s for \(mix.fadeLength)s, next from \(mix.inStart)s, speed \(mix.speed), " +
-            "bpm \(outInfo?.bpm ?? 0) → \(inInfo?.bpm ?? 0)"
+            "bpm \(outInfo?.bpm ?? 0) → \(inInfo?.bpm ?? 0), key \(keys) (\(keyMatch)), " +
+            "duck until \(mix.duckUntil.map { "\($0)" } ?? "none")"
         )
         plan = Plan(
             fromId: current, toId: next, url: source.url, loudness: source.loudness,
@@ -299,7 +304,7 @@ final class Crossfade {
     private func runBeatMix(_ plan: Plan, beats: Int, period: Double) async {
         let mix = plan.mix
         if plan.style == .sweep, let incoming {
-            effect(incoming, PlayerController.lowPassLabel, "lowpass", "f", Self.lowPassSweep.from)
+            effect(incoming, PlayerController.lowPassLabel, "lowpass", "f", lowPassStart)
             effect(incoming, PlayerController.lowPassLabel, "lowpass", "m", 1)
         }
         guard begin(), let incoming, let outgoing else { return }
@@ -377,7 +382,8 @@ final class Crossfade {
     private func applyStyle(_ style: MixPlanner.Style, t: Double, beats: Int) {
         guard let incoming, let outgoing else { return }
         let outGain = t < 0.5 ? 1 : cos((t - 0.5) * .pi)
-        let inGain = t < 0.5 ? sin(t * .pi) : 1
+        let inGain = (t < 0.5 ? sin(t * .pi) : 1) * duck(t)
+        let strength = effectStrength
         let fx = PlayerController.effectsLabel
         switch style {
         case .echo:
@@ -385,18 +391,18 @@ final class Crossfade {
             effect(outgoing, fx, "volume@dry", "volume", outGain)
             // The last bar feeds the echo.
             let lastBar = 1 - Double(TrackAnalyzer.beatsPerBar) / Double(beats)
-            effect(outgoing, fx, "volume@echosend", "volume", t >= lastBar ? 1 : 0)
+            effect(outgoing, fx, "volume@echosend", "volume", t >= lastBar ? strength : 0)
         case .wash:
             setVolumes(outgoing: 1, incoming: inGain)
             effect(outgoing, fx, "volume@dry", "volume", outGain)
-            effect(outgoing, fx, "volume@verbsend", "volume", t < 0.5 ? 0 : min(1, (t - 0.5) * 2))
+            effect(outgoing, fx, "volume@verbsend", "volume", t < 0.5 ? 0 : min(1, (t - 0.5) * 2) * strength)
         case .sweep:
             setVolumes(outgoing: outGain, incoming: inGain)
             if t < 0.5 {
-                let cutoff = MixPlanner.sweep(from: Self.lowPassSweep.from, to: Self.lowPassSweep.to, progress: t * 2)
+                let cutoff = MixPlanner.sweep(from: lowPassStart, to: Self.lowPassSweep.to, progress: t * 2)
                 effect(incoming, PlayerController.lowPassLabel, "lowpass", "f", cutoff)
             } else {
-                let cutoff = MixPlanner.sweep(from: Self.highPassSweep.from, to: Self.highPassSweep.to, progress: (t - 0.5) * 2)
+                let cutoff = MixPlanner.sweep(from: Self.highPassSweep.from, to: highPassEnd, progress: (t - 0.5) * 2)
                 effect(incoming, PlayerController.lowPassLabel, "lowpass", "m", 0)
                 effect(outgoing, PlayerController.highPassLabel, "highpass", "f", cutoff)
                 effect(outgoing, PlayerController.highPassLabel, "highpass", "m", 1)
@@ -404,6 +410,32 @@ final class Crossfade {
         case .blend, .loop:
             setVolumes(outgoing: outGain, incoming: inGain)
         }
+    }
+
+    /// Transition Effects setting (0...1), read live so it can be tuned by
+    /// ear during a mix. It scales the echo and reverb sends and how far the
+    /// sweep filters travel.
+    private var effectStrength: Double {
+        min(1, max(0, SettingsStore.shared.transitionEffects))
+    }
+
+    /// Where the incoming low-pass starts: at full strength 300 Hz, at zero
+    /// strength already open.
+    private var lowPassStart: Double {
+        MixPlanner.sweep(from: Self.lowPassSweep.to, to: Self.lowPassSweep.from, progress: effectStrength)
+    }
+
+    /// Where the outgoing high-pass ends up.
+    private var highPassEnd: Double {
+        MixPlanner.sweep(from: Self.highPassSweep.from, to: Self.highPassSweep.to, progress: effectStrength)
+    }
+
+    /// Incoming level factor at progress `t`: held at `duckLevel` while the
+    /// outgoing song still sings over it, then released over 2 beats.
+    private func duck(_ t: Double) -> Double {
+        guard let plan, let until = plan.mix.duckUntil, let beats = plan.mix.beats else { return 1 }
+        let release = min(1, max(0, (t - until) * Double(beats) / 2))
+        return MixPlanner.duckLevel + (1 - MixPlanner.duckLevel) * release
     }
 
     /// How long a style's tail rings after the mix, nil when it has none.

@@ -278,6 +278,11 @@ final class SettingsStore {
         didSet { Self.defaults.set(crossfadeSeconds, forKey: Keys.crossfadeSeconds) }
     }
 
+    /// Strength of the AutoMix effects (echo, wash, filter sweep), 0...1.
+    var transitionEffects: Double {
+        didSet { Self.defaults.set(transitionEffects, forKey: Keys.transitionEffects) }
+    }
+
     var autoplaySimilar: Bool {
         didSet { Self.defaults.set(autoplaySimilar, forKey: Keys.autoplaySimilar) }
     }
@@ -413,6 +418,7 @@ final class SettingsStore {
         static let crossfadeEnabled = "settings.crossfadeEnabled"
         static let crossfadeSeconds = "settings.crossfadeSeconds"
         static let autoMixEnabled = "settings.autoMixEnabled"
+        static let transitionEffects = "settings.transitionEffects"
         static let persistQueue = "settings.persistQueue"
         static let lastRadioStyle = "settings.lastRadioStyle"
         static let lastRadioLimit = "settings.lastRadioLimit"
@@ -484,6 +490,7 @@ final class SettingsStore {
         crossfadeEnabled = Self.load(Keys.crossfadeEnabled, default: false)
         crossfadeSeconds = Self.load(Keys.crossfadeSeconds, default: 6.0)
         autoMixEnabled = Self.load(Keys.autoMixEnabled, default: false)
+        transitionEffects = Self.load(Keys.transitionEffects, default: 1)
         persistQueue = Self.load(Keys.persistQueue, default: false)
         lastRadioStyle = Self.loadEnum(Keys.lastRadioStyle, default: .similar)
         lastRadioLimit = Self.load(Keys.lastRadioLimit, default: 25)
