@@ -107,6 +107,71 @@ enum MixPlanner {
         return nil
     }
 
+    // MARK: AutoMix styles
+
+    /// How an AutoMix lets the outgoing song go, on top of the bass swap.
+    enum Style: String {
+        /// Volume fades only: no effect filters.
+        case blend
+        /// The outgoing song thins out through a rising high-pass while the
+        /// incoming song's low-pass opens.
+        case sweep
+        /// The outgoing song's last bar feeds an echo on the beat, which
+        /// keeps repeating after the song is cut.
+        case echo
+        /// The outgoing song dissolves into a reverb-like tail.
+        case wash
+        /// The outgoing song repeats a bar near its end instead of playing on.
+        case loop
+    }
+
+    /// Echo repeats, and how far off the outgoing beat the echo built for
+    /// the song may be.
+    static let echoRepeats = 4
+    static let maxEchoDrift = 0.02
+    /// Tempo change above which stretched beats smear and a wash hides them.
+    static let washTempoChange = 0.04
+    /// Seconds the reverb rings after the outgoing song is cut.
+    static let washTail: Double = 1
+
+    /// The style of a mix; `.blend` when it isn't beat-matched. `echoPeriod`
+    /// is the beat the outgoing song's echo was built for, `room` the
+    /// seconds the outgoing song plays on after the mix (a tail needs them),
+    /// `variety` rotates between the styles that fit.
+    static func style(for mix: Mix, echoPeriod: Double?, room: Double, variety: Int) -> Style {
+        guard let period = mix.beatPeriod else { return .blend }
+        let canWash = room >= washTail
+        if abs(mix.speed - 1) > washTempoChange, canWash { return .wash }
+        var styles: [Style] = [.sweep]
+        if loopBar(for: mix) != nil { styles.append(.loop) }
+        if let echoPeriod, abs(echoPeriod / period - 1) <= maxEchoDrift, room >= echoTail(period: period) {
+            styles.append(.echo)
+        }
+        if canWash { styles.append(.wash) }
+        return styles[abs(variety) % styles.count]
+    }
+
+    /// Seconds the echo rings after the outgoing song is cut.
+    static func echoTail(period: Double) -> Double {
+        Double(echoRepeats) * period
+    }
+
+    /// The bar the loop style repeats (outgoing seconds) and how many extra
+    /// times. The repeats replace the mix's last bars, so the mix keeps its
+    /// length. Nil for mixes shorter than 4 bars.
+    static func loopBar(for mix: Mix) -> (bar: Range<Double>, repeats: Int)? {
+        guard let beats = mix.beats, let period = mix.beatPeriod, beats >= 4 * TrackAnalyzer.beatsPerBar else { return nil }
+        let repeats = beats >= 8 * TrackAnalyzer.beatsPerBar ? 2 : 1
+        let bar = period * Double(TrackAnalyzer.beatsPerBar)
+        let start = mix.fadeStart + mix.fadeLength - bar * Double(repeats + 1)
+        return (start..<(start + bar), repeats)
+    }
+
+    /// `from` at 0 to `to` at 1, evenly in pitch, the way a filter knob sweeps.
+    static func sweep(from: Double, to: Double, progress: Double) -> Double {
+        from * pow(to / from, min(1, max(0, progress)))
+    }
+
     /// The grid point (`gridStart + k * step`) nearest `time` in the given
     /// direction.
     static func snap(_ time: Double, gridStart: Double, step: Double, rounding: FloatingPointRoundingRule) -> Double {

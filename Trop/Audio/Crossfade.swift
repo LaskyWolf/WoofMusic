@@ -13,7 +13,10 @@ import ffmpegkit
 /// - AutoMix: a beat-matched mix placed by `MixPlanner.autoMix`. The incoming
 ///   song plays at the outgoing tempo, its beats are kept on the outgoing
 ///   beats by small speed corrections, and the bass of the two songs is
-///   swapped on the bar halfway through, the way a DJ mixes.
+///   swapped on the bar halfway through, the way a DJ mixes. On top of that
+///   each mix lets the outgoing song go in a `MixPlanner.Style`: a filter
+///   sweep, an echo, a reverb wash or a loop, all set live on named filters
+///   (`af-command`) so the filter chain is never rebuilt mid-song.
 ///
 /// Flow, driven by `tick()` every 0.25 s:
 /// idle → planning (analyse both songs) → planned → prepared (next song
@@ -28,6 +31,9 @@ final class Crossfade {
         let url: String
         let loudness: Double?
         let mix: MixPlanner.Mix
+        let style: MixPlanner.Style
+        /// The incoming song's beat, which its echo filter is built for.
+        let echoDelay: Double?
     }
 
     private enum Phase { case idle, planning, planned, prepared, fading }
@@ -51,6 +57,10 @@ final class Crossfade {
     /// them takes effect from the next song.
     // swiftlint:disable:next large_tuple
     private var songSettings: (songId: String, autoMix: Bool, crossfade: Bool, seconds: Double)?
+    /// AutoMixes planned so far, to rotate between styles.
+    private var mixCount = 0
+    /// Effect values sent during this mix, so unchanged ones aren't resent every 50 ms.
+    private var sentEffects: [String: String] = [:]
 
     /// Seconds of audio analysed at the end of the outgoing song and the
     /// start of the incoming one.
@@ -67,6 +77,10 @@ final class Crossfade {
     private static let lockGain = 0.5
     private static let maxLockCorrection = 0.02
     static let bassCut = -24.0
+    /// Filter sweep range: the incoming low-pass opens over the first half,
+    /// the outgoing high-pass rises over the second.
+    private static let lowPassSweep: (from: Double, to: Double) = (300, 16_000)
+    private static let highPassSweep: (from: Double, to: Double) = (20, 1_500)
 
     private var player: PlayerController { .shared }
 
@@ -143,10 +157,11 @@ final class Crossfade {
             player.deck(deck, set: "pause", "yes")
             player.deck(deck, set: "volume", "100")
             player.deck(deck, set: "speed", "1")
+            clearEffects(deck)
         }
         if phase == .fading, let active {
             player.deck(active, set: "volume", "100")
-            setBass(active, gain: 0)
+            clearEffects(active)
         }
         player.isCrossfading = false
         clear()
@@ -218,12 +233,21 @@ final class Crossfade {
             tailStart: tailStart,
             head: inInfo
         )
+        var style = MixPlanner.Style.blend
+        if mix.isBeatMatched, player.hasEffectFilters {
+            mixCount += 1
+            let room = duration - mix.fadeStart - mix.fadeLength
+            style = MixPlanner.style(for: mix, echoPeriod: player.currentEchoDelay, room: room, variety: mixCount)
+        }
         Log.player.info(
-            "Transition plan: \(mix.isBeatMatched ? "AutoMix \(mix.beats ?? 0) beats" : "crossfade") " +
+            "Transition plan: \(mix.isBeatMatched ? "AutoMix \(mix.beats ?? 0) beats, style \(style.rawValue)," : "crossfade") " +
             "at \(mix.fadeStart)s for \(mix.fadeLength)s, next from \(mix.inStart)s, speed \(mix.speed), " +
             "bpm \(outInfo?.bpm ?? 0) → \(inInfo?.bpm ?? 0)"
         )
-        plan = Plan(fromId: current, toId: next, url: source.url, loudness: source.loudness, mix: mix)
+        plan = Plan(
+            fromId: current, toId: next, url: source.url, loudness: source.loudness,
+            mix: mix, style: style, echoDelay: inInfo?.beatPeriod
+        )
         phase = .planned
     }
 
@@ -243,7 +267,7 @@ final class Crossfade {
         // Keep the audio output open between files: closing it deactivates
         // the audio session (see `complete`).
         player.deck(deck, set: "gapless-audio", "yes")
-        player.deck(deck, set: "af", player.filterChain(loudness: plan.loudness, bassGain: bass))
+        player.deck(deck, set: "af", player.filterChain(loudness: plan.loudness, bassGain: bass, echoDelay: plan.echoDelay))
         player.deck(deck, set: "start", PlayerController.fmt(plan.mix.inStart))
         player.deck(deck, command: ["loadfile", plan.url, "replace"])
     }
@@ -270,25 +294,46 @@ final class Crossfade {
     /// - Halfway (a bar line): the bass swaps from the outgoing song to the
     ///   incoming one, and the incoming song becomes the current song.
     /// - Second half: the outgoing song fades out.
+    /// The style's effects run alongside (`applyStyle`); echo and wash then
+    /// let their tail ring before the outgoing deck stops.
     private func runBeatMix(_ plan: Plan, beats: Int, period: Double) async {
-        guard begin(), let incoming, let outgoing else { return }
         let mix = plan.mix
+        if plan.style == .sweep, let incoming {
+            effect(incoming, PlayerController.lowPassLabel, "lowpass", "f", Self.lowPassSweep.from)
+            effect(incoming, PlayerController.lowPassLabel, "lowpass", "m", 1)
+        }
+        guard begin(), let incoming, let outgoing else { return }
+        let loop = plan.style == .loop ? MixPlanner.loopBar(for: mix) : nil
+        if let loop {
+            player.deck(outgoing, set: "ab-loop-a", PlayerController.fmt(loop.bar.lowerBound))
+            player.deck(outgoing, set: "ab-loop-b", PlayerController.fmt(loop.bar.upperBound))
+            player.deck(outgoing, set: "ab-loop-count", "\(loop.repeats)")
+        }
         let start = Date()
         var bassSwapped = false
         var lastSpeed = mix.speed
         var lastLockUpdate = Date.distantPast
+        // Seconds the loop has jumped the outgoing song back, added to its
+        // position so the mix keeps counting forward.
+        var loopOffset: Double = 0
+        var lastOutgoing: Double?
 
         while !Task.isCancelled {
             let wallBeats = Date().timeIntervalSince(start) / period
             let positions = outgoingFinished ? nil : player.positions(outgoing, incoming)
+            if let loop, let position = positions?.outgoing {
+                let length = loop.bar.upperBound - loop.bar.lowerBound
+                if let lastOutgoing, position < lastOutgoing - length / 2 {
+                    loopOffset += length
+                }
+                lastOutgoing = position
+            }
+            let outPosition = positions.map { $0.outgoing + loopOffset }
             // Once the outgoing song has ended, its position stops; count by the clock.
-            let elapsedBeats = positions.map { ($0.outgoing - mix.fadeStart) / period } ?? wallBeats
+            let elapsedBeats = outPosition.map { ($0 - mix.fadeStart) / period } ?? wallBeats
             let t = min(1, max(0, elapsedBeats / Double(beats)))
 
-            setVolumes(
-                outgoing: t < 0.5 ? 1 : cos((t - 0.5) * 2 * .pi / 2),
-                incoming: t < 0.5 ? sin(t * 2 * .pi / 2) : 1
-            )
+            applyStyle(plan.style, t: t, beats: beats)
             if !bassSwapped, t >= 0.5 {
                 bassSwapped = true
                 setBass(incoming, gain: 0)
@@ -298,9 +343,9 @@ final class Crossfade {
 
             // Beat lock: where the incoming song should be if its beats sit
             // on the outgoing beats, and a small speed change to get there.
-            if let positions, Date().timeIntervalSince(lastLockUpdate) >= 0.25 {
+            if let positions, let outPosition, Date().timeIntervalSince(lastLockUpdate) >= 0.25 {
                 lastLockUpdate = Date()
-                let expected = mix.inStart + (positions.outgoing - mix.fadeStart) * mix.speed
+                let expected = mix.inStart + (outPosition - mix.fadeStart) * mix.speed
                 let error = (positions.incoming - expected) / mix.speed
                 let correction = max(-Self.maxLockCorrection, min(Self.maxLockCorrection, -Self.lockGain * error))
                 let speed = mix.speed * (1 + correction)
@@ -315,7 +360,59 @@ final class Crossfade {
             try? await Task.sleep(for: .milliseconds(50))
         }
         guard !Task.isCancelled else { return }
+        if let tail = tailSeconds(plan.style, period: period), !outgoingFinished {
+            // The song is cut and its sends closed: only the echo or reverb is left.
+            effect(outgoing, PlayerController.effectsLabel, "volume@dry", "volume", 0)
+            effect(outgoing, PlayerController.effectsLabel, "volume@echosend", "volume", 0)
+            effect(outgoing, PlayerController.effectsLabel, "volume@verbsend", "volume", 0)
+            try? await Task.sleep(for: .seconds(tail))
+            guard !Task.isCancelled else { return }
+        }
         complete(speed: lastSpeed)
+    }
+
+    /// Volumes and effect levels at mix progress `t` (0...1). The outgoing
+    /// song fades out over the second half: by its deck volume, or for echo
+    /// and wash by its dry path only, so their tail outlives it.
+    private func applyStyle(_ style: MixPlanner.Style, t: Double, beats: Int) {
+        guard let incoming, let outgoing else { return }
+        let outGain = t < 0.5 ? 1 : cos((t - 0.5) * .pi)
+        let inGain = t < 0.5 ? sin(t * .pi) : 1
+        let fx = PlayerController.effectsLabel
+        switch style {
+        case .echo:
+            setVolumes(outgoing: 1, incoming: inGain)
+            effect(outgoing, fx, "volume@dry", "volume", outGain)
+            // The last bar feeds the echo.
+            let lastBar = 1 - Double(TrackAnalyzer.beatsPerBar) / Double(beats)
+            effect(outgoing, fx, "volume@echosend", "volume", t >= lastBar ? 1 : 0)
+        case .wash:
+            setVolumes(outgoing: 1, incoming: inGain)
+            effect(outgoing, fx, "volume@dry", "volume", outGain)
+            effect(outgoing, fx, "volume@verbsend", "volume", t < 0.5 ? 0 : min(1, (t - 0.5) * 2))
+        case .sweep:
+            setVolumes(outgoing: outGain, incoming: inGain)
+            if t < 0.5 {
+                let cutoff = MixPlanner.sweep(from: Self.lowPassSweep.from, to: Self.lowPassSweep.to, progress: t * 2)
+                effect(incoming, PlayerController.lowPassLabel, "lowpass", "f", cutoff)
+            } else {
+                let cutoff = MixPlanner.sweep(from: Self.highPassSweep.from, to: Self.highPassSweep.to, progress: (t - 0.5) * 2)
+                effect(incoming, PlayerController.lowPassLabel, "lowpass", "m", 0)
+                effect(outgoing, PlayerController.highPassLabel, "highpass", "f", cutoff)
+                effect(outgoing, PlayerController.highPassLabel, "highpass", "m", 1)
+            }
+        case .blend, .loop:
+            setVolumes(outgoing: outGain, incoming: inGain)
+        }
+    }
+
+    /// How long a style's tail rings after the mix, nil when it has none.
+    private func tailSeconds(_ style: MixPlanner.Style, period: Double) -> Double? {
+        switch style {
+        case .echo: MixPlanner.echoTail(period: period)
+        case .wash: MixPlanner.washTail
+        case .blend, .sweep, .loop: nil
+        }
     }
 
     /// Starts the incoming deck. False (and reset) when a deck is missing.
@@ -335,7 +432,7 @@ final class Crossfade {
     private func promote() {
         guard let plan else { return }
         promoted = true
-        player.promoteSpare(videoId: plan.toId, loudness: plan.loudness)
+        player.promoteSpare(videoId: plan.toId, loudness: plan.loudness, echoDelay: plan.echoDelay)
         NowPlaying.shared.advanceForCrossfade(to: plan.toId)
         player.setNowPlayingMetadata()
     }
@@ -347,10 +444,11 @@ final class Crossfade {
             player.deck(outgoing, set: "pause", "yes")
             player.deck(outgoing, set: "volume", "100")
             player.deck(outgoing, set: "speed", "1")
+            clearEffects(outgoing)
         }
         if let incoming {
             player.deck(incoming, set: "volume", "100")
-            setBass(incoming, gain: 0)
+            clearEffects(incoming)
         }
         player.isCrossfading = false
         let finalSpeed = speed ?? plan?.mix.speed ?? 1
@@ -368,6 +466,7 @@ final class Crossfade {
         promoted = false
         outgoingFinished = false
         fadeTask = nil
+        sentEffects = [:]
     }
 
     private func setVolumes(outgoing outGain: Double, incoming inGain: Double) {
@@ -378,7 +477,35 @@ final class Crossfade {
     /// Changes the bass filter in place (no audio gap). Only decks that
     /// were loaded with AutoMix on have it; on others mpv ignores the command.
     private func setBass(_ deck: MpvDeck, gain: Double) {
-        player.deck(deck, command: ["af-command", PlayerController.bassFilterLabel, "g", PlayerController.fmt(gain)])
+        afCommand(deck, PlayerController.bassFilterLabel, "bass", "g", PlayerController.fmt(gain))
+    }
+
+    /// Sets one effect parameter in place, skipping a value already sent this mix.
+    private func effect(_ deck: MpvDeck, _ label: String, _ target: String, _ name: String, _ value: Double) {
+        let text = PlayerController.fmt(value)
+        let key = "\(deck.handle) \(label) \(target) \(name)"
+        guard sentEffects[key] != text else { return }
+        sentEffects[key] = text
+        afCommand(deck, label, target, name, text)
+    }
+
+    /// `target` names the filter inside the label's lavfi graph: with mpv's
+    /// default ("all") the command fails on the graph's other filters.
+    private func afCommand(_ deck: MpvDeck, _ label: String, _ target: String, _ name: String, _ value: String) {
+        player.deck(deck, command: ["af-command", label, name, value, target])
+    }
+
+    /// Puts a deck's AutoMix filters back to rest and drops its loop.
+    private func clearEffects(_ deck: MpvDeck) {
+        setBass(deck, gain: 0)
+        afCommand(deck, PlayerController.highPassLabel, "highpass", "m", "0")
+        afCommand(deck, PlayerController.lowPassLabel, "lowpass", "m", "0")
+        afCommand(deck, PlayerController.effectsLabel, "volume@dry", "volume", "1")
+        afCommand(deck, PlayerController.effectsLabel, "volume@echosend", "volume", "0")
+        afCommand(deck, PlayerController.effectsLabel, "volume@verbsend", "volume", "0")
+        player.deck(deck, set: "ab-loop-a", "no")
+        player.deck(deck, set: "ab-loop-b", "no")
+        player.deck(deck, set: "ab-loop-count", "inf")
     }
 
     private func easeSpeed(_ deck: MpvDeck, from speed: Double) {

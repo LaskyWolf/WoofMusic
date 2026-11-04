@@ -1,5 +1,5 @@
 """Check TrackAnalyzer and MixPlanner on synthetic tracks with known tempo,
-downbeats and silence.
+downbeats and silence, and the AutoMix style choice.
 
 Usage: python3 scripts/check_track_analyzer.py (needs a Swift toolchain)
 """
@@ -92,7 +92,31 @@ precondition(fade.fadeStart + 8 <= 196 && fade.fadeStart > 196 - 8 - period, "Sm
 precondition(fade.speed == 1, "Smart fade nudged a 28% tempo gap")
 let plain = MixPlanner.smart(duration: 200, fadeLength: 8, tail: nil, tailStart: 140, head: nil)
 precondition(plain == MixPlanner.Mix(fadeStart: 192, fadeLength: 8, inStart: 0, speed: 1), "Plain fade \(plain)")
-print("PASS: tempo, beats, downbeats, silence edges, AutoMix and crossfade plans")
+// AutoMix styles: the 32-beat mix above, 3% tempo change.
+precondition(MixPlanner.style(for: plain, echoPeriod: nil, room: 10, variety: 0) == .blend, "Style for a timed fade")
+let styles = Set((0..<12).map { MixPlanner.style(for: mix, echoPeriod: period, room: 10, variety: $0) })
+precondition(styles == [.sweep, .loop, .echo, .wash], "Styles rotated: \(styles)")
+let noEcho = Set((0..<12).map { MixPlanner.style(for: mix, echoPeriod: period * 1.05, room: 10, variety: $0) })
+precondition(!noEcho.contains(.echo), "Echo built for another tempo")
+let noRoom = Set((0..<12).map { MixPlanner.style(for: mix, echoPeriod: period, room: 0.5, variety: $0) })
+precondition(noRoom == [.sweep, .loop], "Tails without room after the mix: \(noRoom)")
+var stretched = mix
+stretched.speed = 1.06
+precondition(MixPlanner.style(for: stretched, echoPeriod: nil, room: 10, variety: 0) == .wash, "Big tempo change without a wash")
+var short = mix
+short.beats = 8
+short.fadeLength = 8 * period
+precondition(MixPlanner.loopBar(for: short) == nil, "Loop in a 2-bar mix")
+guard let loop = MixPlanner.loopBar(for: mix) else { fatalError("No loop bar in a 32-beat mix") }
+precondition(loop.repeats == 2, "Loop repeats \(loop.repeats)")
+let mixEnd = mix.fadeStart + mix.fadeLength
+precondition(abs(loop.bar.upperBound + 2 * 4 * period - mixEnd) < 1e-9, "Loop repeats don't end with the mix")
+precondition(abs(loop.bar.upperBound - loop.bar.lowerBound - 4 * period) < 1e-9, "Loop isn't one bar")
+precondition(MixPlanner.sweep(from: 300, to: 16_000, progress: 0) == 300, "Sweep start")
+precondition(abs(MixPlanner.sweep(from: 300, to: 16_000, progress: 1) - 16_000) < 1e-6, "Sweep end")
+precondition(abs(MixPlanner.sweep(from: 100, to: 10_000, progress: 0.5) - 1_000) < 1e-6, "Sweep isn't even in pitch")
+precondition(MixPlanner.sweep(from: 100, to: 10_000, progress: 2) == MixPlanner.sweep(from: 100, to: 10_000, progress: 1), "Sweep overshoots")
+print("PASS: tempo, beats, downbeats, silence edges, AutoMix and crossfade plans, AutoMix styles")
 '''
 with tempfile.TemporaryDirectory() as directory:
     path = Path(directory) / "main.swift"
