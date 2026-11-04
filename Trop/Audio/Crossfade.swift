@@ -84,8 +84,8 @@ final class Crossfade {
     /// start of the incoming one.
     private static let tailSeconds = 60.0
     private static let headSeconds = 45.0
-    /// How long before the end analysis starts, and before the transition
-    /// the next song is loaded so it is buffered in time.
+    /// How long before the end analysis starts at the latest, and before the
+    /// transition the next song is loaded so it is buffered in time.
     private static let planLead = 80.0
     private static let prepareLead = 12.0
     /// Time to ease a changed tempo back to normal after the transition.
@@ -134,7 +134,9 @@ final class Crossfade {
 
         switch phase {
         case .idle:
-            guard np.duration - position < Self.planLead, failedFor != current else { return }
+            // From halfway, or `planLead` before the end on a short song: the
+            // network decode and analysis can take most of a minute.
+            guard np.duration - position < max(Self.planLead, np.duration / 2), failedFor != current else { return }
             phase = .planning
             let token = planToken
             let duration = np.duration
@@ -268,10 +270,12 @@ final class Crossfade {
             }
             return
         }
+        let analysisStart = Date()
         async let tail = Self.analyze(url: outURL, seconds: Self.tailSeconds, fromEnd: true)
         async let head = Self.analyze(url: source.url, seconds: Self.headSeconds, fromEnd: false)
         let (outInfo, inInfo) = await (tail, head)
         guard token == planToken else { return }
+        let analysisSeconds = Int(Date().timeIntervalSince(analysisStart).rounded())
 
         let tailStart = max(0, duration - Self.tailSeconds)
         let wantsAutoMix = songSettings?.autoMix == true
@@ -283,7 +287,7 @@ final class Crossfade {
         // past its start would jump to its end. A plain fade may still fit.
         let now = player.currentTime
         if let late = autoMix, late.fadeStart < now + Self.minLead {
-            fallback = "analysis finished \(Int(now - late.fadeStart + Self.minLead))s too late for the mix"
+            fallback = "analysis took \(analysisSeconds)s and finished too late for the mix"
             autoMix = nil
         }
         let mix = autoMix ?? MixPlanner.smart(
@@ -294,7 +298,7 @@ final class Crossfade {
             head: inInfo
         )
         if mix.fadeStart < now + Self.minLead {
-            record("Transition to \(next)", outcome: "failed: analysis finished too late, \(Int(duration - now))s left")
+            record("Transition to \(next)", outcome: "failed: analysis took \(analysisSeconds)s, \(Int(duration - now))s left")
             Log.player.warning("Transition plan too late: \(Int(duration - now))s left in the song; it ends normally")
             failedFor = current
             phase = .idle
@@ -310,11 +314,15 @@ final class Crossfade {
             style = MixPlanner.style(for: mix, echoPeriod: player.currentEchoDelay, room: room, cues: cues, variety: mixCount)
         }
         let keys = "\(outInfo?.key?.camelot ?? "?") → \(inInfo?.key?.camelot ?? "?")"
-        let keyMatch = mix.keysCompatible.map { $0 ? "compatible" : "clash" } ?? "unknown"
+        // A crossfade doesn't check the keys itself; the analysis still knows them.
+        let compatible = mix.keysCompatible ?? outInfo?.key.flatMap { out in inInfo?.key.map { out.isCompatible(with: $0) } }
+        let keyMatch = compatible.map { $0 ? "compatible" : "clash" } ?? "unknown"
+        func short(_ value: Double, _ digits: Int = 1) -> String { String(format: "%.\(digits)f", value) }
         let summary = "\(mix.isBeatMatched ? "AutoMix \(mix.beats ?? 0) beats, style \(style.rawValue)," : "crossfade") " +
-            "at \(mix.fadeStart)s for \(mix.fadeLength)s, next from \(mix.inStart)s, speed \(mix.speed), " +
-            "bpm \(outInfo?.bpm ?? 0) → \(inInfo?.bpm ?? 0), key \(keys) (\(keyMatch)), " +
-            "duck until \(mix.duckUntil.map { "\($0)" } ?? "none")"
+            "at \(short(mix.fadeStart))s for \(short(mix.fadeLength))s, next from \(short(mix.inStart))s, " +
+            "speed \(short(mix.speed, 3)), bpm \(short(outInfo?.bpm ?? 0, 0)) → \(short(inInfo?.bpm ?? 0, 0)), " +
+            "key \(keys) (\(keyMatch)), duck until \(mix.duckUntil.map { short($0, 2) } ?? "none"), " +
+            "analysed in \(analysisSeconds)s"
         Log.player.info("Transition plan: \(summary)")
         record(summary)
         plan = Plan(
