@@ -536,6 +536,8 @@ struct FullPlayerView: View {
                 GeometryReader { area in
                     artworkPager(pageSize: area.size)
                 }
+                // The neighbours wait a page away; in landscape that is over the controls.
+                .clipped()
                 .padding(.vertical, 12)
                 .opacity(showsKaraoke ? 0 : 1)
             } else {
