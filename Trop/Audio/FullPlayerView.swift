@@ -70,6 +70,9 @@ struct FullPlayerView: View {
     var body: some View {
         GeometryReader { geometry in
             ZStack {
+                // A gradient's colours don't animate: each palette is its own
+                // view, and the new one fades in over the old one.
+                ZStack {
                 if settings.playerBackgroundStyle == .solid {
                     Color.black
                         .ignoresSafeArea()
@@ -86,7 +89,8 @@ struct FullPlayerView: View {
                         endPoint: .bottom
                     )
                     .ignoresSafeArea()
-                        .animation(.easeInOut(duration: 0.8), value: playerBackgroundColors)
+                    .id(playerBackgroundColors)
+                    .transition(.opacity)
                 } else {
                     LinearGradient(
                         colors: [
@@ -108,8 +112,11 @@ struct FullPlayerView: View {
                             .offset(y: -150)
                     }
                     .ignoresSafeArea()
-                    .animation(.easeInOut(duration: 0.8), value: playerBackgroundColors)
+                    .id(playerBackgroundColors)
+                    .transition(.opacity)
                 }
+                }
+                .animation(.easeInOut(duration: 0.8), value: playerBackgroundColors)
 
                 if !showsCardCover {
                     // Shorter while the speed dial is open, so the title stays on the faded part.
@@ -579,12 +586,17 @@ struct FullPlayerView: View {
                 artworkPage(for: current, size: pageSize)
                     // The full-screen copy lifts off from here; Reduce Motion fades it in over this one.
                     .opacity(showsFullscreenCover && !reduceMotion ? 0 : 1)
+                    // A song change the user didn't swipe (AutoMix, a crossfade, the
+                    // skip buttons) dissolves the old cover into the new one.
+                    .id(current.videoId)
+                    .transition(.opacity)
             }
             if let next = np.nextSong {
                 artworkPage(for: next, size: pageSize)
                     .offset(x: pageSize.width)
             }
         }
+        .animation(.easeInOut(duration: 0.8), value: np.currentSong?.videoId)
         .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { page in
             if showsCardCover {
                 let side = Self.cardCoverSide(in: page.size)
