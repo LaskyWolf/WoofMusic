@@ -136,7 +136,7 @@ extension PlayerController {
     ) async {
         playGeneration &+= 1
         let generation = playGeneration
-        Crossfade.shared.reset()
+        Crossfade.shared.reset(reason: "a new song started")
         currentLoudnessDb = loudnessDb
         currentEchoDelay = nil
         guard let url = URL(string: url) else {
@@ -224,7 +224,7 @@ extension PlayerController {
         resumeAfterLoad = nil
         pausedWhileLoading = false
         desiredPlaying = false
-        Crossfade.shared.reset()
+        Crossfade.shared.reset(reason: "playback stopped")
         withMpv { mpv in _ = ["stop"].withUnsafeCArg { mpv_command(mpv, $0) } }
         playState.send(.stopped)
         NowPlaying.shared.isLoadingTrack = false
@@ -288,7 +288,7 @@ extension PlayerController {
     /// chain is set again without the AutoMix effects, then without the bass
     /// filter, and mixes skip what is missing.
     func applyPlaybackSettings() {
-        let tiers = [(bass: true, effects: true), (bass: true, effects: false), (bass: false, effects: false)]
+        let tiers = [(bass: true, effects: true), (bass: false, effects: true), (bass: true, effects: false), (bass: false, effects: false)]
             .filter { (hasBassFilter || !$0.bass) && (hasEffectFilters || !$0.effects) }
         let chains = tiers.map {
             filterChain(loudness: currentLoudnessDb, echoDelay: currentEchoDelay, includesBass: $0.bass, includesEffects: $0.effects)

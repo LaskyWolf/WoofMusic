@@ -106,8 +106,8 @@ enum MixPlanner {
         let outro = TrackAnalyzer.outroBar(tail.barEnergy).map { tailStart + tail.barTime($0) }
 
         let inBar = 60 / inBPM * Double(TrackAnalyzer.beatsPerBar)
-        var defaultIn = snap(head.soundStart, gridStart: head.downbeat, step: inBar, rounding: .up)
-        if defaultIn > maxIntroSkip { defaultIn = head.downbeat }
+        let firstBar = snap(head.soundStart, gridStart: head.downbeat, step: inBar, rounding: .up)
+        let defaultIn = firstBar > maxIntroSkip ? head.downbeat : firstBar
         let rise = TrackAnalyzer.firstRiseBar(head.barEnergy).map { head.barTime($0) }
 
         var keysCompatible: Bool?
@@ -137,11 +137,12 @@ enum MixPlanner {
                 }
             }
             // The incoming song's first strong phrase lands on the end of the
-            // mix, or on its halfway bar when its intro is too short.
+            // mix, or on its halfway bar when its intro is too short. Never
+            // inside the leading silence.
             var inStart = defaultIn
             if let rise {
                 let aligned = [rise - length * speed, rise - length * speed / 2]
-                if let fit = aligned.first(where: { $0 >= 0 && $0 <= maxPhraseSkip }) { inStart = fit }
+                if let fit = aligned.first(where: { $0 >= firstBar - 1e-6 && $0 <= maxPhraseSkip }) { inStart = fit }
             }
             inStart = max(0, inStart)
 
@@ -151,7 +152,8 @@ enum MixPlanner {
             let outVocals = tail.lastVocalEnd(in: (start - tailStart)..<(start - tailStart + length))
             if let outVocals, head.hasVocals(in: inStart..<(inStart + length * speed)) {
                 if beats != options.last { continue }
-                duckUntil = min(1, (outVocals + tailStart - start) / length)
+                // Released over 2 beats, so it is back up before the mix ends.
+                duckUntil = min(1 - 2 / Double(beats), (outVocals + tailStart - start) / length)
             }
             return Mix(
                 fadeStart: start, fadeLength: length, inStart: inStart, speed: speed, beats: beats,
