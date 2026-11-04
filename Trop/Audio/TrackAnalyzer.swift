@@ -135,12 +135,16 @@ enum TrackAnalyzer {
             firstBeat: 0,
             downbeat: 0
         )
-        guard let grid = beatGrid(onset: onset, frameSeconds: frameSeconds) else { return result }
+        // The kick (the low band) marks the beat more cleanly in some songs,
+        // the full mix in others: keep the tempo whose peak stands out more.
+        let lowOnset = onsets(lowRMS)
+        guard let grid = [beatGrid(onset: onset, frameSeconds: frameSeconds),
+                          beatGrid(onset: lowOnset, frameSeconds: frameSeconds)]
+            .compactMap({ $0 }).max(by: { $0.prominence < $1.prominence }) else { return result }
         result.bpm = 60 / (grid.period * frameSeconds)
         result.firstBeat = grid.phase * frameSeconds
 
         // Downbeat: the beat of the bar where the bass hits hardest.
-        let lowOnset = onsets(lowRMS)
         var accents = [Float](repeating: 0, count: beatsPerBar)
         var position = grid.phase
         var beat = 0
@@ -307,8 +311,9 @@ enum TrackAnalyzer {
         return onset
     }
 
-    /// Beat period and offset in frames, nil when there is no steady beat.
-    private static func beatGrid(onset: [Float], frameSeconds: Double) -> (period: Double, phase: Double)? {
+    /// Beat period and offset in frames, and how far the tempo peak stands
+    /// above the average lag. Nil when there is no steady beat.
+    private static func beatGrid(onset: [Float], frameSeconds: Double) -> (period: Double, phase: Double, prominence: Float)? {
         let minBPM = 70.0, maxBPM = 180.0
         let minLag = max(1, Int((60 / maxBPM / frameSeconds).rounded(.down)))
         let maxLag = Int((60 / minBPM / frameSeconds).rounded(.up))
@@ -327,6 +332,7 @@ enum TrackAnalyzer {
         let mean = scores.reduce(0, +) / Float(scores.count)
         // A flat curve means no steady beat (ambient, speech).
         guard mean > 0, scores[peak] > mean * 1.3 else { return nil }
+        let prominence = scores[peak] / mean
 
         // Refine the lag between frames with a parabola through the peak.
         var lag = Double(peak + minLag)
@@ -359,6 +365,6 @@ enum TrackAnalyzer {
                 phase += 0.5
             }
         }
-        return (grid.period, grid.phase)
+        return (grid.period, grid.phase, prominence)
     }
 }
