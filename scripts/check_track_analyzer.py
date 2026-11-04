@@ -180,8 +180,13 @@ rising.barEnergy = [Float](repeating: 0.3, count: 8) + [Float](repeating: 1, cou
 let outroTime = 140 + tail.barTime(16)
 guard let phraseMix = MixPlanner.autoMix(duration: 200, tail: phrased, tailStart: 140, head: rising) else { fatalError("No phrase mix") }
 precondition(phraseMix.beats == 32 && abs(phraseMix.fadeStart - outroTime) < 1e-9, "Mix starts at the outro: \(phraseMix)")
+// Landing the rise on the mix end would start inside the 1.5 s of silence, so it lands on the halfway bar.
 let riseTime = head.barTime(8)
-precondition(abs(phraseMix.inStart - (riseTime - phraseMix.fadeLength * phraseMix.speed)) < 1e-9, "Rise lands on the mix end: \(phraseMix.inStart)")
+precondition(abs(phraseMix.inStart - (riseTime - phraseMix.fadeLength * phraseMix.speed / 2)) < 1e-9, "Rise lands halfway: \(phraseMix.inStart)")
+var noSilence = rising
+noSilence.soundStart = 0
+guard let fullMix = MixPlanner.autoMix(duration: 200, tail: phrased, tailStart: 140, head: noSilence) else { fatalError("No full mix") }
+precondition(abs(fullMix.inStart - (riseTime - fullMix.fadeLength * fullMix.speed)) < 1e-9, "Rise lands on the mix end: \(fullMix.inStart)")
 precondition(phraseMix.duckUntil == nil && phraseMix.keysCompatible == nil, "No vocals or keys known")
 let phraseCues = MixPlanner.cues(for: phraseMix, tail: phrased, tailStart: 140, head: rising)
 precondition(phraseCues == MixPlanner.Cues(outFalling: true, outHigh: false, inRising: true, longOutro: true), "Cues \(phraseCues)")

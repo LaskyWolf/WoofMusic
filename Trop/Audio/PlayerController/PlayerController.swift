@@ -288,7 +288,7 @@ extension PlayerController {
     /// chain is set again without the AutoMix effects, then without the bass
     /// filter, and mixes skip what is missing.
     func applyPlaybackSettings() {
-        let tiers = [(bass: true, effects: true), (bass: true, effects: false), (bass: false, effects: false)]
+        let tiers = [(bass: true, effects: true), (bass: false, effects: true), (bass: true, effects: false), (bass: false, effects: false)]
             .filter { (hasBassFilter || !$0.bass) && (hasEffectFilters || !$0.effects) }
         let chains = tiers.map {
             filterChain(loudness: currentLoudnessDb, echoDelay: currentEchoDelay, includesBass: $0.bass, includesEffects: $0.effects)

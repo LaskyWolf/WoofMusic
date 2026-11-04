@@ -178,8 +178,9 @@ final class Crossfade {
         planTask?.cancel()
         planTask = nil
         planToken = UUID()
+        // Only decks that took part in a transition need putting back.
         let active = player.activeDeck
-        for deck in [incoming, outgoing].compactMap({ $0 }) where deck != active {
+        for deck in [incoming, outgoing].compactMap({ $0 }) where deck != active && phase != .idle {
             player.deck(deck, set: "pause", "yes")
             player.deck(deck, set: "volume", "100")
             player.deck(deck, set: "speed", "1")
@@ -380,11 +381,13 @@ final class Crossfade {
     /// let their tail ring before the outgoing deck stops.
     private func runBeatMix(_ plan: Plan, beats: Int, period: Double) async {
         let mix = plan.mix
-        if plan.style == .sweep, let incoming {
+        guard begin(), let incoming, let outgoing else { return }
+        // The incoming deck is still at volume 0, so the low-pass is in
+        // place before anything is heard.
+        if plan.style == .sweep {
             effect(incoming, PlayerController.lowPassLabel, "lowpass", "f", lowPassStart)
             effect(incoming, PlayerController.lowPassLabel, "lowpass", "m", 1)
         }
-        guard begin(), let incoming, let outgoing else { return }
         let loop = plan.style == .loop ? MixPlanner.loopBar(for: mix) : nil
         if let loop {
             player.deck(outgoing, set: "ab-loop-a", PlayerController.fmt(loop.bar.lowerBound))
@@ -622,12 +625,14 @@ final class Crossfade {
 
     /// Puts a deck's AutoMix filters back to rest and drops its loop.
     private func clearEffects(_ deck: MpvDeck) {
-        setBass(deck, gain: 0)
-        afCommand(deck, PlayerController.highPassLabel, "highpass", "m", "0")
-        afCommand(deck, PlayerController.lowPassLabel, "lowpass", "m", "0")
-        afCommand(deck, PlayerController.effectsLabel, "volume@dry", "volume", "1")
-        afCommand(deck, PlayerController.effectsLabel, "volume@echosend", "volume", "0")
-        afCommand(deck, PlayerController.effectsLabel, "volume@verbsend", "volume", "0")
+        if player.hasBassFilter { setBass(deck, gain: 0) }
+        if player.hasEffectFilters {
+            afCommand(deck, PlayerController.highPassLabel, "highpass", "m", "0")
+            afCommand(deck, PlayerController.lowPassLabel, "lowpass", "m", "0")
+            afCommand(deck, PlayerController.effectsLabel, "volume@dry", "volume", "1")
+            afCommand(deck, PlayerController.effectsLabel, "volume@echosend", "volume", "0")
+            afCommand(deck, PlayerController.effectsLabel, "volume@verbsend", "volume", "0")
+        }
         player.deck(deck, set: "ab-loop-a", "no")
         player.deck(deck, set: "ab-loop-b", "no")
         player.deck(deck, set: "ab-loop-count", "inf")
