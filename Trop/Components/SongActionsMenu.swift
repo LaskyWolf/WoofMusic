@@ -529,6 +529,8 @@ private struct SleepTimerSheet: View {
     var body: some View {
         let timer = SleepTimer.shared
         let minutes = Int(duration / 60)
+        // Scrolls only when it doesn't fit, as in landscape.
+        ScrollView {
         VStack(spacing: 20) {
             header
 
@@ -573,7 +575,8 @@ private struct SleepTimerSheet: View {
         } action: { height in
             contentHeight = height
         }
-        .frame(maxHeight: .infinity, alignment: .top)
+        }
+        .scrollBounceBehavior(.basedOnSize)
         // As tall as the content, so nothing is left empty under End of Song;
         // large stays available for big Dynamic Type sizes.
         .appSheetChrome([.height(contentHeight), .large])
