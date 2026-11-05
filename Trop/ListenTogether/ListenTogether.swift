@@ -76,6 +76,9 @@ final class ListenTogether {
     // Guest: the track the room is on, until this phone has loaded it.
     @ObservationIgnored private var awaitingBuffer: (trackId: String, revision: UInt64)?
     @ObservationIgnored private var lastDriftFix = Date.distantPast
+    /// The room's song change, held back while this phone's own AutoMix fades
+    /// into that song: loading or changing the queue would cut the mix.
+    @ObservationIgnored private var pendingLoad: (track: LTTrack, queue: [LTTrack], revision: UInt64)?
 
     private enum Request {
         case create(username: String)
@@ -215,6 +218,7 @@ final class ListenTogether {
         sentQueueIds = []
         lastPosition = nil
         awaitingBuffer = nil
+        pendingLoad = nil
     }
 
     private func handle(_ event: ListenTogetherConnection.Event) {
@@ -419,7 +423,7 @@ final class ListenTogether {
         ping.sequence = pingSequence
         // A guest playing a loaded song reports where it is, for the drift check.
         let np = NowPlaying.shared
-        if isGuest, awaitingBuffer == nil, np.isPlaying, !np.isLoadingTrack, let id = np.videoId {
+        if isGuest, awaitingBuffer == nil, pendingLoad == nil, np.isPlaying, !np.isLoadingTrack, let id = np.videoId {
             ping.trackId = id
             ping.position = Int64(np.currentTime * 1000)
             ping.capturedAt = serverNowMs
@@ -434,7 +438,7 @@ final class ListenTogether {
         guard isGuest, pong.driftValid, abs(pong.driftMs) > Self.maxDriftMs,
               Date().timeIntervalSince(lastDriftFix) > 4 else { return }
         let np = NowPlaying.shared
-        guard np.isPlaying, !np.isLoadingTrack else { return }
+        guard np.isPlaying, !np.isLoadingTrack, !PlayerController.shared.isCrossfading else { return }
         lastDriftFix = Date()
         PlayerController.shared.seek(to: max(0, np.currentTime - Double(pong.driftMs) / 1000))
     }
@@ -529,16 +533,16 @@ final class ListenTogether {
         case .changeTrack:
             guestLoad(playback.track, queue: playback.queue, revision: playback.revision)
         case .play:
-            guard awaitingBuffer == nil, playback.trackId == np.videoId else { return }
+            guard awaitingBuffer == nil, pendingLoad == nil, playback.trackId == np.videoId else { return }
             let target = position + elapsed
             if abs(np.currentTime - target) > 0.5 { player.seek(to: target) }
             player.setPaused(false)
         case .pause:
-            guard awaitingBuffer == nil, playback.trackId == np.videoId else { return }
+            guard awaitingBuffer == nil, pendingLoad == nil, playback.trackId == np.videoId else { return }
             player.setPaused(true)
             player.seek(to: position)
         case .seek:
-            guard awaitingBuffer == nil, playback.trackId == np.videoId else { return }
+            guard awaitingBuffer == nil, pendingLoad == nil, playback.trackId == np.videoId else { return }
             player.seek(to: np.isPlaying ? position + elapsed : position)
         case .queueAdd, .queueRemove, .queueClear, .syncQueue:
             guestSetQueue(playback.queue)
@@ -555,6 +559,13 @@ final class ListenTogether {
             guestSetQueue(queue)
             return
         }
+        if Crossfade.shared.mixingInto == track.id {
+            // This phone is already mixing into the room's song: `guestTick`
+            // loads it once the mix ends, which finds it already playing.
+            pendingLoad = (track, queue, revision)
+            return
+        }
+        pendingLoad = nil
         let np = NowPlaying.shared
         let songs = [Self.song(for: track)] + queue.map(Self.song(for:))
         awaitingBuffer = (track.id, revision)
@@ -579,6 +590,10 @@ final class ListenTogether {
     }
 
     private func guestSetQueue(_ queue: [LTTrack]) {
+        if pendingLoad != nil {
+            pendingLoad?.queue = queue
+            return
+        }
         let np = NowPlaying.shared
         guard let current = np.currentSong else { return }
         np.setQueue([current] + queue.map(Self.song(for:)), startIndex: 0)
@@ -586,6 +601,9 @@ final class ListenTogether {
 
     private func guestTick() {
         let np = NowPlaying.shared
+        if let pending = pendingLoad, Crossfade.shared.mixingInto != pending.track.id {
+            guestLoad(pending.track, queue: pending.queue, revision: pending.revision)
+        }
         guard let waiting = awaitingBuffer, np.videoId == waiting.trackId, !np.isLoadingTrack, np.duration > 0 else { return }
         awaitingBuffer = nil
         connection?.send(LTMessage.bufferReady, LTBufferReady(trackId: waiting.trackId, trackRevision: waiting.revision))

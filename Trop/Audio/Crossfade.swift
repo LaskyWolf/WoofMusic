@@ -58,6 +58,12 @@ final class Crossfade {
 
     private var phase = Phase.idle
     private var plan: Plan?
+
+    /// The song a running mix is fading into: a Listen Together guest lets
+    /// its own mix finish instead of jumping to the room's song.
+    var mixingInto: String? {
+        phase == .fading ? plan?.toId : nil
+    }
     /// Identifies the current planning run; a reset makes older runs stale.
     private var planToken = UUID()
     /// The planning run, cancelled by a reset so its decodes stop too.
@@ -122,8 +128,7 @@ final class Crossfade {
             if !promoted, let plan, np.nextSong?.videoId != plan.toId { reset(reason: "queue changed") }
             return
         }
-        // A Listen Together guest follows the host's song changes instead.
-        guard isEnabled, !ListenTogether.shared.isGuest, np.hasNext, !np.isRepeatOn, !SleepTimer.shared.stopsAtSongEnd,
+        guard isEnabled, np.hasNext, !np.isRepeatOn, !SleepTimer.shared.stopsAtSongEnd,
               let current = np.videoId, np.duration > 30, np.duration < 600 else {
             if phase != .idle { reset(reason: "transitions turned off, repeat, sleep timer or no next song") }
             return
