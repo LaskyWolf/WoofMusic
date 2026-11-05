@@ -64,8 +64,12 @@ struct FullPlayerView: View {
     @State private var isLandscape = false
     @State private var radioReplacesPlay = false
     private var playerBackgroundColors: [Color] { np.dominantColors }
-    /// The Immersive cover needs the screen's full width; in landscape the player uses the Card cover.
-    private var showsCardCover: Bool { settings.playerStyle == .card || isLandscape }
+    private var showsCardCover: Bool { settings.playerStyle == .card }
+
+    /// The landscape Immersive cover: from the screen's leading edge to a little past the middle.
+    private func landscapeCoverWidth(_ geometry: GeometryProxy) -> CGFloat {
+        geometry.safeAreaInsets.leading + geometry.size.width * 0.54
+    }
     /// Dark enough for the white controls, at a 4.5:1 contrast, on a pale cover too.
     private var readableBackgroundColors: [Color] { playerBackgroundColors.map { $0.darkened(toLuminance: 0.18) } }
 
@@ -120,7 +124,33 @@ struct FullPlayerView: View {
                 }
                 .animation(.easeInOut(duration: 0.8), value: playerBackgroundColors)
 
-                if !showsCardCover {
+                if !showsCardCover, isLandscape {
+                    // The cover fills the left column up to the screen's edges and
+                    // fades out sideways, under the start of the controls.
+                    let insets = geometry.safeAreaInsets
+                    let pageSize = CGSize(
+                        width: landscapeCoverWidth(geometry),
+                        height: geometry.size.height + artworkTopInset + insets.bottom
+                    )
+                    artworkPager(pageSize: pageSize)
+                        .frame(width: pageSize.width, height: pageSize.height)
+                        .compositingGroup()
+                        .clipped()
+                        .mask {
+                            LinearGradient(
+                                stops: [
+                                    .init(color: .white, location: 0),
+                                    .init(color: .white, location: 0.6),
+                                    .init(color: .clear, location: 1)
+                                ],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        }
+                        .offset(x: -insets.leading, y: -artworkTopInset)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                        .opacity(showsKaraoke ? 0 : 1)
+                } else if !showsCardCover {
                     // Shorter while the speed dial is open, so the title stays on the faded part.
                     let artworkHeight = (geometry.size.height + artworkTopInset) * (showsSpeedDial ? 0.48 : 0.58)
                     // Clipped to the screen width, so a neighbour shows only the
@@ -150,7 +180,7 @@ struct FullPlayerView: View {
                     // Two columns, so nothing has to shrink below a usable size:
                     // the cover (and an open panel) on the left, the controls on the right.
                     HStack(spacing: 24) {
-                        artworkArea(pageWidth: geometry.size.width / 2)
+                        artworkArea(pageWidth: showsCardCover ? geometry.size.width / 2 : landscapeCoverWidth(geometry))
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                             .overlay { playerPanel }
 

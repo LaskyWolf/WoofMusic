@@ -403,6 +403,8 @@ final class Crossfade {
         if plan.style == .sweep {
             effect(incoming, PlayerController.lowPassLabel, "lowpass", "f", lowPassStart)
             effect(incoming, PlayerController.lowPassLabel, "lowpass", "m", 1)
+            // Off (m=0) while it moves from its 1 kHz rest to the sweep start.
+            effect(outgoing, PlayerController.highPassLabel, "highpass", "f", Self.highPassSweep.from)
         }
         let loop = plan.style == .loop ? MixPlanner.loopBar(for: mix) : nil
         if let loop {
@@ -493,24 +495,32 @@ final class Crossfade {
         let strength = effectStrength
         let fx = PlayerController.effectsLabel
         switch style {
+        // Gains and filter mixes change in 50 ms steps: a big step is an
+        // audible click, so every send and filter switch ramps over many ticks.
         case .echo:
             setVolumes(outgoing: 1, incoming: inGain)
             effect(outgoing, fx, "volume@dry", "volume", outGain)
-            // The last bar feeds the echo.
-            let lastBar = 1 - Double(TrackAnalyzer.beatsPerBar) / Double(beats)
-            effect(outgoing, fx, "volume@echosend", "volume", t >= lastBar ? strength : 0)
+            // The last bar feeds the echo, rising to its middle and back to 0 at its end.
+            let barBeats = Double(TrackAnalyzer.beatsPerBar)
+            let intoBar = (t - 1) * Double(beats) + barBeats
+            effect(outgoing, fx, "volume@echosend", "volume", max(0, min(intoBar, barBeats - intoBar)) / (barBeats / 2) * strength)
         case .wash:
             setVolumes(outgoing: 1, incoming: inGain)
             effect(outgoing, fx, "volume@dry", "volume", outGain)
-            effect(outgoing, fx, "volume@verbsend", "volume", t < 0.5 ? 0 : min(1, (t - 0.5) * 2) * strength)
+            // Back to 0 over the last 2 beats, so the reverb keeps a tail, not a cut.
+            let fadeOut = (1 - t) * Double(beats) / 2
+            effect(outgoing, fx, "volume@verbsend", "volume", max(0, min(1, (t - 0.5) * 2, fadeOut)) * strength)
         case .sweep:
             setVolumes(outgoing: outGain, incoming: inGain)
+            // A filter at the edge of hearing still shifts the bass phase,
+            // so switching it on or off at once clicks: its mix fades instead.
             if t < 0.5 {
                 let cutoff = MixPlanner.sweep(from: lowPassStart, to: Self.lowPassSweep.to, progress: t * 2)
                 effect(incoming, PlayerController.lowPassLabel, "lowpass", "f", cutoff)
+                effect(outgoing, PlayerController.highPassLabel, "highpass", "m", t * 2)
             } else {
                 let cutoff = MixPlanner.sweep(from: Self.highPassSweep.from, to: highPassEnd, progress: (t - 0.5) * 2)
-                effect(incoming, PlayerController.lowPassLabel, "lowpass", "m", 0)
+                effect(incoming, PlayerController.lowPassLabel, "lowpass", "m", 1 - (t - 0.5) * 2)
                 effect(outgoing, PlayerController.highPassLabel, "highpass", "f", cutoff)
                 effect(outgoing, PlayerController.highPassLabel, "highpass", "m", 1)
             }

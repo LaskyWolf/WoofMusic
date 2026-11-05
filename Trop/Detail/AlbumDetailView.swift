@@ -249,6 +249,8 @@ struct AlbumDetailView: View {
     @State private var selection = SongSelection()
 
     @Environment(\.dismiss) private var dismiss
+    /// Compact in phone landscape, where the header moves to a side column.
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
 
     init(browseId: String) {
         self.browseId = browseId
@@ -265,6 +267,9 @@ struct AlbumDetailView: View {
             retry: { await viewModel.load() }
         ) { album in
             albumContent(for: album)
+        }
+        .detailSideHeader(url: viewModel.album?.thumbnailUrl) {
+            if let album = viewModel.album, !viewModel.isLoading { header(for: album) }
         }
         .detailBarTitle(
             viewModel.album?.title ?? "",
@@ -290,8 +295,10 @@ struct AlbumDetailView: View {
     @ViewBuilder
     private func albumContent(for album: AlbumDetailInfo) -> some View {
         LazyVStack(spacing: 0) {
-            header(for: album)
-                .padding(.bottom, 8)
+            if verticalSizeClass != .compact {
+                header(for: album)
+                    .padding(.bottom, 8)
+            }
 
             if album.songs.isEmpty {
                 DetailEmptyLabel(text: "No songs found")

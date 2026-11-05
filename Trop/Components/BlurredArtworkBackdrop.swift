@@ -31,11 +31,64 @@ struct BlurredArtworkBackdrop: View {
 
 extension View {
     /// The spacing and blurred cover shared by the detail page headers.
+    /// In landscape the side header's page-wide blur replaces the header's own.
     func detailHeaderBackdrop(url: String?) -> some View {
-        padding(.vertical, 16)
+        modifier(DetailHeaderBackdrop(url: url))
+    }
+
+    /// On a phone in landscape (compact height) the page's header stays in a
+    /// left column while the list scrolls beside it, over one blurred cover
+    /// that reaches every edge. The page then leaves the header out of its list.
+    func detailSideHeader<Header: View>(url: String?, @ViewBuilder header: () -> Header) -> some View {
+        modifier(DetailSideHeader(url: url, header: header()))
+    }
+}
+
+private struct DetailHeaderBackdrop: ViewModifier {
+    let url: String?
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
+
+    func body(content: Content) -> some View {
+        content
+            .padding(.vertical, 16)
             .frame(maxWidth: .infinity)
             .background(alignment: .top) {
-                BlurredArtworkBackdrop(url: url)
+                if verticalSizeClass != .compact {
+                    BlurredArtworkBackdrop(url: url)
+                        // Under the notch side too, with no black bars.
+                        .ignoresSafeArea(edges: .horizontal)
+                }
             }
+    }
+}
+
+private struct DetailSideHeader<Header: View>: ViewModifier {
+    let url: String?
+    let header: Header
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
+
+    func body(content: Content) -> some View {
+        if verticalSizeClass == .compact {
+            content
+                .safeAreaInset(edge: .leading, spacing: 0) {
+                    ScrollView {
+                        header
+                    }
+                    .scrollBounceBehavior(.basedOnSize)
+                    .containerRelativeFrame(.horizontal) { width, _ in width * 0.45 }
+                }
+                .background {
+                    Color.clear
+                        .overlay { AsyncImageView(url: url, contentMode: .fill) }
+                        .clipped()
+                        .blur(radius: 40, opaque: true)
+                        .opacity(0.7)
+                        .ignoresSafeArea()
+                        .allowsHitTesting(false)
+                        .accessibilityHidden(true)
+                }
+        } else {
+            content
+        }
     }
 }

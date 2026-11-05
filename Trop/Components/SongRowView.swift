@@ -50,9 +50,10 @@ struct SongRowView: View {
         if isSelecting {
             rowContent
         } else {
-            // Long pressing anywhere on the row opens the same menu as ⋯.
+            // Long pressing anywhere on the row opens the same menu as ⋯. No
+            // background of its own, so the page behind (a blurred cover) shows through.
             SongActionsMenu(song: song, onNavigate: { onNavigate?($0) }, onSelect: onSelect,
-                            onRemove: onRemove, asContextMenu: true, menuMargin: 0) {
+                            onRemove: onRemove, asContextMenu: true, menuBackground: nil) {
                 rowContent
             }
         }
