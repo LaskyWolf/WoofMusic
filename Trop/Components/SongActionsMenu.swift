@@ -31,7 +31,7 @@ struct SongActionsMenu<MenuLabel: View>: View {
     @ViewBuilder var label: () -> MenuLabel
 
     private enum Sheet: Identifiable {
-        case playlist, radio, details, similar, artists, sleepTimer, shareCard, shareSong
+        case playlist, radio, details, similar, artists, sleepTimer, shareCard, shareSong, listenTogether
         var id: Self { self }
     }
 
@@ -65,6 +65,11 @@ struct SongActionsMenu<MenuLabel: View>: View {
                         NowPlaying.shared.enqueueNext(song)
                     }
                     Button("Add to Queue", systemImage: "text.append", action: addToQueue)
+                    if ListenTogether.shared.isGuest {
+                        Button("Suggest to Room", systemImage: "person.2.wave.2") {
+                            ListenTogether.shared.suggest(song)
+                        }
+                    }
                 }
             }
 
@@ -74,6 +79,10 @@ struct SongActionsMenu<MenuLabel: View>: View {
 
             if showsSleepTimer {
                 sleepTimerMenu
+                Button(
+                    ListenTogether.shared.roomCode.map { "Listen Together · \($0)" } ?? "Listen Together…",
+                    systemImage: "person.2.wave.2"
+                ) { sheet = .listenTogether }
             }
 
             // The rarer actions share one item, so the menu fits the screen without scrolling.
@@ -163,6 +172,9 @@ struct SongActionsMenu<MenuLabel: View>: View {
                 LyricShareComposer(videoId: song.videoId)
             case .shareSong:
                 SongShareSheet(song: song)
+            case .listenTogether:
+                ListenTogetherView()
+                    .appSheetChrome()
             }
         }
     }

@@ -22,6 +22,9 @@ struct IntegrationsSettingsView: View {
                 SettingsNavigationRow("ListenBrainz", icon: "headphones") {
                     ListenBrainzSettingsView()
                 }
+                SettingsNavigationRow("Listen Together", icon: "person.2.wave.2") {
+                    ListenTogetherView()
+                }
             } footer: {
                 Text("Connect external services to enhance your experience.")
             }

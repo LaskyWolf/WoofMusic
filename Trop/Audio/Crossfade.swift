@@ -122,7 +122,8 @@ final class Crossfade {
             if !promoted, let plan, np.nextSong?.videoId != plan.toId { reset(reason: "queue changed") }
             return
         }
-        guard isEnabled, np.hasNext, !np.isRepeatOn, !SleepTimer.shared.stopsAtSongEnd,
+        // A Listen Together guest follows the host's song changes instead.
+        guard isEnabled, !ListenTogether.shared.isGuest, np.hasNext, !np.isRepeatOn, !SleepTimer.shared.stopsAtSongEnd,
               let current = np.videoId, np.duration > 30, np.duration < 600 else {
             if phase != .idle { reset(reason: "transitions turned off, repeat, sleep timer or no next song") }
             return

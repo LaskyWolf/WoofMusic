@@ -287,6 +287,16 @@ final class SettingsStore {
         didSet { Self.defaults.set(autoplaySimilar, forKey: Keys.autoplaySimilar) }
     }
 
+    /// The metroserver Listen Together rooms live on; Metrolist's by default.
+    var listenTogetherServerURL: String {
+        didSet { Self.defaults.set(listenTogetherServerURL, forKey: Keys.listenTogetherServerURL) }
+    }
+
+    /// The name others see in a Listen Together room; empty uses the account name.
+    var listenTogetherUsername: String {
+        didSet { Self.defaults.set(listenTogetherUsername, forKey: Keys.listenTogetherUsername) }
+    }
+
     var persistQueue: Bool {
         didSet { Self.defaults.set(persistQueue, forKey: Keys.persistQueue) }
     }
@@ -415,6 +425,8 @@ final class SettingsStore {
         static let persistentPlayPause = "settings.persistentPlayPause"
         static let gaplessPlayback = "settings.gaplessPlayback"
         static let autoplaySimilar = "settings.autoplaySimilar"
+        static let listenTogetherServerURL = "settings.listenTogetherServerURL"
+        static let listenTogetherUsername = "settings.listenTogetherUsername"
         static let crossfadeEnabled = "settings.crossfadeEnabled"
         static let crossfadeSeconds = "settings.crossfadeSeconds"
         static let autoMixEnabled = "settings.autoMixEnabled"
@@ -487,6 +499,8 @@ final class SettingsStore {
         persistentPlayPause = Self.load(Keys.persistentPlayPause, default: false)
         gaplessPlayback = Self.load(Keys.gaplessPlayback, default: true)
         autoplaySimilar = Self.load(Keys.autoplaySimilar, default: true)
+        listenTogetherServerURL = Self.loadString(Keys.listenTogetherServerURL, default: ListenTogether.defaultServerURL)
+        listenTogetherUsername = Self.loadString(Keys.listenTogetherUsername, default: "")
         crossfadeEnabled = Self.load(Keys.crossfadeEnabled, default: false)
         crossfadeSeconds = Self.load(Keys.crossfadeSeconds, default: 6.0)
         autoMixEnabled = Self.load(Keys.autoMixEnabled, default: false)
