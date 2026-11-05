@@ -73,6 +73,7 @@ private struct DetailSideHeader<Header: View>: ViewModifier {
                 .safeAreaInset(edge: .leading, spacing: 0) {
                     ScrollView {
                         header
+                            .controlSize(.large)
                     }
                     .scrollBounceBehavior(.basedOnSize)
                     .containerRelativeFrame(.horizontal) { width, _ in width * 0.45 }
