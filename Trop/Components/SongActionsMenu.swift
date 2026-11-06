@@ -173,8 +173,16 @@ struct SongActionsMenu<MenuLabel: View>: View {
             case .shareSong:
                 SongShareSheet(song: song)
             case .listenTogether:
-                ListenTogetherView()
-                    .appSheetChrome()
+                // Its own stack only as a sheet: Settings pushes it into its stack.
+                NavigationStack {
+                    ListenTogetherView()
+                        .toolbar {
+                            ToolbarItem(placement: .confirmationAction) {
+                                Button("Done") { sheet = nil }
+                            }
+                        }
+                }
+                .appSheetChrome()
             }
         }
     }

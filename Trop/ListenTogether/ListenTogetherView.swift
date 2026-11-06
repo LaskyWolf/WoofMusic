@@ -10,40 +10,32 @@ import SwiftUI
 
 struct ListenTogetherView: View {
     @Environment(SettingsStore.self) private var settings
-    @Environment(\.dismiss) private var dismiss
     private let room = ListenTogether.shared
     @State private var code = ""
 
     var body: some View {
-        NavigationStack {
-            List {
-                if let notice = room.notice {
-                    Section {
-                        Label(notice, systemImage: "info.circle")
-                            .foregroundStyle(.secondary)
-                    }
+        List {
+            if let notice = room.notice {
+                Section {
+                    Label(notice, systemImage: "info.circle")
+                        .foregroundStyle(.secondary)
                 }
+            }
 
-                switch room.status {
-                case .idle:
-                    startSections(settings: settings)
-                case .connecting, .waitingForApproval:
-                    waitingSection
-                case .inRoom, .reconnecting:
-                    roomSections
-                }
+            switch room.status {
+            case .idle:
+                startSections(settings: settings)
+            case .connecting, .waitingForApproval:
+                waitingSection
+            case .inRoom, .reconnecting:
+                roomSections
             }
-            .navigationTitle("Listen Together")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { dismiss() }
-                }
-            }
-            .animation(.default, value: room.status)
-            .animation(.default, value: room.users)
-            .animation(.default, value: room.joinRequests)
         }
+        .navigationTitle("Listen Together")
+        .navigationBarTitleDisplayMode(.inline)
+        .animation(.default, value: room.status)
+        .animation(.default, value: room.users)
+        .animation(.default, value: room.joinRequests)
     }
 
     // MARK: - Not in a room
