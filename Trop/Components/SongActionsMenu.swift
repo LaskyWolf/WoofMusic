@@ -178,7 +178,7 @@ struct SongActionsMenu<MenuLabel: View>: View {
                     ListenTogetherView()
                         .toolbar {
                             ToolbarItem(placement: .confirmationAction) {
-                                Button("Done") { sheet = nil }
+                                Button("Done") { self.sheet = nil }
                             }
                         }
                 }
