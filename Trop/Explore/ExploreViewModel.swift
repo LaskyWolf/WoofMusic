@@ -39,7 +39,9 @@ final class ExploreViewModel {
 
     /// Explore's moods & genres, shown as the tab's filter chips.
     var moods: [MoodItem] { sections.first { $0.kind == .moods }?.moods ?? [] }
-    /// The chosen mood chip: its page replaces the feed.
+    /// The chosen family chip (Pop): its genres show as cards under the chips.
+    private(set) var selectedFamily: String?
+    /// The chosen mood: its page replaces the feed. A family's own genre, or one of its sub-genres.
     private(set) var selectedMood: MoodItem?
     /// The chosen mood's sections, nil while they load.
     private(set) var moodSections: [ExploreSection]?
@@ -75,6 +77,9 @@ final class ExploreViewModel {
             if let chosen = selectedMood {
                 selectedMood = moods.first { $0.title == chosen.title }
                 if selectedMood == nil { moodSections = nil }
+            }
+            if let family = selectedFamily, !moods.contains(where: { MoodFamily.family(of: $0.title) == family }) {
+                selectedFamily = nil
             }
             let moodCount = sections.reduce(0) { $0 + $1.moods.count }
             Log.explore.debug(
@@ -177,6 +182,23 @@ final class ExploreViewModel {
     }
 
     // MARK: - Moods
+
+    /// Picks a family chip: the family's own genre ("Pop") fills the feed, or
+    /// the normal feed stays when YouTube lists none. Nil clears everything.
+    func selectFamily(_ family: String?) {
+        selectedFamily = family
+        guard let family else {
+            select(nil)
+            return
+        }
+        select(MoodFamily.base(of: family, in: moods.filter { MoodFamily.family(of: $0.title) == family }))
+    }
+
+    /// Picks a plain genre chip, or a sub-genre card of the chosen family.
+    func selectGenre(_ mood: MoodItem) {
+        if MoodFamily.family(of: mood.title) != selectedFamily { selectedFamily = nil }
+        select(mood)
+    }
 
     /// Shows a mood's page, from the cache at once when it has one, and
     /// refreshes it when the cached copy is old. Nil goes back to the feed.

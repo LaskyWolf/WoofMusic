@@ -23,15 +23,17 @@ struct ExploreView: View {
                 .tabHeader {
                     TabHeaderView(title: "Explore", path: $router.explorePath)
                     if !viewModel.moods.isEmpty {
-                        FilterChipBar(
-                            items: viewModel.moods,
-                            id: \.id,
-                            title: \.title,
-                            isSelected: { viewModel.selectedMood?.id == $0.id },
-                            onTap: { mood in
-                                viewModel.select(viewModel.selectedMood?.id == mood.id ? nil : mood)
-                            }
-                        )
+                        if let family = viewModel.selectedFamily, let sub = chosenSubgenre {
+                            pathChips(family: family, subgenre: sub)
+                        } else {
+                            FilterChipBar(
+                                items: MoodFamily.entries(for: viewModel.moods),
+                                id: \.id,
+                                title: \.title,
+                                isSelected: isSelected,
+                                onTap: tap
+                            )
+                        }
                     }
                 }
                 .toolbar(.hidden, for: .navigationBar)
@@ -45,6 +47,100 @@ struct ExploreView: View {
                 .onAppear { viewModel.load() }
         }
         .coverZoomNamespace(coverZoom)
+    }
+
+    // MARK: - Chips
+
+    private func isSelected(_ entry: MoodFamily.Entry) -> Bool {
+        switch entry.kind {
+        case .group(let family, _): viewModel.selectedFamily == family
+        case .mood(let mood): viewModel.selectedFamily == nil && viewModel.selectedMood?.id == mood.id
+        }
+    }
+
+    private func tap(_ entry: MoodFamily.Entry) {
+        if isSelected(entry) {
+            viewModel.selectFamily(nil)
+            return
+        }
+        switch entry.kind {
+        case .group(let family, _): viewModel.selectFamily(family)
+        case .mood(let mood): viewModel.selectGenre(mood)
+        }
+    }
+
+    /// The chosen genre when it is one of the family's sub-genres, not the family itself.
+    private var chosenSubgenre: MoodItem? {
+        guard let family = viewModel.selectedFamily, let mood = viewModel.selectedMood,
+              MoodFamily.subgenres(of: family, in: viewModel.moods).contains(where: { $0.id == mood.id }) else { return nil }
+        return mood
+    }
+
+    /// "Pop › Brazilian Pop ✕": the family goes back to all of Pop, the ✕ too.
+    private func pathChips(family: String, subgenre: MoodItem) -> some View {
+        HStack(spacing: 8) {
+            pathChip(family, fill: settings.accentColor) { viewModel.selectFamily(family) }
+            pathChip(subgenre.title, fill: settings.accentColor.mix(with: .black, by: 0.3), leading: "chevron.right", trailing: "xmark") {
+                viewModel.selectFamily(family)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, DesignTokens.screenHPadding)
+        .padding(.vertical, 8)
+    }
+
+    private func pathChip(_ title: String, fill: Color, leading: String? = nil, trailing: String? = nil, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                if let leading { Image(systemName: leading).font(.caption.weight(.bold)) }
+                Text(title).lineLimit(1)
+                if let trailing { Image(systemName: trailing).font(.caption.weight(.bold)) }
+            }
+            .font(.subheadline.weight(.medium))
+            .padding(.horizontal, 16)
+            .padding(.vertical, 6)
+            .frame(minHeight: DesignTokens.controlHeight)
+            .background(Capsule().fill(fill))
+            .foregroundStyle(.white)
+        }
+        .buttonStyle(ZoomPressStyle())
+    }
+
+    // MARK: - Sub-genre cards
+
+    /// The family's sub-genres as cards; the chosen one steps out and the rest dim.
+    @ViewBuilder
+    private var subgenreCards: some View {
+        if let family = viewModel.selectedFamily {
+            let subs = MoodFamily.subgenres(of: family, in: viewModel.moods)
+            let chosen = chosenSubgenre
+            let icons = MoodFamily.uniqueIcons(for: subs)
+            let shown = subs.filter { $0.id != chosen?.id }
+            if !shown.isEmpty {
+                VStack(alignment: .leading, spacing: DesignTokens.titleContentGap) {
+                    NavigationTitleView(title: "\(family) sub-genres")
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        LazyHStack(spacing: DesignTokens.cardSpacing) {
+                            ForEach(shown) { mood in
+                                Button { viewModel.selectGenre(mood) } label: {
+                                    MoodCard(
+                                        title: mood.title,
+                                        color: MoodCard.swatch(family: family, title: mood.title),
+                                        symbol: icons[mood.id]
+                                    )
+                                    .opacity(chosen == nil ? 1 : 0.55)
+                                }
+                                .buttonStyle(ZoomPressStyle())
+                            }
+                        }
+                        .padding(.horizontal, DesignTokens.screenHPadding)
+                    }
+                    .scrollClipDisabled()
+                }
+                .padding(.bottom, DesignTokens.sectionGap)
+                .animation(.smooth(duration: 0.3), value: chosen?.id)
+            }
+        }
     }
 
     // MARK: - Content
@@ -84,11 +180,14 @@ struct ExploreView: View {
 
     private var sectionsList: some View {
         ScrollView {
-            ExploreSectionsList(
-                sections: viewModel.sections,
-                pendingRoute: $pendingRoute,
-                newReleases: viewModel.newReleases
-            )
+            VStack(alignment: .leading, spacing: 0) {
+                subgenreCards
+                ExploreSectionsList(
+                    sections: viewModel.sections,
+                    pendingRoute: $pendingRoute,
+                    newReleases: viewModel.newReleases
+                )
+            }
             .scrollsToTopOnTabReselect(2)
         }
         .scrollIndicators(.automatic)
@@ -109,8 +208,11 @@ struct ExploreView: View {
                 )
             } else {
                 ScrollView {
-                    ExploreSectionsList(sections: sections, pendingRoute: $pendingRoute)
-                        .scrollsToTopOnTabReselect(2) { viewModel.select(nil) }
+                    VStack(alignment: .leading, spacing: 0) {
+                        subgenreCards
+                        ExploreSectionsList(sections: sections, pendingRoute: $pendingRoute)
+                    }
+                    .scrollsToTopOnTabReselect(2) { viewModel.selectFamily(nil) }
                 }
                 .scrollIndicators(.automatic)
                 .miniPlayerTracksScroll()
