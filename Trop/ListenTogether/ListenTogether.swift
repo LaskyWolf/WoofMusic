@@ -76,6 +76,10 @@ final class ListenTogether {
     // Guest: the track the room is on, until this phone has loaded it.
     @ObservationIgnored private var awaitingBuffer: (trackId: String, revision: UInt64)?
     @ObservationIgnored private var lastDriftFix = Date.distantPast
+    /// Members' pictures by YouTube channel ID.
+    private var pictures: [String: String] = [:]
+    @ObservationIgnored private var pictureRequests: Set<String> = []
+    @ObservationIgnored private var myChannelId: String?
     /// The room's song change, held back while this phone's own AutoMix fades
     /// into that song: loading or changing the queue would cut the mix.
     @ObservationIgnored private var pendingLoad: (track: LTTrack, queue: [LTTrack], revision: UInt64)?
@@ -102,13 +106,19 @@ final class ListenTogether {
     // MARK: - Actions
 
     func createRoom() {
-        start(.create(username: username))
+        Task {
+            await loadChannelId()
+            start(.create(username: tagged(username)))
+        }
     }
 
     func joinRoom(code: String) {
         let code = code.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
         guard !code.isEmpty else { return }
-        start(.join(code: code, username: username))
+        Task {
+            await loadChannelId()
+            start(.join(code: code, username: tagged(username)))
+        }
     }
 
     func leave() {
@@ -150,6 +160,74 @@ final class ListenTogether {
     /// Guests ask the host to play a song next.
     func suggest(_ song: SongItem) {
         connection?.send(LTMessage.suggestTrack, LTSuggestTrack(track: Self.track(for: song)))
+    }
+
+    // MARK: - Pictures
+
+    // metroserver users have only a name (at most 50 bytes), so WoofMusic adds
+    // its YouTube channel ID to it: "Name \u{2063}UC…". Other WoofMusic phones
+    // show that channel's picture; Metrolist shows the name with the code.
+    private static let channelTag = " \u{2063}"
+    private static let maxNameBytes = 50
+
+    /// The name to show, and the YouTube channel a WoofMusic member added to it.
+    static func split(_ username: String) -> (name: String, channelId: String?) {
+        guard let range = username.range(of: channelTag, options: .backwards) else { return (username, nil) }
+        let id = String(username[range.upperBound...])
+        guard id.count == 24, id.hasPrefix("UC") else { return (username, nil) }
+        return (String(username[..<range.lowerBound]), id)
+    }
+
+    /// A member's picture: the account's own for this phone, else the
+    /// YouTube channel's, fetched once. Nil for a name without a channel.
+    func pictureURL(for user: LTUser) -> String? {
+        if user.userId == myUserId { return AccountState.shared.accountImageUrl }
+        return pictureURL(forName: user.username)
+    }
+
+    func pictureURL(forName username: String) -> String? {
+        guard let id = Self.split(username).channelId else { return nil }
+        if let url = pictures[id] { return url }
+        if !pictureRequests.contains(id) {
+            pictureRequests.insert(id)
+            Task { pictures[id] = await Self.channelPicture(id) }
+        }
+        return nil
+    }
+
+    private func tagged(_ name: String) -> String {
+        guard let channelId = myChannelId else { return name }
+        let suffix = Self.channelTag + channelId
+        var name = name
+        while !name.isEmpty, name.utf8.count + suffix.utf8.count > Self.maxNameBytes { name.removeLast() }
+        return name + suffix
+    }
+
+    /// This account's channel, from the "Your channel" link of the account menu.
+    private func loadChannelId() async {
+        guard myChannelId == nil, AccountState.shared.isLoggedIn,
+              let menu = try? await InnerTubeClient.tropShared.accountMenu() else { return }
+        myChannelId = Self.values(for: "browseId", in: menu)
+            .compactMap { $0 as? String }
+            .first { $0.count == 24 && $0.hasPrefix("UC") }
+    }
+
+    /// The channel page's avatar (`foregroundThumbnail`), else its header image.
+    private static func channelPicture(_ channelId: String) async -> String? {
+        guard let page = try? await InnerTubeClient.tropShared.browse(browseId: channelId),
+              let header = page["header"] else { return nil }
+        let image = values(for: "foregroundThumbnail", in: header).first ?? values(for: "thumbnail", in: header).first
+        let thumbnails = image.flatMap { values(for: "thumbnails", in: $0).first } as? [[String: Any]]
+        return InnerTubeJSON.lastThumbnailURL(thumbnails)
+    }
+
+    /// Every value stored under `key` anywhere in a JSON tree, outermost first.
+    private static func values(for key: String, in json: Any) -> [Any] {
+        if let dict = json as? [String: Any] {
+            return (dict[key].map { [$0] } ?? []) + dict.values.flatMap { values(for: key, in: $0) }
+        }
+        if let array = json as? [Any] { return array.flatMap { values(for: key, in: $0) } }
+        return []
     }
 
     // MARK: - Connection

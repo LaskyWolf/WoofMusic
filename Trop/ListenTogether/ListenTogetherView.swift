@@ -140,7 +140,11 @@ struct ListenTogetherView: View {
             Section("Wants to Join") {
                 ForEach(room.joinRequests) { request in
                     HStack {
-                        Label(request.username, systemImage: "person.crop.circle.badge.questionmark")
+                        Label {
+                            Text(ListenTogether.split(request.username).name)
+                        } icon: {
+                            MemberPicture(name: ListenTogether.split(request.username).name, url: room.pictureURL(forName: request.username))
+                        }
                         Spacer()
                         Button("Decline", systemImage: "xmark") { room.reject(request) }
                             .labelStyle(.iconOnly)
@@ -161,7 +165,7 @@ struct ListenTogetherView: View {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(suggestion.track.title)
                                 .lineLimit(1)
-                            Text("\(suggestion.track.artist) · from \(suggestion.fromUsername)")
+                            Text("\(suggestion.track.artist) · from \(ListenTogether.split(suggestion.fromUsername).name)")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                                 .lineLimit(1)
@@ -181,11 +185,22 @@ struct ListenTogetherView: View {
         Section("In the Room") {
             ForEach(room.users) { user in
                 HStack {
+                    let name = ListenTogether.split(user.username).name
                     Label {
-                        Text(user.userId == room.myUserId ? "\(user.username) (you)" : user.username)
+                        Text(user.userId == room.myUserId ? "\(name) (you)" : name)
                     } icon: {
-                        Image(systemName: user.isHost ? "crown.fill" : "person.fill")
-                            .foregroundStyle(user.isHost ? .yellow : .secondary)
+                        MemberPicture(name: name, url: room.pictureURL(for: user))
+                            .overlay(alignment: .bottomTrailing) {
+                                if user.isHost {
+                                    Image(systemName: "crown.fill")
+                                        .font(.system(size: 9, weight: .bold))
+                                        .foregroundStyle(.yellow)
+                                        .padding(3)
+                                        .background(Color(.secondarySystemGroupedBackground), in: .circle)
+                                        .offset(x: 5, y: 4)
+                                        .accessibilityLabel("Host")
+                                }
+                            }
                     }
                     Spacer()
                     if !user.isConnected {
@@ -208,5 +223,37 @@ struct ListenTogetherView: View {
                 room.leave()
             }
         }
+    }
+}
+
+/// A member's YouTube picture, or their initial on a colour of their own.
+private struct MemberPicture: View {
+    let name: String
+    let url: String?
+
+    var body: some View {
+        Group {
+            if let url {
+                AsyncImageView(url: url)
+            } else {
+                Circle()
+                    .fill(color.gradient)
+                    .overlay {
+                        Text(String(name.split(separator: " ").first?.first ?? "?").uppercased())
+                            .font(.footnote.weight(.semibold))
+                            .foregroundStyle(.white)
+                    }
+            }
+        }
+        .frame(width: 30, height: 30)
+        .clipShape(.circle)
+    }
+
+    private static let colors: [Color] = [.orange, .pink, .purple, .indigo, .teal, .green, .brown]
+
+    /// The same colour for a name on every launch (`hashValue` changes per launch).
+    private var color: Color {
+        let sum = name.unicodeScalars.reduce(0) { $0 &+ Int($1.value) }
+        return Self.colors[sum % Self.colors.count]
     }
 }
