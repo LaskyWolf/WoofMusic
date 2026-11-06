@@ -16,8 +16,8 @@ env:
 jobs:
   build-ios:
     name: Build iOS IPA
-    # Intel: the arm64 macOS pool often has no free runner for hours.
-    runs-on: macos-26-intel
+    # macos-26, not macos-latest: jobs on macos-latest waited until GitHub cancelled them.
+    runs-on: macos-26
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6.0.2
