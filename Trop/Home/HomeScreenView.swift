@@ -22,8 +22,6 @@ struct HomeScreenView: View {
     var body: some View {
         NavigationStack(path: $router.homePath) {
             VStack(spacing: 0) {
-                TabHeaderView(title: "Home", path: $router.homePath)
-
                 Group {
                     if viewModel.isLoading {
                         ShimmerLoadingView()
@@ -40,6 +38,16 @@ struct HomeScreenView: View {
                 .animation(.smooth(duration: 0.35), value: viewModel.isLoading)
             }
             .frame(maxHeight: .infinity, alignment: .top)
+            .tabHeader {
+                TabHeaderView(title: "Home", path: $router.homePath)
+                if let chips = viewModel.homePage?.chips, !chips.isEmpty {
+                    ChipsRowView(
+                        chips: chips,
+                        selectedChip: viewModel.selectedChip,
+                        onChipTap: { viewModel.toggleChip($0) }
+                    )
+                }
+            }
             .toolbar(.hidden, for: .navigationBar)
             .detailRouteDestinations()
             .onChange(of: pendingRoute) { _, route in
@@ -91,14 +99,6 @@ struct HomeScreenView: View {
     private var homescreenContent: some View {
         ScrollView {
             LazyVStack(spacing: 0) {
-                if let chips = viewModel.homePage?.chips, !chips.isEmpty {
-                    ChipsRowView(
-                        chips: chips,
-                        selectedChip: viewModel.selectedChip,
-                        onChipTap: { viewModel.toggleChip($0) }
-                    )
-                }
-
                 if viewModel.isChipLoading {
                     // YouTube localises chip titles; "Podcast" matches English and Italian.
                     ShimmerLoadingView(
