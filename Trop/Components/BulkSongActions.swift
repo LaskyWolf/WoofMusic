@@ -117,6 +117,13 @@ struct BulkSongActionsMenu: View {
     var onRemove: (() -> Void)?
     var onFinished: () -> Void
 
+    // Spelled out: the private state below makes the memberwise init private to this file.
+    init(songs: [SongItem], onRemove: (() -> Void)? = nil, onFinished: @escaping () -> Void) {
+        self.songs = songs
+        self.onRemove = onRemove
+        self.onFinished = onFinished
+    }
+
     @ObservedObject private var likeStore = LikeStore.shared
     @ObservedObject private var downloadManager = DownloadManager.shared
     @State private var showPlaylistSheet = false

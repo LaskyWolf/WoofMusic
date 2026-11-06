@@ -12,9 +12,30 @@ struct HistoryScreenView: View {
     @State private var viewModel = HistoryViewModel()
     @State private var isSelecting = false
     @State private var selectedEvents: Set<Event> = []
+    @State private var query = ""
 
     private var displayableSections: [(title: String, entries: [DatabaseService.HistoryEntry])] {
-        viewModel.groupedEntries.filter { !$0.entries.isEmpty }
+        // Without a search, skip building a song per entry just to match it.
+        let isSearching = !query.trimmingCharacters(in: .whitespaces).isEmpty
+        return viewModel.groupedEntries.compactMap { section -> (title: String, entries: [DatabaseService.HistoryEntry])? in
+            let entries = isSearching ? section.entries.filter { matches(SongItem(historyEntry: $0)) } : section.entries
+            return entries.isEmpty ? nil : (section.title, entries)
+        }
+    }
+
+    private var remoteSections: [(title: String, songs: [SongItem])] {
+        viewModel.remoteSections.compactMap { section -> (title: String, songs: [SongItem])? in
+            let songs = section.songs.filter(matches)
+            return songs.isEmpty ? nil : (section.title, songs)
+        }
+    }
+
+    /// The search field's words in the title or an artist's name.
+    private func matches(_ song: SongItem) -> Bool {
+        let words = query.split(separator: " ")
+        guard !words.isEmpty else { return true }
+        let text = ([song.title] + song.artists.map(\.name)).joined(separator: " ")
+        return words.allSatisfy { text.localizedStandardContains($0) }
     }
 
     private var allEvents: [Event] {
@@ -27,16 +48,7 @@ struct HistoryScreenView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            Picker("Source", selection: $viewModel.source) {
-                ForEach(HistorySource.allCases, id: \.self) { source in
-                    Text(source.rawValue).tag(source)
-                }
-            }
-            .pickerStyle(.segmented)
-            .controlSize(.large)
-            .padding(.horizontal, DesignTokens.screenHPadding)
-            .padding(.top, 8)
-            .padding(.bottom, 12)
+            sourcePicker
 
             Group {
                 if viewModel.isLoading {
@@ -52,10 +64,10 @@ struct HistoryScreenView: View {
         }
         .navigationTitle("History")
         .navigationBarTitleDisplayMode(.inline)
+        .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search your history")
         .toolbar {
             toolbarContent
         }
-        .navigationBarBackButtonHidden(isSelecting)
         .onChange(of: viewModel.source) { _, newSource in
             if isSelecting {
                 isSelecting = false
@@ -68,41 +80,62 @@ struct HistoryScreenView: View {
         .task { await viewModel.load() }
     }
 
+    /// Two wide pills, one per source.
+    private var sourcePicker: some View {
+        HStack(spacing: 10) {
+            ForEach(HistorySource.allCases, id: \.self) { source in
+                let isOn = viewModel.source == source
+                Button { viewModel.source = source } label: {
+                    Text(source.rawValue)
+                        .font(.body.weight(.semibold))
+                        .frame(maxWidth: .infinity, minHeight: 46)
+                        .background(Capsule().fill(isOn ? settings.accentColor : Color(.systemGray5)))
+                        .foregroundStyle(isOn ? Color.white : Color.primary)
+                }
+                .buttonStyle(ZoomPressStyle())
+                .accessibilityAddTraits(isOn ? .isSelected : [])
+            }
+        }
+        .padding(.horizontal, DesignTokens.screenHPadding)
+        .padding(.top, 8)
+        .padding(.bottom, 12)
+        .sensoryFeedback(.selection, trigger: viewModel.source)
+    }
+
+    private var selectedSongs: [SongItem] {
+        displayableSections.flatMap(\.entries)
+            .filter { selectedEvents.contains($0.event) }
+            .map(SongItem.init(historyEntry:))
+    }
+
+    private func endSelection() {
+        isSelecting = false
+        selectedEvents.removeAll()
+    }
+
+    /// The playlist page's buttons: Select, then Select All, the songs' actions and Done.
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
         if viewModel.source == .local && !displayableSections.isEmpty {
-            if isSelecting {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button {
-                        isSelecting = false
-                        selectedEvents.removeAll()
-                    } label: {
-                        Image(systemName: "xmark")
+            ToolbarItemGroup(placement: .primaryAction) {
+                if isSelecting {
+                    let all = selectedEvents.count == allEvents.count
+                    Button(all ? "Deselect All" : "Select All",
+                           systemImage: all ? "checklist.unchecked" : "checklist.checked") {
+                        selectedEvents = all ? [] : Set(allEvents)
                     }
-                }
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    if selectedEvents.count == allEvents.count {
-                        Button("Deselect All") { selectedEvents.removeAll() }
-                    } else {
-                        Button("Select All") { selectedEvents = Set(allEvents) }
-                    }
-                }
-                if !selectedEvents.isEmpty {
-                    ToolbarItem(placement: .navigationBarTrailing) {
-                        Button(role: .destructive) {
+                    BulkSongActionsMenu(songs: selectedSongs, onFinished: endSelection)
+                    if !selectedEvents.isEmpty {
+                        Button("Delete from History", systemImage: "trash", role: .destructive) {
                             Task {
                                 await viewModel.deleteEvents(Array(selectedEvents))
-                                selectedEvents.removeAll()
-                                isSelecting = false
+                                endSelection()
                             }
-                        } label: {
-                            Image(systemName: "trash")
                         }
                     }
-                }
-            } else {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Select") { isSelecting = true }
+                    Button("Done", action: endSelection)
+                } else {
+                    Button("Select", systemImage: "checkmark.circle") { isSelecting = true }
                 }
             }
         }
@@ -112,7 +145,9 @@ struct HistoryScreenView: View {
 
     private var localHistoryContent: some View {
         Group {
-            if displayableSections.isEmpty {
+            if displayableSections.isEmpty, !query.isEmpty {
+                ContentUnavailableView.search(text: query)
+            } else if displayableSections.isEmpty {
                 ContentUnavailableView(
                     "No History",
                     systemImage: "clock.arrow.circlepath",
@@ -148,30 +183,13 @@ struct HistoryScreenView: View {
         .miniPlayerTracksScroll()
     }
 
-    @ViewBuilder
     private func localRow(_ entry: DatabaseService.HistoryEntry) -> some View {
         let song = SongItem(historyEntry: entry)
         let isSelected = selectedEvents.contains(entry.event)
-        HStack(spacing: 0) {
-            if isSelecting {
-                Button {
-                    if isSelected {
-                        selectedEvents.remove(entry.event)
-                    } else {
-                        selectedEvents.insert(entry.event)
-                    }
-                } label: {
-                    Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                        .font(.title3)
-                        .foregroundStyle(isSelected ? settings.accentColor : .secondary)
-                        .contentTransition(.symbolEffect(.replace))
-                        .glyphMotion(isSelected ? .pop : .deflate, trigger: isSelected)
-                        .padding(.leading, 16)
-                        .padding(.trailing, 4)
-                }
-                .buttonStyle(.plain)
-            }
-            SongRowView(song: song, onTap: {
+        return SongRowView(
+            song: song,
+            artSize: DesignTokens.artSmall, artRadius: DesignTokens.cardRadius,
+            onTap: {
                 if isSelecting {
                     if isSelected {
                         selectedEvents.remove(entry.event)
@@ -182,13 +200,20 @@ struct HistoryScreenView: View {
                     // Built on tap only: computing it per row re-converts the whole history.
                     PlaybackQueue.play(song, in: allDisplayableSongs, log: Log.historyView, context: "History play")
                 }
-            })
-            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                Button(role: .destructive) {
-                    Task { await viewModel.deleteEvents([entry.event]) }
-                } label: {
-                    Label("Delete", systemImage: "trash")
-                }
+            },
+            isSelecting: isSelecting,
+            isSelected: isSelected,
+            onSelect: {
+                isSelecting = true
+                selectedEvents = [entry.event]
+            },
+            showsMenuButton: false
+        )
+        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+            Button(role: .destructive) {
+                Task { await viewModel.deleteEvents([entry.event]) }
+            } label: {
+                Label("Delete", systemImage: "trash")
             }
         }
     }
@@ -207,7 +232,9 @@ struct HistoryScreenView: View {
                     message: error.localizedDescription,
                     retry: { await viewModel.loadRemote() }
                 )
-            } else if viewModel.remoteSections.isEmpty {
+            } else if remoteSections.isEmpty, !query.isEmpty {
+                ContentUnavailableView.search(text: query)
+            } else if remoteSections.isEmpty {
                 ContentUnavailableView(
                     "No History",
                     systemImage: "clock.arrow.circlepath",
@@ -221,13 +248,18 @@ struct HistoryScreenView: View {
 
     private var remoteList: some View {
         List {
-            ForEach(viewModel.remoteSections.indices, id: \.self) { sectionIndex in
-                let section = viewModel.remoteSections[sectionIndex]
+            ForEach(remoteSections.indices, id: \.self) { sectionIndex in
+                let section = remoteSections[sectionIndex]
                 Section {
                     ForEach(section.songs, id: \.videoId) { song in
-                        SongRowView(song: song, onTap: {
-                            PlaybackQueue.play(song, in: section.songs, log: Log.historyView, context: "History play")
-                        })
+                        SongRowView(
+                            song: song,
+                            artSize: DesignTokens.artSmall, artRadius: DesignTokens.cardRadius,
+                            onTap: {
+                                PlaybackQueue.play(song, in: section.songs, log: Log.historyView, context: "History play")
+                            },
+                            showsMenuButton: false
+                        )
                         .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
                         .listRowSeparator(.hidden)
                     }
