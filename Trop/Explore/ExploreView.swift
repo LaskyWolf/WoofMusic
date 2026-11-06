@@ -22,7 +22,10 @@ struct ExploreView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                 .tabHeader {
                     TabHeaderView(title: "Explore", path: $router.explorePath)
-                    if !viewModel.moods.isEmpty {
+                    if viewModel.phase == .idle || viewModel.phase == .loading {
+                        // The chips come with the page: placeholders keep their place.
+                        ShimmerChips(count: 6, width: 84)
+                    } else if !viewModel.moods.isEmpty {
                         if let family = viewModel.selectedFamily, let sub = chosenSubgenre {
                             pathChips(family: family, subgenre: sub)
                         } else {
@@ -220,7 +223,7 @@ struct ExploreView: View {
                 .id(mood.id)
             }
         } else {
-            MoodDetailSkeletonView()
+            MoodDetailSkeletonView { subgenreCards }
         }
     }
 }
@@ -385,14 +388,18 @@ private struct ExploreSkeletonView: View {
 // MARK: - Mood detail skeleton
 
 /// Loading placeholder mirroring a mood's feed, which renders through
-/// `ExploreSectionsList`: song columns, then card carousels.
-private struct MoodDetailSkeletonView: View {
+/// `ExploreSectionsList`: new releases, song columns, then card carousels.
+private struct MoodDetailSkeletonView<Header: View>: View {
+    @ViewBuilder var header: Header
+
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
+                header
+                // The order of `ExploreViewModel.moodOrder`: new releases, songs, the rest.
+                ExploreSkeletonView.cardsSection(titleWidth: 220)
                 ExploreSkeletonView.songsSection(titleWidth: 80)
                 ExploreSkeletonView.cardsSection(titleWidth: 200)
-                ExploreSkeletonView.cardsSection(titleWidth: 220)
             }
         }
         .scrollIndicators(.hidden)

@@ -52,8 +52,7 @@ struct HistoryScreenView: View {
 
             Group {
                 if viewModel.isLoading {
-                    LoadingStateView("Loading history...")
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    historySkeleton
                 } else if viewModel.source == .local {
                     localHistoryContent
                 } else {
@@ -100,6 +99,24 @@ struct HistoryScreenView: View {
         .padding(.top, 8)
         .padding(.bottom, 12)
         .sensoryFeedback(.selection, trigger: viewModel.source)
+    }
+
+    /// Day titles and song rows, like the loaded list.
+    private var historySkeleton: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(0..<2, id: \.self) { _ in
+                    ShimmerSectionTitle(width: 110)
+                    ForEach(0..<5, id: \.self) { _ in
+                        ShimmerMediaRow(artSize: DesignTokens.artSmall)
+                            .padding(.horizontal, DesignTokens.screenHPadding)
+                    }
+                }
+            }
+        }
+        .scrollIndicators(.hidden)
+        .allowsHitTesting(false)
+        .shimmerClock()
     }
 
     private var selectedSongs: [SongItem] {
@@ -223,8 +240,7 @@ struct HistoryScreenView: View {
     private var remoteHistoryContent: some View {
         Group {
             if viewModel.isRemoteLoading {
-                LoadingStateView("Loading history...")
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                historySkeleton
             } else if let error = viewModel.remoteError {
                 RetryStateView(
                     title: "Couldn't load history",

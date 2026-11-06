@@ -40,7 +40,10 @@ struct HomeScreenView: View {
             .frame(maxHeight: .infinity, alignment: .top)
             .tabHeader {
                 TabHeaderView(title: "Home", path: $router.homePath)
-                if let chips = viewModel.homePage?.chips, !chips.isEmpty {
+                if viewModel.isLoading {
+                    // The chips come with the page: placeholders keep their place.
+                    ShimmerChips()
+                } else if let chips = viewModel.homePage?.chips, !chips.isEmpty {
                     ChipsRowView(
                         chips: chips,
                         selectedChip: viewModel.selectedChip,
