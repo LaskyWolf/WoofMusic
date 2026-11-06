@@ -12,6 +12,8 @@ enum MusicLink: Equatable {
     case album(browseId: String)
     case artist(browseId: String)
     case podcast(browseId: String)
+    /// Names its song only on the page behind it; `MusicLinkOpener` looks it up.
+    case shazam(URL)
 
     /// Reads woofmusic://open?url=<encoded link>.
     init?(openURL: URL) {
@@ -44,6 +46,8 @@ enum MusicLink: Equatable {
                 self.init(browseId: path[1])
             default: return nil
             }
+        } else if ShazamLink.isShazam(host: host, path: path) {
+            self = .shazam(link)
         } else {
             return nil
         }

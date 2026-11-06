@@ -307,6 +307,12 @@ final class SearchViewModel {
         let query = fieldText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty else { return }
 
+        // A pasted YouTube, YouTube Music or Shazam link opens instead of being searched for.
+        if let url = URL(string: query), let link = MusicLink(link: url) {
+            MusicLinkOpener.openShowingProblem(link)
+            return
+        }
+
         Log.search.debug("Submit query='\(query)' sort=\(sort.title)")
 
         // Enter .loading FIRST so clearing the field below is treated as part
@@ -430,6 +436,7 @@ final class SearchViewModel {
             + #"{"musicResponsiveListItemRenderer":{}}]}}]}"#
         assert(SearchService.parseSuggestions(Data(answer.utf8)) == ["cats", "cat videos"])
         assert(SearchService.parseSuggestions(Data("<html>".utf8)).isEmpty)
+        ShazamLink.selfCheck()
     }
 
     // MARK: - Field changes
