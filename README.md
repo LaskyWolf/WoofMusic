@@ -36,12 +36,15 @@ It plays without ads and mixes songs like a DJ.
 - Keep Listening card: recent songs, albums and playlists as a fanned stack that spreads with a tap
 - Quick Picks and the sections built from your own library, also offline
 - New albums and singles in Explore: cards tinted with each cover's colours, with a vinyl that slides out and spins while the album plays
-- Moods and genres as a looping row of coloured cards
+- Moods and genres as filter chips under the header: a chip swaps in that mood's page, and a genre family such as Pop shows its sub-genres as cards
+- Headers and filter chips of Home, Library and Explore stay pinned while you scroll
 
 ### Playback
 - Songs and podcasts from YouTube Music, with no ads
+- AutoMix follows phrases, keys and vocals, and picks a transition style for each pair of songs
 - Equalizer presets with a curve preview
-- Play Next queue, song radio and listening history
+- Play Next queue, song radio and listening history, which you can search and filter by Local or YouTube Music
+- Landscape layout for the player
 - Sleep timer with a Clock-style countdown wheel or the end of the song
 - AirPlay, a system volume bar and lock screen controls
 - Non-music parts skipped with SponsorBlock, which you can turn off
@@ -53,6 +56,10 @@ It plays without ads and mixes songs like a DJ.
 - Songs that can't be played shown in grey and left out of queues and download counts
 - Select many songs to play, queue, like, download or add them to a playlist
 - Long-press menus on songs, albums, playlists, artists and Home cards
+
+### Listen Together
+- Rooms that work with Metrolist's metroserver: members hear the same song at the same time
+- Members show their YouTube Music picture; Metrolist members see it as a code at the end of the name
 
 ### Lyrics
 - Synced lyrics from Musixmatch, Netease, Kugou, LRCLIB and Genius
@@ -70,10 +77,12 @@ It plays without ads and mixes songs like a DJ.
 - **Siri and Shortcuts:** "Shuffle my liked songs in Woof Music", play/pause, next song, search and play a song or artist
 - **Home Screen quick actions:** Search, Shuffle Liked Songs, Downloads, Resume
 - **Open YouTube and YouTube Music links:** share a song, playlist, album, artist or podcast link to Woof Music from any app
+- **Shazam links:** share a Shazam song link to Woof Music, or paste it in Search, and the song plays from YouTube Music
 
 ### Look
 - Custom app icons and accent colours
 - Left-handed tab bar option
+- Update check in the App section of the profile
 - VoiceOver support on the player and song rows, and Reduce Motion is respected
 
 ## Speed
