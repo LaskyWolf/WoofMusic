@@ -122,7 +122,19 @@ struct DiagnosticsSection: Identifiable {
 
     @MainActor
     static func all() -> [DiagnosticsSection] {
-        [app(), signing(), widgets(), account()]
+        [app(), signing(), widgets(), account(), autoMix()]
+    }
+
+    /// The last transitions between songs and how each went.
+    @MainActor
+    private static func autoMix() -> DiagnosticsSection {
+        let transitions = Crossfade.shared.history
+        guard !transitions.isEmpty else {
+            return DiagnosticsSection(title: "AutoMix", rows: [Row(label: "Transitions", value: "No transitions yet")])
+        }
+        return DiagnosticsSection(title: "AutoMix", rows: transitions.map {
+            Row(label: $0.date.formatted(date: .omitted, time: .standard), value: "\($0.plan)\n\($0.outcome)")
+        })
     }
 
     // MARK: - Sections

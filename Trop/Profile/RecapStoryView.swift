@@ -63,12 +63,17 @@ struct RecapStoryView: View {
                 background
                 if let stats, !stats.isEmpty, slides.indices.contains(index) {
                     gestureLayer(width: geo.size.width)
+                    let scale = Self.slideScale(in: geo.size)
                     slideView(slides[index], stats: stats)
                         .id(index)
                         .transition(.opacity)
                         .padding(.top, 96)
                         .padding(.horizontal, 22)
                         .padding(.bottom, 30)
+                        // In landscape the slide keeps its portrait layout, shrunk to the screen's height.
+                        .frame(width: scale < 1 ? Self.portraitSlide.width : nil,
+                               height: scale < 1 ? Self.portraitSlide.height : nil)
+                        .scaleEffect(scale, anchor: .top)
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                         .allowsHitTesting(false)
                         .accessibilityElement(children: .combine)
@@ -99,6 +104,14 @@ struct RecapStoryView: View {
         .accessibilityAction(.escape) { dismiss() }
         .sensoryFeedback(.selection, trigger: index)
         .task { await load() }
+    }
+
+    /// The size slides are laid out for; a shorter screen shows them scaled down.
+    private static let portraitSlide = CGSize(width: 402, height: 780)
+
+    private static func slideScale(in size: CGSize) -> CGFloat {
+        guard size.width > size.height else { return 1 }
+        return min(1, size.height / portraitSlide.height)
     }
 
     // MARK: - Chrome

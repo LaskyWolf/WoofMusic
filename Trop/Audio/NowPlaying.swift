@@ -6,6 +6,7 @@
 //
 
 import AVFoundation
+import Combine
 import Foundation
 import Observation
 import Nuke
@@ -21,6 +22,9 @@ final class NowPlaying {
     var albumTitle = ""
     var videoId: String?
     var artists: [YTArtist] = []
+    /// True when the song changed through a crossfade or AutoMix: the player
+    /// dissolves the old cover into the new one instead of sliding.
+    var coverDissolves = false
     /// The progress timer runs only while playing; pause and seek publish the
     /// position themselves.
     var isPlaying = false {
@@ -97,6 +101,10 @@ final class NowPlaying {
     private var isResolvingNext = false
     /// Timestamps of the last mid-play failure per videoId, to bound retries.
     private var lastFailureAt: [String: Date] = [:]
+    /// Position the progress timer last saw move, and since when it stands still.
+    private var stallWatch: (position: TimeInterval, since: Date)?
+    /// Seconds a playing song may stand still before its stream is reloaded.
+    private static let stallTimeout: TimeInterval = 8
 
     private static let queueKey = "nowPlaying.queue"
     private static let queueIndexKey = "nowPlaying.queueIndex"
@@ -311,6 +319,8 @@ final class NowPlaying {
         guard let index = queueSongs.indices.first(where: { $0 > queueIndex && queueSongs[$0].videoId == videoId }) else { return }
         queueIndex = index
         update(with: queueSongs[queueIndex])
+        // After `update`, which clears it: only a mixed transition dissolves the cover.
+        coverDissolves = true
         isPlaying = true
         persistQueueState()
     }
@@ -362,6 +372,7 @@ final class NowPlaying {
     }
 
     func update(title: String, artist: String?, videoId: String, album: String? = nil, artists: [YTArtist] = [], thumbnailUrl: String? = nil) {
+        coverDissolves = false
         self.title = title
         self.artists = artists
         self.artist = cleanArtist(artist ?? "")
@@ -719,6 +730,7 @@ final class NowPlaying {
     private func timerTick() {
         // Also writes currentTime and duration.
         PlayerController.shared.updateNowPlayingProgress(onlyIfDrifted: true)
+        checkForStall()
         Crossfade.shared.tick()
         SponsorBlock.shared.tick()
         ListenBrainz.shared.tick()
@@ -735,6 +747,26 @@ final class NowPlaying {
     private func stopTimer() {
         timer?.invalidate()
         timer = nil
+        stallWatch = nil
+    }
+
+    /// A song that should play but stopped moving (a stream that stopped
+    /// sending data): reload it from where it stands.
+    private func checkForStall() {
+        // Only a deck that says it plays can stall; a pause (user or interruption) is not one.
+        let player = PlayerController.shared
+        guard !isLoadingTrack, !player.isCrossfading, player.playState.value == .playing, let videoId else {
+            stallWatch = nil
+            return
+        }
+        guard let watch = stallWatch, watch.position == currentTime else {
+            stallWatch = (currentTime, Date())
+            return
+        }
+        guard Date().timeIntervalSince(watch.since) >= Self.stallTimeout else { return }
+        stallWatch = nil
+        Log.nowPlaying.notice("Playback stalled for \(Int(Self.stallTimeout))s, reloading \(videoId)")
+        recoverFromPlaybackFailure(videoId: videoId)
     }
 
     private func resetDominantColors() {

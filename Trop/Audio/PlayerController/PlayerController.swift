@@ -49,8 +49,12 @@ final class PlayerController {
         set { videoIds.withLock { $0.pending = newValue } }
     }
     var currentLoudnessDb: Double?
-    /// False once mpv rejects the AutoMix bass filter; see `applyPlaybackSettings`.
+    /// Beat length the playing deck's echo filter was built for; nil when
+    /// the song's tempo was unknown when it started.
+    private(set) var currentEchoDelay: Double?
+    /// False once mpv rejects the AutoMix bass or effect filters; see `applyPlaybackSettings`.
     private(set) var hasBassFilter = true
+    private(set) var hasEffectFilters = true
     private var hasLoggedChainFailure = false
     var pendingURL: String?
     nonisolated(unsafe) var desiredPlaying = false
@@ -132,8 +136,9 @@ extension PlayerController {
     ) async {
         playGeneration &+= 1
         let generation = playGeneration
-        Crossfade.shared.reset()
+        Crossfade.shared.reset(reason: "a new song started")
         currentLoudnessDb = loudnessDb
+        currentEchoDelay = nil
         guard let url = URL(string: url) else {
             Log.player.error("Invalid playback URL")
             return
@@ -219,7 +224,7 @@ extension PlayerController {
         resumeAfterLoad = nil
         pausedWhileLoading = false
         desiredPlaying = false
-        Crossfade.shared.reset()
+        Crossfade.shared.reset(reason: "playback stopped")
         withMpv { mpv in _ = ["stop"].withUnsafeCArg { mpv_command(mpv, $0) } }
         playState.send(.stopped)
         NowPlaying.shared.isLoadingTrack = false
@@ -278,38 +283,60 @@ extension PlayerController {
     }
 
     /// Sets the filter chain. mpv rejects the whole chain (error -9, "property
-    /// format") when its FFmpeg build lacks the `bass` filter, which would take
-    /// the equalizer and loudness filters down with it on every song: then the
-    /// chain is set again without it, and mixes skip their bass dip.
+    /// format") when its FFmpeg build lacks a filter, which would take the
+    /// equalizer and loudness filters down with it on every song: then the
+    /// chain is set again without the AutoMix effects, then without the bass
+    /// filter, and mixes skip what is missing.
     func applyPlaybackSettings() {
-        let withBass = filterChain(loudness: currentLoudnessDb)
-        let withoutBass = filterChain(loudness: currentLoudnessDb, includesBass: false)
-        let tryBass = hasBassFilter
+        let tiers = [(bass: true, effects: true), (bass: false, effects: true), (bass: true, effects: false), (bass: false, effects: false)]
+            .filter { (hasBassFilter || !$0.bass) && (hasEffectFilters || !$0.effects) }
+        let chains = tiers.map {
+            filterChain(loudness: currentLoudnessDb, echoDelay: currentEchoDelay, includesBass: $0.bass, includesEffects: $0.effects)
+        }
         let gapless = SettingsStore.shared.gaplessPlayback
-        let result = withMpv { mpv -> (bassAccepted: Bool, error: Int32) in
+        let result = withMpv { mpv -> (accepted: Int, error: Int32) in
             mpv_set_property_string(mpv, "gapless-audio", gapless ? "yes" : "no")
-            if tryBass, mpv_set_property_string(mpv, "af", withBass) >= 0 { return (true, 0) }
-            return (false, mpv_set_property_string(mpv, "af", withoutBass))
+            var error: Int32 = 0
+            for (index, chain) in chains.enumerated() {
+                error = mpv_set_property_string(mpv, "af", chain)
+                if error >= 0 { return (index, 0) }
+            }
+            return (chains.count, error)
         }
         guard let result else { return }
-        if hasBassFilter, !result.bassAccepted {
+        let accepted = result.accepted < tiers.count ? tiers[result.accepted] : (bass: false, effects: false)
+        if hasEffectFilters, !accepted.effects {
+            hasEffectFilters = false
+            Log.player.notice("mpv rejected the AutoMix effect filters; AutoMix mixes without effects")
+        }
+        if hasBassFilter, !accepted.bass {
             hasBassFilter = false
             Log.player.notice("mpv has no bass filter; AutoMix mixes without the bass dip")
         }
         // Logged once: the same settings fail the same way on every song.
-        if result.error < 0, !hasLoggedChainFailure {
+        if result.error < 0, !hasLoggedChainFailure, let chain = chains.last {
             hasLoggedChainFailure = true
-            Log.player.error("Failed to set af chain '\(withoutBass)': mpv error \(result.error)")
+            Log.player.error("Failed to set af chain '\(chain)': mpv error \(result.error)")
         }
     }
 
-    /// Label of the bass filter AutoMix turns down and up during a mix.
+    /// Labels of the filters AutoMix changes live with `af-command` during a mix.
     static let bassFilterLabel = "automixbass"
+    static let highPassLabel = "automixhp"
+    static let lowPassLabel = "automixlp"
+    static let effectsLabel = "automixfx"
 
     /// Equalizer and loudness-normalization filters for a song with
-    /// `loudness`, after a bass filter that a mix changes live with
-    /// `af-command` (flat unless `bassGain` is set).
-    func filterChain(loudness: Double?, bassGain: Double? = nil, includesBass: Bool? = nil) -> String {
+    /// `loudness`, after the AutoMix filters: a bass filter (flat unless
+    /// `bassGain` is set), a high-pass and a low-pass (bypassed), and the
+    /// echo and reverb sends of `effectsGraph` (silent).
+    func filterChain(
+        loudness: Double?,
+        bassGain: Double? = nil,
+        echoDelay: Double? = nil,
+        includesBass: Bool? = nil,
+        includesEffects: Bool? = nil
+    ) -> String {
         let settings = SettingsStore.shared
         let eqEnabled = settings.equalizerEnabled
         let eqGains = settings.equalizerGains
@@ -321,6 +348,13 @@ extension PlayerController {
         var filters: [String] = []
         if includesBass ?? hasBassFilter {
             filters.append("@\(Self.bassFilterLabel):bass=f=180:g=\(Self.fmt(bass))")
+        }
+        if includesEffects ?? hasEffectFilters {
+            // 1 kHz is valid at any sample rate; `m=0` passes the sound through.
+            filters.append("@\(Self.highPassLabel):highpass=f=1000:m=0")
+            filters.append("@\(Self.lowPassLabel):lowpass=f=1000:m=0")
+            let graph = Self.effectsGraph(echoDelay: echoDelay)
+            filters.append("@\(Self.effectsLabel):lavfi=graph=%\(graph.utf8.count)%\(graph)")
         }
         if eqEnabled {
             let entries = zip(equalizerFrequencies, eqGains)
@@ -335,6 +369,27 @@ extension PlayerController {
             filters.append("volume=\(Self.fmt(gain))dB")
         }
         return filters.joined(separator: ",")
+    }
+
+    /// The song split into a dry path and two sends, mixed back together:
+    /// an echo repeating on the beat (when the song's tempo is known) and a
+    /// reverb-like tail of many short echoes. Both sends start at 0, so the
+    /// graph passes the song through until a mix turns them up. `aecho`
+    /// delays can't change live, so the echo is built for the song's beat
+    /// when it loads. `duration=first` ends with the song, so the tails
+    /// never add silence after it.
+    nonisolated static func effectsGraph(echoDelay: Double?) -> String {
+        let reverb = "[verb]volume@verbsend=0,aecho=0.7:0.7:13|19|29|37:0.5|0.4|0.3|0.2," +
+            "aecho=0:0.6:41|67|97|131|173|223|281|353|439|547|677|839:" +
+            "0.6|0.5|0.42|0.35|0.29|0.24|0.2|0.17|0.14|0.12|0.1|0.08[wet]"
+        guard let echoDelay else {
+            return "asplit=2[dry][verb];\(reverb);[dry]volume@dry=1[d];[d][wet]amix=inputs=2:normalize=0:duration=first"
+        }
+        let repeats = 1...MixPlanner.echoRepeats
+        let delays = repeats.map { fmt(echoDelay * 1000 * Double($0)) }.joined(separator: "|")
+        let decays = repeats.map { fmt(0.5 * pow(0.6, Double($0 - 1))) }.joined(separator: "|")
+        return "asplit=3[dry][echo][verb];[echo]volume@echosend=0,aecho=0:1:\(delays):\(decays)[rep];\(reverb);" +
+            "[dry]volume@dry=1[d];[d][rep][wet]amix=inputs=3:normalize=0:duration=first"
     }
 
     /// Numbers as mpv properties and filter arguments take them.
@@ -642,12 +697,13 @@ extension PlayerController {
 
     /// Makes the spare deck the playing one. The old deck keeps fading out
     /// as the new spare until `Crossfade` pauses it.
-    func promoteSpare(videoId: String, loudness: Double?) {
+    func promoteSpare(videoId: String, loudness: Double?, echoDelay: Double?) {
         mpvAccessQueue.sync { swap(&_mpv, &_spare) }
         spareHasAudio = true
         currentVideoId = videoId
         pendingVideoId = nil
         currentLoudnessDb = loudness
+        currentEchoDelay = echoDelay
         // The mix eases the new deck to 1×.
         PlaybackSpeed.shared.select(videoId: videoId, podcastId: nil)
         let generation = playGeneration

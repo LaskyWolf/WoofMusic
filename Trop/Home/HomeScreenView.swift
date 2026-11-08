@@ -22,8 +22,6 @@ struct HomeScreenView: View {
     var body: some View {
         NavigationStack(path: $router.homePath) {
             VStack(spacing: 0) {
-                TabHeaderView(title: "Home", path: $router.homePath)
-
                 Group {
                     if viewModel.isLoading {
                         ShimmerLoadingView()
@@ -40,6 +38,19 @@ struct HomeScreenView: View {
                 .animation(.smooth(duration: 0.35), value: viewModel.isLoading)
             }
             .frame(maxHeight: .infinity, alignment: .top)
+            .tabHeader {
+                TabHeaderView(title: "Home", path: $router.homePath)
+                if viewModel.isLoading {
+                    // The chips come with the page: placeholders keep their place.
+                    ShimmerChips()
+                } else if let chips = viewModel.homePage?.chips, !chips.isEmpty {
+                    ChipsRowView(
+                        chips: chips,
+                        selectedChip: viewModel.selectedChip,
+                        onChipTap: { viewModel.toggleChip($0) }
+                    )
+                }
+            }
             .toolbar(.hidden, for: .navigationBar)
             .detailRouteDestinations()
             .onChange(of: pendingRoute) { _, route in
@@ -91,14 +102,6 @@ struct HomeScreenView: View {
     private var homescreenContent: some View {
         ScrollView {
             LazyVStack(spacing: 0) {
-                if let chips = viewModel.homePage?.chips, !chips.isEmpty {
-                    ChipsRowView(
-                        chips: chips,
-                        selectedChip: viewModel.selectedChip,
-                        onChipTap: { viewModel.toggleChip($0) }
-                    )
-                }
-
                 if viewModel.isChipLoading {
                     // YouTube localises chip titles; "Podcast" matches English and Italian.
                     ShimmerLoadingView(
@@ -273,13 +276,25 @@ struct HomeScreenView: View {
 
 
     private func quickPicksPage(_ cards: [(SongItem, Bool)], queue: [SongItem], columns: Int) -> some View {
-        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: columns), spacing: 8) {
-            ForEach(Array(cards.enumerated()), id: \.offset) { _, card in
-                let (song, isPinned) = card
-                // Long press: the song menu, which also pins and unpins.
-                SongActionsMenu(song: song, onNavigate: { AppRouter.shared.open($0) }, asContextMenu: true) {
-                    QuickPickCard(song: song, isPinned: isPinned) {
-                        handleSongTap(song, in: queue)
+        // A plain grid, not a lazy one: a lazy grid inside the horizontal pager
+        // keeps its old rows after a rotation until the user scrolls.
+        let rows = stride(from: 0, to: cards.count, by: columns).map { Array(cards[$0..<min($0 + columns, cards.count)]) }
+        return VStack(spacing: 8) {
+            ForEach(rows.indices, id: \.self) { row in
+                HStack(spacing: 8) {
+                    ForEach(Array(rows[row].enumerated()), id: \.offset) { _, card in
+                        let (song, isPinned) = card
+                        // Long press: the song menu, which also pins and unpins.
+                        SongActionsMenu(song: song, onNavigate: { AppRouter.shared.open($0) }, asContextMenu: true) {
+                            QuickPickCard(song: song, isPinned: isPinned) {
+                                handleSongTap(song, in: queue)
+                            }
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
+                    // Keep the last row's cards the same width as the full rows.
+                    ForEach(0..<(columns - rows[row].count), id: \.self) { _ in
+                        Color.clear.frame(maxWidth: .infinity)
                     }
                 }
             }

@@ -138,7 +138,7 @@ struct YouTubeGridItemView: View {
 }
 
 /// One song row in the YouTube Music style: 56pt artwork, a one-line title
-/// over "Artist • 2:37", and a vertical ⋮ menu. Shared by Home, Explore and Search.
+/// over "Artist • 2:37"; a long press opens its menu. Shared by Home, Explore and Search.
 struct YouTubeListItemView: View {
     var item: YTItem
     var onTap: () -> Void
@@ -160,35 +160,22 @@ struct YouTubeListItemView: View {
 
     var body: some View {
         if let song = songItem {
-            // Long pressing anywhere on the row opens the same menu as ⋮.
+            // Long pressing anywhere on the row opens the song menu.
             SongActionsMenu(song: song, onNavigate: { onNavigate?($0) }, asContextMenu: true) {
-                row(subtitle: song.subtitleLine(duration: durations.effectiveDuration(known: song.duration))) {
-                    SongActionsMenu(song: song, onNavigate: { onNavigate?($0) }) {
-                        VerticalMoreGlyph()
-                    }
-                }
-                .background(DownloadCellProgressView(song: song))
+                row(subtitle: song.subtitleLine(duration: durations.effectiveDuration(known: song.duration)))
+                    .background(DownloadCellProgressView(song: song))
             }
             .task(id: song.videoId) { await durations.resolve(videoId: song.videoId, knownDuration: song.duration) }
             .onReceive(NotificationCenter.default.publisher(for: .durationDidUpdate)) { notification in
                 durations.handleUpdate(notification, videoId: song.videoId)
             }
         } else {
-            row(subtitle: albumSubtitleText) {
-                if let url = item.webUrl {
-                    Button {
-                        UIPasteboard.general.string = url
-                    } label: {
-                        VerticalMoreGlyph()
-                    }
-                    .buttonStyle(IconPressStyle(motion: .pop))
-                    .accessibilityLabel("Copy link")
-                }
-            }
+            row(subtitle: albumSubtitleText)
+                .cardMenu(for: item)
         }
     }
 
-    private func row<Trailing: View>(subtitle: String, @ViewBuilder trailing: () -> Trailing) -> some View {
+    private func row(subtitle: String) -> some View {
         HStack(spacing: DesignTokens.rowSpacing) {
             AsyncImageView(url: item.thumbnailUrl)
                 .frame(width: Self.artSize, height: Self.artSize)
@@ -212,14 +199,9 @@ struct YouTubeListItemView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .greyedOut(songItem?.isAvailable == false)
 
-            HStack(spacing: 2) {
-                ItemDownloadedBadge(item: item)
-                trailing()
-            }
+            ItemDownloadedBadge(item: item)
         }
-        .padding(.leading, DesignTokens.screenHPadding)
-        // The 44pt glyph already leaves air on the right.
-        .padding(.trailing, 4)
+        .padding(.horizontal, DesignTokens.screenHPadding)
         .frame(minHeight: Self.rowHeight)
         .contentShape(Rectangle())
         .onTapGesture(perform: onTap)
@@ -231,18 +213,5 @@ struct YouTubeListItemView: View {
             return a.artists.map(\.name).joined(separator: ", ")
         }
         return ""
-    }
-}
-
-/// Vertical ⋮ for list rows, in the text colour like YouTube Music.
-private struct VerticalMoreGlyph: View {
-    var body: some View {
-        Image(systemName: "ellipsis")
-            .rotationEffect(.degrees(90))
-            .font(.body.weight(.bold))
-            .foregroundStyle(.primary)
-            .frame(width: 44, height: 44)
-            .contentShape(Rectangle())
-            .accessibilityLabel("More")
     }
 }

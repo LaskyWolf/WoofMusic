@@ -31,7 +31,7 @@ struct SongActionsMenu<MenuLabel: View>: View {
     @ViewBuilder var label: () -> MenuLabel
 
     private enum Sheet: Identifiable {
-        case playlist, radio, details, similar, artists, sleepTimer, shareCard, shareSong
+        case playlist, radio, details, similar, artists, sleepTimer, shareCard, shareSong, listenTogether
         var id: Self { self }
     }
 
@@ -65,6 +65,11 @@ struct SongActionsMenu<MenuLabel: View>: View {
                         NowPlaying.shared.enqueueNext(song)
                     }
                     Button("Add to Queue", systemImage: "text.append", action: addToQueue)
+                    if ListenTogether.shared.isGuest {
+                        Button("Suggest to Room", systemImage: "person.2.wave.2") {
+                            ListenTogether.shared.suggest(song)
+                        }
+                    }
                 }
             }
 
@@ -74,6 +79,10 @@ struct SongActionsMenu<MenuLabel: View>: View {
 
             if showsSleepTimer {
                 sleepTimerMenu
+                Button(
+                    ListenTogether.shared.roomCode.map { "Listen Together · \($0)" } ?? "Listen Together…",
+                    systemImage: "person.2.wave.2"
+                ) { sheet = .listenTogether }
             }
 
             // The rarer actions share one item, so the menu fits the screen without scrolling.
@@ -163,6 +172,17 @@ struct SongActionsMenu<MenuLabel: View>: View {
                 LyricShareComposer(videoId: song.videoId)
             case .shareSong:
                 SongShareSheet(song: song)
+            case .listenTogether:
+                // Its own stack only as a sheet: Settings pushes it into its stack.
+                NavigationStack {
+                    ListenTogetherView()
+                        .toolbar {
+                            ToolbarItem(placement: .confirmationAction) {
+                                Button("Done") { self.sheet = nil }
+                            }
+                        }
+                }
+                .appSheetChrome()
             }
         }
     }
@@ -529,6 +549,8 @@ private struct SleepTimerSheet: View {
     var body: some View {
         let timer = SleepTimer.shared
         let minutes = Int(duration / 60)
+        // Scrolls only when it doesn't fit, as in landscape.
+        ScrollView {
         VStack(spacing: 20) {
             header
 
@@ -573,7 +595,8 @@ private struct SleepTimerSheet: View {
         } action: { height in
             contentHeight = height
         }
-        .frame(maxHeight: .infinity, alignment: .top)
+        }
+        .scrollBounceBehavior(.basedOnSize)
         // As tall as the content, so nothing is left empty under End of Song;
         // large stays available for big Dynamic Type sizes.
         .appSheetChrome([.height(contentHeight), .large])

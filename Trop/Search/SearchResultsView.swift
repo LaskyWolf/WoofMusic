@@ -42,6 +42,7 @@ struct SearchResultsView: View {
         case .idle:
             VStack(spacing: 0) {
                 if settings.isIncognito {
+                    // swiftlint:disable:next line_length
                     Label("Incognito is on. Searches and plays aren't saved on this iPhone, and songs stay out of your YouTube Music history. YouTube still receives your searches.", systemImage: "eyeglasses")
                         .font(.footnote)
                         .foregroundStyle(.secondary)

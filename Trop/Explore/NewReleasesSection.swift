@@ -59,6 +59,8 @@ struct NewReleasesSection: View {
         // Cards scrolling past the edge stay inside the rounded corners.
         .clipShape(shape)
         .padding(.horizontal, DesignTokens.screenHPadding)
+        // Under the filter chips: the same gap as Library's shortcut tiles.
+        .padding(.top, 8)
         .padding(.bottom, DesignTokens.sectionGap)
     }
 }
@@ -435,6 +437,7 @@ struct NewReleasesSkeleton: View {
         .background(shape.fill(Color(.secondarySystemBackground)))
         .clipShape(shape)
         .padding(.horizontal, DesignTokens.screenHPadding)
+        .padding(.top, 8)
         .padding(.bottom, DesignTokens.sectionGap)
     }
 }

@@ -58,15 +58,27 @@ struct FullPlayerView: View {
     /// The controls row and the secondary row, for the Radio Bloom. Boxes, like `coverFrame`.
     @State private var controlsFrame = CoverFrameBox()
     @State private var secondaryFrame = CoverFrameBox()
+    /// The cover pager's frame, so the skip buttons slide it one page.
+    @State private var pagerFrame = CoverFrameBox()
     @State private var karaokeReplacesPlay = false
+    @State private var isLandscape = false
     @State private var radioReplacesPlay = false
     private var playerBackgroundColors: [Color] { np.dominantColors }
+    private var showsCardCover: Bool { settings.playerStyle == .card }
+
+    /// The landscape Immersive cover: from the screen's leading edge to a little past the middle.
+    private func landscapeCoverWidth(_ geometry: GeometryProxy) -> CGFloat {
+        geometry.safeAreaInsets.leading + geometry.size.width * 0.54
+    }
     /// Dark enough for the white controls, at a 4.5:1 contrast, on a pale cover too.
     private var readableBackgroundColors: [Color] { playerBackgroundColors.map { $0.darkened(toLuminance: 0.18) } }
 
     var body: some View {
         GeometryReader { geometry in
             ZStack {
+                // A gradient's colours don't animate: each palette is its own
+                // view, and the new one fades in over the old one.
+                ZStack {
                 if settings.playerBackgroundStyle == .solid {
                     Color.black
                         .ignoresSafeArea()
@@ -83,7 +95,8 @@ struct FullPlayerView: View {
                         endPoint: .bottom
                     )
                     .ignoresSafeArea()
-                        .animation(.easeInOut(duration: 0.8), value: playerBackgroundColors)
+                    .id(playerBackgroundColors)
+                    .transition(.opacity)
                 } else {
                     LinearGradient(
                         colors: [
@@ -105,10 +118,39 @@ struct FullPlayerView: View {
                             .offset(y: -150)
                     }
                     .ignoresSafeArea()
-                    .animation(.easeInOut(duration: 0.8), value: playerBackgroundColors)
+                    .id(playerBackgroundColors)
+                    .transition(.opacity)
                 }
+                }
+                .animation(.easeInOut(duration: 0.8), value: playerBackgroundColors)
 
-                if settings.playerStyle == .immersive {
+                if !showsCardCover, isLandscape {
+                    // The cover fills the left column up to the screen's edges and
+                    // fades out sideways, under the start of the controls.
+                    let insets = geometry.safeAreaInsets
+                    let pageSize = CGSize(
+                        width: landscapeCoverWidth(geometry),
+                        height: geometry.size.height + artworkTopInset + insets.bottom
+                    )
+                    artworkPager(pageSize: pageSize)
+                        .frame(width: pageSize.width, height: pageSize.height)
+                        .compositingGroup()
+                        .clipped()
+                        .mask {
+                            LinearGradient(
+                                stops: [
+                                    .init(color: .white, location: 0),
+                                    .init(color: .white, location: 0.6),
+                                    .init(color: .clear, location: 1)
+                                ],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        }
+                        .offset(x: -insets.leading, y: -artworkTopInset)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                        .opacity(showsKaraoke ? 0 : 1)
+                } else if !showsCardCover {
                     // Shorter while the speed dial is open, so the title stays on the faded part.
                     let artworkHeight = (geometry.size.height + artworkTopInset) * (showsSpeedDial ? 0.48 : 0.58)
                     // Clipped to the screen width, so a neighbour shows only the
@@ -134,90 +176,59 @@ struct FullPlayerView: View {
                         .opacity(showsKaraoke ? 0 : 1)
                 }
 
-                VStack(spacing: 0) {
-                    playerHandle
+                if isLandscape {
+                    // Two columns, so nothing has to shrink below a usable size:
+                    // the cover (and an open panel) on the left, the controls on the right.
+                    HStack(spacing: 24) {
+                        artworkArea(pageWidth: showsCardCover ? geometry.size.width / 2 : landscapeCoverWidth(geometry))
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .overlay { playerPanel }
 
-                    VStack(spacing: 0) {
-                        artworkArea(pageWidth: geometry.size.width)
+                        VStack(spacing: 0) {
+                            playerHandle
 
-                        titleAndActionsRow
-                            .padding(.horizontal, 32)
-                            .padding(.top, 20)
-                            .padding(.bottom, 16)
-                            .opacity(showsKaraoke ? 0 : 1)
+                            titleAndActionsRow
+                                .padding(.bottom, 12)
+                                .opacity(showsKaraoke ? 0 : 1)
 
-                        // Hidden under an open panel: the glass is see-through.
-                        PlayerLyricPreview(lines: syncedLyrics)
-                            .opacity(showQueue || showLyrics ? 0 : 1)
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    // No bottom padding: the panel covers the lyric line and the
-                    // progress bar's touch area leaves the gap above its track.
-                    .overlay {
-                        playerPanel
-                            .padding(.horizontal, 20)
-                    }
+                            Spacer(minLength: 0)
 
-                    // No top padding: the bar's touch area already leaves a gap
-                    // above the track, and the lyric line belongs with it.
-                    PlayerProgressSection(
-                        hidesChip: showsSpeedDial && !isSpeedDialFolding,
-                        onChipTap: {
-                            isSpeedDialFolding = false
-                            showsSpeedDial = true
+                            controlsSection
                         }
-                    )
-                    .padding(.bottom, 16)
-
-                    // Takes its room from the cover area above, and grows out of
-                    // the speed chip: its top centre sits right under the chip.
-                    if showsSpeedDial {
-                        PlaybackSpeedDial(onClose: closeSpeedDial)
-                            .scaleEffect(isSpeedDialFolding ? 0.08 : 1, anchor: .top)
-                            .opacity(isSpeedDialFolding ? 0 : 1)
-                            .padding(.horizontal, 22)
-                            .padding(.bottom, 12)
-                            .transition(reduceMotion ? .opacity : .scale(scale: 0.08, anchor: .top).combined(with: .opacity))
-                            .accessibilityAction(.escape, closeSpeedDial)
+                        .frame(maxWidth: .infinity)
                     }
+                    .padding(.horizontal, 16)
+                } else {
+                    VStack(spacing: 0) {
+                        playerHandle
 
-                    Color.clear.frame(height: 8)
+                        VStack(spacing: 0) {
+                            artworkArea(pageWidth: geometry.size.width)
 
-                    PlaybackControlsRow(
-                        isPlaying: np.isPlaying,
-                        hasPrevious: np.hasPrevious,
-                        hasNext: np.hasNext,
-                        onPrevious: { np.playPrevious() },
-                        onPlayPause: { player.togglePlayPause() },
-                        onNext: { np.playNext() },
-                        hidesPlayPause: karaokeReplacesPlay || radioReplacesPlay
-                    )
-                    // The karaoke mascot takes the play button's place.
-                    .overlay {
-                        KaraokeCountdownOverlay(
-                            trigger: LyricsState.shared.karaokeGreeting,
-                            isOn: LyricsState.shared.karaokeGreetingIsOn,
-                            replacesPlayButton: $karaokeReplacesPlay
-                        )
+                            titleAndActionsRow
+                                .padding(.horizontal, 32)
+                                .padding(.top, 20)
+                                .padding(.bottom, 16)
+                                .opacity(showsKaraoke ? 0 : 1)
+
+                            // Hidden under an open panel: the glass is see-through.
+                            PlayerLyricPreview(lines: syncedLyrics)
+                                .opacity(showQueue || showLyrics ? 0 : 1)
+                        }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        // No bottom padding: the panel covers the lyric line and the
+                        // progress bar's touch area leaves the gap above its track.
+                        .overlay {
+                            playerPanel
+                                .padding(.horizontal, 20)
+                        }
+
+                        controlsSection
                     }
-                    .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { controlsFrame.rect = $0 }
-                    .padding(.bottom, 8)
-
-                    PlayerVolumeSlider()
-
-                    Color.clear.frame(height: 4)
-
-                    SecondaryActionsRow(
-                        showQueue: $showQueue,
-                        isRepeatOn: $np.isRepeatOn,
-                        showLyrics: $showLyrics
-                    )
-                    .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { secondaryFrame.rect = $0 }
-
-                    Color.clear.frame(height: 8)
                 }
 
             }
+            .onGeometryChange(for: Bool.self) { $0.size.width > $0.size.height } action: { isLandscape = $0 }
             // An overlay, so its taller-than-screen size does not push the player down.
             // Sized and offset like the artwork, not with ignoresSafeArea: the safe
             // area shrinks while the player is pulled down and would slide the
@@ -244,8 +255,8 @@ struct FullPlayerView: View {
                         let row = secondaryFrame.rect
                         return CGRect(x: row.maxX - row.width / 3, y: row.minY, width: row.width / 3, height: row.height)
                     },
-                    coverCornerRadius: settings.playerStyle == .card ? Self.cardCoverRadius : 0,
-                    isImmersive: settings.playerStyle == .immersive,
+                    coverCornerRadius: showsCardCover ? Self.cardCoverRadius : 0,
+                    isImmersive: !showsCardCover,
                     replacesPlayButton: $radioReplacesPlay
                 )
             }
@@ -260,8 +271,8 @@ struct FullPlayerView: View {
                 if showsFullscreenCover {
                     FullscreenCoverOverlay(
                         source: coverFrame.rect,
-                        sourceCornerRadius: settings.playerStyle == .card ? Self.cardCoverRadius : 0,
-                        fadesBottom: settings.playerStyle == .immersive,
+                        sourceCornerRadius: showsCardCover ? Self.cardCoverRadius : 0,
+                        fadesBottom: !showsCardCover,
                         onClosed: { showsFullscreenCover = false },
                         cover: { cover(for: $0) }
                     )
@@ -319,6 +330,68 @@ struct FullPlayerView: View {
         }
     }
 
+    /// Progress, playback controls, volume and the secondary row.
+    @ViewBuilder
+    private var controlsSection: some View {
+        // No top padding: the bar's touch area already leaves a gap
+        // above the track, and the lyric line belongs with it.
+        PlayerProgressSection(
+            hidesChip: showsSpeedDial && !isSpeedDialFolding,
+            onChipTap: {
+                isSpeedDialFolding = false
+                showsSpeedDial = true
+            }
+        )
+        .padding(.bottom, 16)
+
+        // Takes its room from the cover area above, and grows out of
+        // the speed chip: its top centre sits right under the chip.
+        if showsSpeedDial {
+            PlaybackSpeedDial(onClose: closeSpeedDial)
+                .scaleEffect(isSpeedDialFolding ? 0.08 : 1, anchor: .top)
+                .opacity(isSpeedDialFolding ? 0 : 1)
+                .padding(.horizontal, 22)
+                .padding(.bottom, 12)
+                .transition(reduceMotion ? .opacity : .scale(scale: 0.08, anchor: .top).combined(with: .opacity))
+                .accessibilityAction(.escape, closeSpeedDial)
+        }
+
+        Color.clear.frame(height: 8)
+
+        PlaybackControlsRow(
+            isPlaying: np.isPlaying,
+            hasPrevious: np.hasPrevious,
+            hasNext: np.hasNext,
+            onPrevious: { skip(.previous) },
+            onPlayPause: { player.togglePlayPause() },
+            onNext: { skip(.next) },
+            hidesPlayPause: karaokeReplacesPlay || radioReplacesPlay
+        )
+        // The karaoke mascot takes the play button's place.
+        .overlay {
+            KaraokeCountdownOverlay(
+                trigger: LyricsState.shared.karaokeGreeting,
+                isOn: LyricsState.shared.karaokeGreetingIsOn,
+                replacesPlayButton: $karaokeReplacesPlay
+            )
+        }
+        .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { controlsFrame.rect = $0 }
+        .padding(.bottom, 8)
+
+        PlayerVolumeSlider()
+
+        Color.clear.frame(height: 4)
+
+        SecondaryActionsRow(
+            showQueue: $showQueue,
+            isRepeatOn: $np.isRepeatOn,
+            showLyrics: $showLyrics
+        )
+        .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { secondaryFrame.rect = $0 }
+
+        Color.clear.frame(height: 8)
+    }
+
     private var playerHandle: some View {
         Button(action: closePanelOrPlayer) {
             Capsule()
@@ -368,6 +441,17 @@ struct FullPlayerView: View {
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { pullDistance = 0 }
             }
         }
+    }
+
+    /// The skip buttons slide the covers like a swipe. A tap during a slide,
+    /// or with the cover off screen, changes song at once.
+    private func skip(_ direction: TrackSwipe.Direction) {
+        let width = pagerFrame.rect.width
+        guard width > 0, !isCommittingSwipe, !showQueue, !showLyrics else {
+            direction == .next ? np.playNext() : np.playPrevious()
+            return
+        }
+        TrackSwipe.commit(direction, pageWidth: width, offset: $artworkDragOffset, isCommitting: $isCommittingSwipe)
     }
 
     /// The cover follows the finger, like the mini player's pages, and the
@@ -498,10 +582,12 @@ struct FullPlayerView: View {
     /// style's cover sits here; the Immersive cover is behind it.
     private func artworkArea(pageWidth: CGFloat) -> some View {
         Group {
-            if settings.playerStyle == .card {
+            if showsCardCover {
                 GeometryReader { area in
                     artworkPager(pageSize: area.size)
                 }
+                // The neighbours wait a page away; in landscape that is over the controls.
+                .clipped()
                 .padding(.vertical, 12)
                 .opacity(showsKaraoke ? 0 : 1)
             } else {
@@ -543,14 +629,19 @@ struct FullPlayerView: View {
                 artworkPage(for: current, size: pageSize)
                     // The full-screen copy lifts off from here; Reduce Motion fades it in over this one.
                     .opacity(showsFullscreenCover && !reduceMotion ? 0 : 1)
+                    // AutoMix and crossfades dissolve the old cover into the new one.
+                    .id(current.videoId)
+                    .transition(.opacity)
             }
             if let next = np.nextSong {
                 artworkPage(for: next, size: pageSize)
                     .offset(x: pageSize.width)
             }
         }
+        .animation(np.coverDissolves ? .easeInOut(duration: 0.8) : nil, value: np.currentSong?.videoId)
         .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { page in
-            if settings.playerStyle == .card {
+            pagerFrame.rect = page
+            if showsCardCover {
                 let side = Self.cardCoverSide(in: page.size)
                 coverFrame.rect = CGRect(x: page.midX - side / 2, y: page.midY - side / 2, width: side, height: side)
             } else {
@@ -569,7 +660,7 @@ struct FullPlayerView: View {
 
     @ViewBuilder
     private func artworkPage(for song: SongItem, size: CGSize) -> some View {
-        if settings.playerStyle == .card {
+        if showsCardCover {
             let side = Self.cardCoverSide(in: size)
             cover(for: song)
                 .frame(width: side, height: side)

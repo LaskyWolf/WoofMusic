@@ -68,12 +68,6 @@ struct LibraryView: View {
     var body: some View {
         NavigationStack(path: $router.libraryPath) {
             VStack(spacing: 0) {
-                TabHeaderView(
-                    title: "Library",
-                    path: $router.libraryPath,
-                    onAdd: { showCreateDialog = true }
-                )
-
                 Group {
                     if isLoading {
                         librarySkeleton
@@ -83,6 +77,14 @@ struct LibraryView: View {
                 }
             }
             .frame(maxHeight: .infinity, alignment: .top)
+            .tabHeader {
+                TabHeaderView(
+                    title: "Library",
+                    path: $router.libraryPath,
+                    onAdd: { showCreateDialog = true }
+                )
+                filterBar
+            }
             .toolbar(.hidden, for: .navigationBar)
             .detailRouteDestinations()
             .sheet(isPresented: $showCreateDialog) {
@@ -153,7 +155,6 @@ struct LibraryView: View {
     private var feedContent: some View {
         ScrollView {
             LazyVStack(spacing: 0) {
-                filterBar
                 shortcutRow
                 LibraryDownloadCard()
 
@@ -235,7 +236,7 @@ struct LibraryView: View {
         .padding(.bottom, DesignTokens.sectionGap)
     }
 
-    /// A card in the list's colour, styled like Explore's mood cards: the first
+    /// A card in the list's colour, with the first
     /// artworks fanned at the top, over a big white symbol cropped by the corner.
     private func shortcutTile(info: AutoPlaylistInfo) -> some View {
         let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
@@ -275,7 +276,7 @@ struct LibraryView: View {
         .frame(height: 116)
         .background {
             ZStack {
-                // MoodCard's gradient and light from above.
+                // A colour gradient and light from above.
                 LinearGradient(
                     colors: [info.tint, info.tint.mix(with: .black, by: 0.3)],
                     startPoint: .topLeading,
@@ -287,7 +288,7 @@ struct LibraryView: View {
                     .font(.system(size: 66, weight: .semibold))
                     .foregroundStyle(.white.opacity(0.3))
                     .rotationEffect(.degrees(-18))
-                    // MoodCard's placement (x 24, y 12 at 84 pt), scaled to 66 pt.
+                    // Placed at x 24, y 12 on an 84 pt card, scaled to 66 pt.
                     .offset(x: 19, y: 9)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
             }
@@ -445,13 +446,11 @@ struct LibraryView: View {
 
     // MARK: - Loading Skeleton
 
-    /// Same order as `feedContent`: chips, the three shortcut tiles, then
+    /// Same order as `feedContent`: the three shortcut tiles, then
     /// sections in the layout chosen in Settings (grid or list).
     private var librarySkeleton: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                ShimmerChips(count: LibraryFilter.allCases.count, width: 88)
-
                 HStack(spacing: 10) {
                     ForEach(0..<autoPlaylists.count, id: \.self) { _ in shortcutTileSkeleton }
                 }

@@ -459,6 +459,8 @@ struct PlaylistDetailView: View {
     @State private var selection = SongSelection()
 
     @Environment(\.dismiss) private var dismiss
+    /// Compact in phone landscape, where the header moves to a side column.
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
 
     init(playlistId: String) {
         self.playlistId = playlistId
@@ -497,6 +499,9 @@ struct PlaylistDetailView: View {
             retry: { await viewModel.load() }
         ) { playlist in
             playlistContent(for: playlist)
+        }
+        .detailSideHeader(url: viewModel.playlist.map { $0.thumbnailUrl ?? $0.songs.first?.thumbnailUrl } ?? nil) {
+            if let playlist = viewModel.playlist, !viewModel.isLoading { header(for: playlist) }
         }
         .detailBarTitle(
             viewModel.playlist?.title ?? "",
@@ -576,8 +581,10 @@ struct PlaylistDetailView: View {
     @ViewBuilder
     private func playlistContent(for playlist: PlaylistDetailInfo) -> some View {
         LazyVStack(spacing: 0) {
-            header(for: playlist)
-                .padding(.bottom, 8)
+            if verticalSizeClass != .compact {
+                header(for: playlist)
+                    .padding(.bottom, 8)
+            }
 
             if viewModel.autoRoute != nil {
                 sortControls

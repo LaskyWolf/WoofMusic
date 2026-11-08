@@ -37,8 +37,14 @@ jobs:
       - name: Check player song titles
         run: python3 scripts/check_song_title.py
 
+      - name: Check music links
+        run: python3 scripts/check_music_link.py
+
       - name: Check track analyzer
         run: python3 scripts/check_track_analyzer.py
+
+      - name: Check app version comparison
+        run: python3 scripts/check_app_version.py
 
       - name: Check player transition in Simulator
         run: python3 scripts/check_player_surface.py

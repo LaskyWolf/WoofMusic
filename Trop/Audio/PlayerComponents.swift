@@ -247,7 +247,9 @@ struct SecondaryActionsRow: View {
             PlayerAirPlayControl()
                 .frame(maxWidth: .infinity)
 
-            Button {
+            // Queue + Repeat stacked like Apple Music: repeat sits at the queue's top-right.
+            ZStack(alignment: .topTrailing) {
+                Button {
                     showQueue.toggle()
                 } label: {
                     Image(systemName: "list.bullet")
@@ -259,23 +261,24 @@ struct SecondaryActionsRow: View {
                 }
                 .buttonStyle(IconPressStyle(disc: .white))
                 .accessibilityLabel("Queue")
-                .frame(maxWidth: .infinity)
 
-            Button {
-                isRepeatOn.toggle()
-            } label: {
-                Image(systemName: isRepeatOn ? "repeat.1" : "repeat")
-                    .font(.title3)
-                    .foregroundStyle(isRepeatOn ? .white : .white.opacity(0.7))
-                    .contentTransition(.symbolEffect(.replace))
-                    .glyphMotion(isRepeatOn ? .repeatOneTurn : .repeatTurn, trigger: isRepeatOn)
-                    .frame(width: 44, height: 44)
-                    .background(isRepeatOn ? Circle().fill(.white.opacity(0.15)) : Circle().fill(.clear))
+                Button {
+                    isRepeatOn.toggle()
+                } label: {
+                    Image(systemName: isRepeatOn ? "repeat.1" : "repeat")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(isRepeatOn ? .white : .white.opacity(0.7))
+                        .contentTransition(.symbolEffect(.replace))
+                        .glyphMotion(isRepeatOn ? .repeatOneTurn : .repeatTurn, trigger: isRepeatOn)
+                        .frame(width: 22, height: 22)
+                        .background(isRepeatOn ? Circle().fill(.white.opacity(0.15)) : Circle().fill(.clear))
+                }
+                .buttonStyle(IconPressStyle(disc: .white))
+                .sensoryFeedback(.selection, trigger: isRepeatOn)
+                .accessibilityLabel("Repeat this song")
+                .accessibilityValue(isRepeatOn ? "On" : "Off")
+                .offset(x: 4, y: -4)
             }
-            .buttonStyle(IconPressStyle(disc: .white))
-            .sensoryFeedback(.selection, trigger: isRepeatOn)
-            .accessibilityLabel("Repeat this song")
-            .accessibilityValue(isRepeatOn ? "On" : "Off")
             .frame(maxWidth: .infinity)
         }
         .padding(.vertical, 16)

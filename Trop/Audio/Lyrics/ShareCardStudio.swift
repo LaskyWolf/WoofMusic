@@ -757,6 +757,7 @@ struct ShareCardStudio: View {
     @AppStorage("shareCard.video") private var exportsVideo = false
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
     @State private var stickers: [ShareCardSticker] = []
     @State private var diceTrigger = 0
     @State private var exportProgress: Double?
@@ -784,10 +785,16 @@ struct ShareCardStudio: View {
 
     var body: some View {
         let code = code
-        VStack(spacing: 14) {
+        // Landscape: the card beside its controls, so it isn't squeezed to a thumbnail.
+        let layout = verticalSizeClass == .compact
+            ? AnyLayout(HStackLayout(spacing: 20))
+            : AnyLayout(VStackLayout(spacing: 14))
+        layout {
             preview(code: code)
-            tray
-            shareRow(code: code)
+            VStack(spacing: 14) {
+                tray
+                shareRow(code: code)
+            }
         }
         .padding(.horizontal, 20)
         .padding(.bottom, 12)

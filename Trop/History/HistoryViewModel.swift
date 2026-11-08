@@ -8,7 +8,7 @@
 import Foundation
 
 enum HistorySource: String, CaseIterable, Sendable {
-    case local = "On This iPhone"
+    case local = "Local"
     case remote = "YouTube Music"
 }
 

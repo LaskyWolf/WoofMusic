@@ -34,6 +34,15 @@ struct PlayerSettingsView: View {
 
             Section {
                 SettingsToggleRow("AutoMix", icon: "dial.medium", isOn: $settings.autoMixEnabled)
+                if settings.autoMixEnabled {
+                    LabeledContent {
+                        Slider(value: $settings.transitionEffects, in: 0...1, step: 0.05)
+                            .frame(maxWidth: 180)
+                    } label: {
+                        Text("Transition Effects \(Int((settings.transitionEffects * 100).rounded())) %")
+                            .monospacedDigit()
+                    }
+                }
                 SettingsToggleRow("Smart Crossfade", icon: "waveform.path", isOn: $settings.crossfadeEnabled)
                 if settings.crossfadeEnabled {
                     LabeledContent {

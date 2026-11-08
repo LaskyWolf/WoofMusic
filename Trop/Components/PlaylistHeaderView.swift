@@ -131,25 +131,56 @@ struct DetailHeaderCard<Cover: View, Secondary: View, Buttons: View>: View {
     @ViewBuilder var cover: () -> Cover
     @ViewBuilder var secondary: () -> Secondary
     @ViewBuilder var buttons: () -> Buttons
+    /// Large in the landscape side column: the buttons get their own row under
+    /// the cover, bigger and spread across the column.
+    @Environment(\.controlSize) private var controlSize
 
     var body: some View {
+        if controlSize == .large {
+            VStack(spacing: 20) {
+                HStack(alignment: .center, spacing: 14) {
+                    coverView
+                    VStack(alignment: .leading, spacing: 3) { titleLines }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                HStack(spacing: 20) { buttons() }
+                    .buttonStyle(ZoomPressStyle(scale: 0.92))
+                    .frame(maxWidth: .infinity)
+            }
+            .padding(.horizontal, DesignTokens.screenHPadding)
+            .accessibilityElement(children: .contain)
+        } else {
+            compactBody
+        }
+    }
+
+    private var coverView: some View {
+        cover()
+            .frame(width: DesignTokens.artLarge, height: DesignTokens.artLarge)
+            .shadow(color: .black.opacity(0.18), radius: 8, y: 3)
+    }
+
+    @ViewBuilder
+    private var titleLines: some View {
+        if !meta.isEmpty {
+            Text(meta)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+        }
+        Text(title)
+            .font(.title3.weight(.bold))
+            .lineLimit(2)
+            .multilineTextAlignment(.leading)
+        secondary()
+    }
+
+    private var compactBody: some View {
         HStack(alignment: .top, spacing: 14) {
-            cover()
-                .frame(width: DesignTokens.artLarge, height: DesignTokens.artLarge)
-                .shadow(color: .black.opacity(0.18), radius: 8, y: 3)
+            coverView
 
             VStack(alignment: .leading, spacing: 3) {
-                if !meta.isEmpty {
-                    Text(meta)
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-                Text(title)
-                    .font(.title3.weight(.bold))
-                    .lineLimit(2)
-                    .multilineTextAlignment(.leading)
-                secondary()
+                titleLines
                 Spacer(minLength: 8)
                 HStack(spacing: 10) {
                     Spacer(minLength: 0)
@@ -198,12 +229,16 @@ struct HeaderRoundIcon: View {
     var motion: GlyphScript?
     var trigger: AnyHashable = 0
 
+    /// Bigger in the landscape side column (`controlSize` large).
+    @Environment(\.controlSize) private var controlSize
+
+    private var scale: CGFloat { controlSize == .large ? 1.3 : 1 }
     /// The filled play button is larger than the other buttons beside it.
-    private var size: CGFloat { primary == nil ? 38 : 50 }
+    private var size: CGFloat { (primary == nil ? 38 : 50) * scale }
 
     var body: some View {
         Image(systemName: systemImage)
-            .font(.system(size: primary == nil ? 15 : 19, weight: .bold))
+            .font(.system(size: (primary == nil ? 15 : 19) * scale, weight: .bold))
             .contentTransition(.symbolEffect(.replace))
             .glyphMotion(motion, trigger: trigger)
             .foregroundStyle(primary == nil ? tint : .white)

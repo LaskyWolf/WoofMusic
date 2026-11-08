@@ -37,6 +37,16 @@ final class ExploreViewModel {
 
     private var hasLoaded = false
 
+    /// Explore's moods & genres, shown as the tab's filter chips.
+    var moods: [MoodItem] { sections.first { $0.kind == .moods }?.moods ?? [] }
+    /// The chosen family chip (Pop): its genres show as cards under the chips.
+    private(set) var selectedFamily: String?
+    /// The chosen mood: its page replaces the feed. A family's own genre, or one of its sub-genres.
+    private(set) var selectedMood: MoodItem?
+    /// The chosen mood's sections, nil while they load.
+    private(set) var moodSections: [ExploreSection]?
+    private var moodTask: Task<Void, Never>?
+
     // MARK: - Loading
 
     func load() {
@@ -64,7 +74,13 @@ final class ExploreViewModel {
             sections = HomePageParser.parseExploreSections(from: json)
             newReleases = Self.applyNewReleaseDetails(from: json, to: &sections)
             await applyRegionalTrending(region: region)
-            moveMoodsUnderTrending()
+            if let chosen = selectedMood {
+                selectedMood = moods.first { $0.title == chosen.title }
+                if selectedMood == nil { moodSections = nil }
+            }
+            if let family = selectedFamily, !moods.contains(where: { MoodFamily.family(of: $0.title) == family }) {
+                selectedFamily = nil
+            }
             let moodCount = sections.reduce(0) { $0 + $1.moods.count }
             Log.explore.debug(
                 "Explore loaded: " +
@@ -107,16 +123,6 @@ final class ExploreViewModel {
         guard !songs.isEmpty else { return }
         sections[index].items = songs.map(YTItem.song)
         sections[index].kind = .rows
-    }
-
-    /// Puts the Moods section right under Trending. Without a Trending
-    /// section the order stays as Explore sent it.
-    private func moveMoodsUnderTrending() {
-        guard let moodsIndex = sections.firstIndex(where: { $0.kind == .moods }),
-              sections.contains(where: { $0.title.lowercased().contains("trending") }) else { return }
-        let moods = sections.remove(at: moodsIndex)
-        guard let trending = sections.firstIndex(where: { $0.title.lowercased().contains("trending") }) else { return }
-        sections.insert(moods, at: trending + 1)
     }
 
     // MARK: - New releases
@@ -176,6 +182,64 @@ final class ExploreViewModel {
     }
 
     // MARK: - Moods
+
+    /// Picks a family chip: the family's own genre ("Pop") fills the feed, or
+    /// the normal feed stays when YouTube lists none. Nil clears everything.
+    func selectFamily(_ family: String?) {
+        selectedFamily = family
+        guard let family else {
+            select(nil)
+            return
+        }
+        select(MoodFamily.base(of: family, in: moods.filter { MoodFamily.family(of: $0.title) == family }))
+    }
+
+    /// Picks a plain genre chip, or a sub-genre card of the chosen family.
+    func selectGenre(_ mood: MoodItem) {
+        if MoodFamily.family(of: mood.title) != selectedFamily { selectedFamily = nil }
+        select(mood)
+    }
+
+    /// Shows a mood's page, from the cache at once when it has one, and
+    /// refreshes it when the cached copy is old. Nil goes back to the feed.
+    func select(_ mood: MoodItem?) {
+        moodTask?.cancel()
+        selectedMood = mood
+        guard let mood else {
+            moodSections = nil
+            return
+        }
+        moodSections = MoodDetailCache.sections(for: mood).map(Self.moodOrder)
+        guard !MoodDetailCache.isFresh(mood) else { return }
+        moodTask = Task {
+            let loaded = await Self.loadMoodDetail(mood)
+            guard !Task.isCancelled, selectedMood?.id == mood.id else { return }
+            // A failed request returns nothing: keep the cached page.
+            if loaded.isEmpty {
+                if moodSections == nil { moodSections = [] }
+                return
+            }
+            MoodDetailCache.store(loaded, for: mood)
+            MoodGenreIndex.record(loaded, mood: mood.title)
+            moodSections = Self.moodOrder(loaded)
+        }
+    }
+
+    /// New albums & singles first, then song shelves (the mood's trending),
+    /// then the rest. By content, not title: YouTube localises titles.
+    private static func moodOrder(_ sections: [ExploreSection]) -> [ExploreSection] {
+        func rank(_ section: ExploreSection) -> Int {
+            let hasAlbums = section.items.contains {
+                if case .album = $0 { return true }
+                return false
+            }
+            if section.kind == .cards, hasAlbums { return 0 }
+            return section.kind == .rows ? 1 : 2
+        }
+        return sections.enumerated()
+            .sorted { (rank($0.element), $0.offset) < (rank($1.element), $1.offset) }
+            .map(\.element)
+    }
 
     /// Full category page (songs, playlists, videos, albums shelves).
     static func loadMoodDetail(_ mood: MoodItem) async -> [ExploreSection] {

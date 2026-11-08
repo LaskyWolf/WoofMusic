@@ -200,7 +200,6 @@ struct ShimmerLoadingView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                if !isChipFeed { ShimmerChips() }
                 ForEach(sections.indices, id: \.self) { index in
                     switch sections[index] {
                     case .keepListening: keepListeningCard

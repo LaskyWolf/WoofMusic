@@ -42,6 +42,8 @@ struct SongRowView: View {
     var onRemove: (() -> Void)?
     /// Off on the Downloads page, where every row would show it.
     var showsDownloadBadge = true
+    /// Off where a long press is the only way to the menu (History).
+    var showsMenuButton = true
 
     @State private var durations = DurationResolver()
     @Environment(SettingsStore.self) private var settings
@@ -50,9 +52,10 @@ struct SongRowView: View {
         if isSelecting {
             rowContent
         } else {
-            // Long pressing anywhere on the row opens the same menu as ⋯.
+            // Long pressing anywhere on the row opens the same menu as ⋯. No
+            // background of its own, so the page behind (a blurred cover) shows through.
             SongActionsMenu(song: song, onNavigate: { onNavigate?($0) }, onSelect: onSelect,
-                            onRemove: onRemove, asContextMenu: true, menuMargin: 0) {
+                            onRemove: onRemove, asContextMenu: true, menuBackground: nil) {
                 rowContent
             }
         }
@@ -96,7 +99,7 @@ struct SongRowView: View {
                         .glyphMotion(isSelected ? .pop : .deflate, trigger: isSelected)
                         .frame(minWidth: 44, minHeight: 44)
                         .accessibilityHidden(true)
-                } else {
+                } else if showsMenuButton {
                     SongActionsMenu(song: song, onNavigate: { onNavigate?($0) },
                                     onSelect: onSelect, onRemove: onRemove) {
                         MoreGlyph()
@@ -198,13 +201,13 @@ struct DownloadedSongsLabel: View {
     @State private var downloadedIds: Set<String> = []
 
     private var available: [SongItem] { songs.filter(\.isAvailable) }
-    private var count: Int { available.filter { downloadedIds.contains($0.videoId) }.count }
+    private var downloaded: Int { available.filter { downloadedIds.contains($0.videoId) }.count }
 
     var body: some View {
         ZStack {
-            if count > 0 {
+            if downloaded > 0 {
                 Label {
-                    Text(count == available.count ? "Downloaded" : "\(count) of \(available.count) downloaded")
+                    Text(downloaded == available.count ? "Downloaded" : "\(downloaded) of \(available.count) downloaded")
                         .foregroundStyle(.secondary)
                         .monospacedDigit()
                 } icon: {

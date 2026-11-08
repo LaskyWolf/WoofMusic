@@ -7,24 +7,27 @@
 
 import UIKit
 
-/// Presents a `UIActivityViewController` above whatever is on screen. Consolidates
-/// the window lookup used by every share button.
+/// The top-most screen, for presenting above whatever is showing: the root is
+/// usually already presenting the full player, and UIKit silently refuses a
+/// second presentation from the same controller.
+@MainActor
+func topViewController() -> UIViewController? {
+    guard let scene = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first,
+          let window = scene.windows.first(where: { $0.isKeyWindow }),
+          var top = window.rootViewController else { return nil }
+    while let next = top.presentedViewController, !next.isBeingDismissed {
+        top = next
+    }
+    return top
+}
+
+/// Presents a `UIActivityViewController` above whatever is on screen.
 /// Pass `afterDismiss` when the sheet must close first (presentation is then
 /// deferred slightly so the dismiss animation wins the window).
 @MainActor
 func presentShareSheet(items: [Any], afterDismiss dismiss: (() -> Void)? = nil) {
-    guard let scene = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first,
-          let window = scene.windows.first(where: { $0.isKeyWindow }),
-          let root = window.rootViewController else { return }
     let present = {
-        // Present from the top-most screen: the root is usually already
-        // presenting the full player, and UIKit silently refuses a second
-        // presentation from the same controller.
-        var top = root
-        while let next = top.presentedViewController, !next.isBeingDismissed {
-            top = next
-        }
-        top.present(
+        topViewController()?.present(
             UIActivityViewController(activityItems: items, applicationActivities: nil),
             animated: true
         )

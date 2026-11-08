@@ -70,8 +70,18 @@ private struct SleepAnimationFrame: View {
 
     private func smoother(_ x: Double) -> Double { x * x * x * (x * (x * 6 - 15) + 10) }
 
-    /// Pixels of the design were drawn on a 300 pt wide screen.
-    private var scale: Double { size.width / 300 }
+    /// Pixels of the design were drawn on a 300 pt wide screen; in landscape the short side stands for that width.
+    private var scale: Double { min(size.width, size.height) / 300 }
+
+    /// In landscape the cover is the left column and the controls the right one.
+    private var isLandscape: Bool { size.width > size.height }
+
+    /// Where the cover sits: the title, sparkles and comets stay over it, clear of the controls.
+    private var coverArea: CGRect {
+        isLandscape
+            ? CGRect(x: 0, y: 0, width: size.width / 2, height: size.height)
+            : CGRect(x: 0, y: 0, width: size.width, height: size.height * 0.58)
+    }
 
     var body: some View {
         let out = 1 - ease(ramp(12.5, 15))
@@ -128,15 +138,16 @@ private struct SleepAnimationFrame: View {
                 .float(showsParticles ? 1 : 0)
             ))
             .mask {
-                // The glow comes from the sides and the top: it fades out before the controls.
+                // The glow comes from the edges round the cover: it fades out before the controls,
+                // which sit below it in portrait and to its right in landscape.
                 LinearGradient(
                     stops: [
                         .init(color: .black, location: 0),
-                        .init(color: .black, location: 0.45),
-                        .init(color: .clear, location: 0.85)
+                        .init(color: .black, location: isLandscape ? 0.3 : 0.45),
+                        .init(color: .clear, location: isLandscape ? 0.6 : 0.85)
                     ],
-                    startPoint: .top,
-                    endPoint: .bottom
+                    startPoint: isLandscape ? .leading : .top,
+                    endPoint: isLandscape ? .trailing : .bottom
                 )
             }
     }
@@ -144,7 +155,7 @@ private struct SleepAnimationFrame: View {
     // MARK: - Title
 
     private func titleView(strength: Double) -> some View {
-        let fontSize = size.width * 0.17
+        let fontSize = min(size.width, size.height) * 0.17
         // Script swashes reach past the glyphs' advance width, and Text clips
         // ink outside its own box. En spaces on both ends widen that box.
         let text = "\u{2002}\(SleepTimer.shared.message)\u{2002}"
@@ -155,7 +166,8 @@ private struct SleepAnimationFrame: View {
         let glowShadow = Color(red: 0.67, green: 0.63, blue: 1).opacity(0.5)
         let scale = CGFloat(0.94 + 0.06 * strength)
         let blurRadius = CGFloat((1 - strength) * 12)
-        let centre = CGPoint(x: size.width / 2, y: size.height / 2)
+        // Over the cover column in landscape; the middle of the screen in portrait.
+        let centre = isLandscape ? CGPoint(x: coverArea.midX, y: coverArea.midY) : CGPoint(x: size.width / 2, y: size.height / 2)
         return Text(text)
             .font(.custom("GreatVibes-Regular", size: fontSize))
             .lineLimit(1)
@@ -172,7 +184,7 @@ private struct SleepAnimationFrame: View {
             .scaleEffect(scale)
             .blur(radius: blurRadius)
             .opacity(strength)
-            .frame(width: size.width)
+            .frame(width: isLandscape ? coverArea.width : size.width)
             .position(centre)
     }
 
@@ -219,7 +231,7 @@ private struct SleepAnimationFrame: View {
                 .scaleEffect(0.5 + 0.75 * bell)
                 .rotationEffect(.degrees(sparkle.tilt * progress))
                 .opacity(bell * fade * gate)
-                .position(x: sparkle.x * size.width, y: sparkle.y * size.height)
+                .position(x: sparkle.x * (isLandscape ? coverArea.width : size.width), y: sparkle.y * size.height)
         }
     }
 
@@ -231,9 +243,8 @@ private struct SleepAnimationFrame: View {
         if progress > 0, progress < 1 {
             let travel = pow(progress, 1.3)
             let arrival = 1 - ease(min(max((progress - 0.7) / 0.3, 0), 1))
-            let coverHeight = size.height * 0.58
-            let from = CGPoint(x: comet.from.x * size.width, y: comet.from.y * coverHeight)
-            let to = CGPoint(x: comet.to.x * size.width, y: comet.to.y * coverHeight)
+            let from = CGPoint(x: comet.from.x * coverArea.width, y: comet.from.y * coverArea.height)
+            let to = CGPoint(x: comet.to.x * coverArea.width, y: comet.to.y * coverArea.height)
             let angle = atan2(to.y - from.y, to.x - from.x) * 180 / .pi
             let tail = 110 * scale
             ZStack {

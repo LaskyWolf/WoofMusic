@@ -289,6 +289,8 @@ struct ArtistDetailView: View {
     /// "Rapper", "DJ"… from MusicBrainz; nil shows "Artist".
     @State private var artistKind: String?
     @State private var linkResetTask: Task<Void, Never>?
+    /// Compact in phone landscape, where the header moves to a side column.
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
 
     init(browseId: String) {
         self.browseId = browseId
@@ -305,6 +307,9 @@ struct ArtistDetailView: View {
             retry: { await viewModel.load() }
         ) { artist in
             artistContent(for: artist)
+        }
+        .detailSideHeader(url: viewModel.artist.map { ArtworkURLs.sized($0.thumbnailUrl, width: 1200, height: 1200) } ?? nil) {
+            if let artist = viewModel.artist, !viewModel.isLoading { header(for: artist) }
         }
         // System bar, as on the playlist and album pages: its back button is the only one.
         .detailBarTitle(viewModel.artist?.name ?? "")
@@ -341,7 +346,9 @@ struct ArtistDetailView: View {
     @ViewBuilder
     private func artistContent(for artist: ArtistDetailInfo) -> some View {
         LazyVStack(spacing: 0) {
-            header(for: artist)
+            if verticalSizeClass != .compact {
+                header(for: artist)
+            }
 
             if !artist.songs.isEmpty {
                 songsSection(songs: artist.songs)

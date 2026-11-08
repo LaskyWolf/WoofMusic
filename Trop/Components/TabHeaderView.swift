@@ -75,3 +75,28 @@ struct TabHeaderView: View {
         .padding(.vertical, 8)
     }
 }
+
+extension View {
+    /// Pins a tab's header (title, then its filter chips) over the top edge.
+    /// The content scrolls under it, faded out by a gradient of the page colour.
+    func tabHeader<Header: View>(@ViewBuilder _ header: () -> Header) -> some View {
+        safeAreaInset(edge: .top, spacing: 0) {
+            VStack(spacing: 0, content: header)
+                .background {
+                    LinearGradient(
+                        stops: [
+                            .init(color: Color(.systemBackground).opacity(0.92), location: 0),
+                            .init(color: Color(.systemBackground).opacity(0.7), location: 0.6),
+                            .init(color: Color(.systemBackground).opacity(0), location: 1)
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                    // Past the chips, so the fade ends below them, not on them.
+                    .padding(.bottom, -24)
+                    .ignoresSafeArea(edges: .top)
+                    .allowsHitTesting(false)
+                }
+        }
+    }
+}

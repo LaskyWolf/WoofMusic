@@ -9,6 +9,7 @@ import SwiftUI
 
 struct SettingsView: View {
     private let account = AccountState.shared
+    @Environment(SettingsStore.self) private var settings
     @State private var showsDiagnostics = false
 
     var body: some View {
@@ -48,9 +49,6 @@ struct SettingsView: View {
                 SettingsNavigationRow("Integrations", icon: "puzzlepiece.extension") {
                     IntegrationsSettingsView()
                 }
-                // Hidden: a long press opens Diagnostics.
-                .simultaneousGesture(LongPressGesture(minimumDuration: 0.8).onEnded { _ in showsDiagnostics = true })
-                .sensoryFeedback(.impact(weight: .medium), trigger: showsDiagnostics) { _, isShown in isShown }
             } header: {
                 Text("Integrations")
             }
@@ -80,8 +78,19 @@ struct SettingsView: View {
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
+
+                if let version = AppUpdater.shared.availableVersion {
+                    Spacer(minLength: 0)
+                    Text("Update \(version)")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(settings.accentColor)
+                }
             }
             .padding(.vertical, 4)
         }
+        // Hidden: a long press opens Diagnostics.
+        .simultaneousGesture(LongPressGesture(minimumDuration: 0.8).onEnded { _ in showsDiagnostics = true })
+        .sensoryFeedback(.impact(weight: .medium), trigger: showsDiagnostics) { _, isShown in isShown }
+        .accessibilityAction(named: "Diagnostics") { showsDiagnostics = true }
     }
 }
