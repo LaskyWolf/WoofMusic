@@ -44,6 +44,7 @@ struct QueueView: View {
                     Image(systemName: "xmark")
                         .font(.body.weight(.semibold))
                         .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(IconPressStyle(disc: .white, motion: .deflate))
                 .accessibilityLabel("Close queue")
