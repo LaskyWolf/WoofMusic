@@ -201,13 +201,13 @@ struct DownloadedSongsLabel: View {
     @State private var downloadedIds: Set<String> = []
 
     private var available: [SongItem] { songs.filter(\.isAvailable) }
-    private var count: Int { available.filter { downloadedIds.contains($0.videoId) }.count }
+    private var downloaded: Int { available.filter { downloadedIds.contains($0.videoId) }.count }
 
     var body: some View {
         ZStack {
-            if count > 0 {
+            if downloaded > 0 {
                 Label {
-                    Text(count == available.count ? "Downloaded" : "\(count) of \(available.count) downloaded")
+                    Text(downloaded == available.count ? "Downloaded" : "\(downloaded) of \(available.count) downloaded")
                         .foregroundStyle(.secondary)
                         .monospacedDigit()
                 } icon: {

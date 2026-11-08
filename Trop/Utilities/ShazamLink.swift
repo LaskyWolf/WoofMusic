@@ -47,7 +47,8 @@ enum ShazamLink {
     }
 
     private static func meta(_ property: String, in html: String) -> String? {
-        guard let match = html.firstMatch(of: try! Regex(#"<meta property="\#(property)" content="([^"]*)""#)),
+        guard let regex = try? Regex(#"<meta property="\#(property)" content="([^"]*)""#),
+              let match = html.firstMatch(of: regex),
               let value = match.output[1].substring else { return nil }
         return String(value)
             .replacingOccurrences(of: "&#x27;", with: "'")

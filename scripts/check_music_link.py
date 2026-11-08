@@ -13,7 +13,7 @@ swift = shutil.which("swift")
 if not swift:
     raise SystemExit("Swift is required to run the music link checks")
 
-source = (root / "Trop/Utilities/MusicLink.swift").read_text()
+source = "\n".join((root / f"Trop/Utilities/{name}.swift").read_text() for name in ("MusicLink", "ShazamLink"))
 video = "dQw4w9WgXcQ"
 cases = [
     (f"https://music.youtube.com/watch?v={video}", f'.song(videoId: "{video}")'),
