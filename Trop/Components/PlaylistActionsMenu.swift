@@ -100,6 +100,7 @@ struct SongsMenuActions: View {
 
     var body: some View {
         Button("Add to Queue", systemImage: "text.append") {
+            Haptics.success()
             NowPlaying.shared.appendToQueue(songs)
         }
         Button("Download", systemImage: "arrow.down.to.line") {

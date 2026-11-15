@@ -62,6 +62,7 @@ struct SongActionsMenu<MenuLabel: View>: View {
             if showsQueueActions, song.isAvailable {
                 Section {
                     Button("Play Next", systemImage: "text.insert") {
+                        Haptics.success()
                         NowPlaying.shared.enqueueNext(song)
                     }
                     Button("Add to Queue", systemImage: "text.append", action: addToQueue)
@@ -208,6 +209,7 @@ struct SongActionsMenu<MenuLabel: View>: View {
     }
 
     private func addToQueue() {
+        Haptics.success()
         NowPlaying.shared.appendToQueue([song])
     }
 
@@ -294,6 +296,7 @@ private struct LikeMenuButton: View {
     var body: some View {
         let liked = likeStore.isLiked(videoId: song.videoId)
         Button(liked ? "Unlike" : "Like", systemImage: liked ? "heart.fill" : "heart") {
+            if liked { Haptics.impact() } else { Haptics.success() }
             Task { await likeStore.toggle(song: song) }
         }
     }
@@ -825,6 +828,7 @@ struct AddSongToPlaylistSheet: View {
                     try await PlaylistSongEdits.add(songId: song.videoId, to: playlist.id)
                 }
                 addedTo.insert(playlist.id)
+                Haptics.success()
             } catch {
                 addedTo.remove(playlist.id)
             }

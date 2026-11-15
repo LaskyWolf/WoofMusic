@@ -162,10 +162,12 @@ struct BulkSongActionsMenu: View {
 
             Section {
                 Button("Play Next", systemImage: "text.insert") {
+                    Haptics.success()
                     songs.forEach(NowPlaying.shared.enqueueNext)
                     finish()
                 }
                 Button("Add to Queue", systemImage: "text.append") {
+                    Haptics.success()
                     NowPlaying.shared.appendToQueue(songs)
                     finish()
                 }

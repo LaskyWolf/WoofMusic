@@ -77,6 +77,7 @@ enum TrackSwipe {
         isCommitting: Binding<Bool>
     ) {
         isCommitting.wrappedValue = true
+        Haptics.impact()
         withAnimation(.spring(duration: 0.3, bounce: 0), completionCriteria: .logicallyComplete) {
             offset.wrappedValue = direction == .next ? -pageWidth : pageWidth
         } completion: {

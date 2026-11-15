@@ -42,9 +42,11 @@ private struct SongCollectionItems: View {
         }
         Section {
             Button("Play Next", systemImage: "text.insert") {
+                Haptics.success()
                 Task { await loadSongs().forEach(NowPlaying.shared.enqueueNext) }
             }
             Button("Add to Queue", systemImage: "text.append") {
+                Haptics.success()
                 Task {
                     let songs = await loadSongs()
                     NowPlaying.shared.appendToQueue(songs)

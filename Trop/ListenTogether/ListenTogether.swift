@@ -384,6 +384,7 @@ final class ListenTogether {
             users.removeAll { $0.userId == user.userId }
             users.append(LTUser(userId: user.userId, username: user.username, isHost: false, isConnected: true))
             joinRequests.removeAll { $0.userId == user.userId }
+            Haptics.impact(.soft)
         case LTMessage.userLeft:
             let user = try LTUserEvent(decoding: payload)
             users.removeAll { $0.userId == user.userId }

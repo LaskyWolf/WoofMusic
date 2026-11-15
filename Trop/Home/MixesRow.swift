@@ -100,7 +100,7 @@ struct MixesRow: View {
                 HorizontalSection(title: "Your Mixes", clipsContent: false) {
                     LazyHStack(spacing: DesignTokens.cardSpacing) {
                         ForEach(mixes) { mix in
-                            Button { MixBuilder.play(mix) } label: {
+                            Button { Haptics.impact(); MixBuilder.play(mix) } label: {
                                 MoodCard(
                                     title: mix.title,
                                     color: mix.color,

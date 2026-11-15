@@ -183,7 +183,7 @@ struct MiniPlayerBarView: View {
     }
 
     private var playPauseButton: some View {
-        Button(action: { player.togglePlayPause() }, label: {
+        Button(action: { Haptics.impact(); player.togglePlayPause() }, label: {
             PlayPauseGlyph(isPlaying: np.isPlaying, size: 17)
                 .frame(width: 44, height: 44)
                 .contentShape(Rectangle())
@@ -241,6 +241,7 @@ struct MiniPlayerBarView: View {
                         onExpand()
                     } else if value.translation.height > 40 {
                         // Swiping the bar down closes it: the song stops and the queue empties.
+                        Haptics.impact(.medium)
                         Task { await np.stopAndClear() }
                     }
                 case nil:
