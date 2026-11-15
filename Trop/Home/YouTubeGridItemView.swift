@@ -200,6 +200,7 @@ struct YouTubeListItemView: View {
             .greyedOut(songItem?.isAvailable == false)
 
             ItemDownloadedBadge(item: item)
+            if case .song(let song) = item { RowHeartButton(song: song) }
         }
         .padding(.horizontal, DesignTokens.screenHPadding)
         .frame(minHeight: Self.rowHeight)

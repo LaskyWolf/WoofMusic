@@ -20,7 +20,7 @@ struct RadioDialTile: View {
     @State private var savedProgress: Double = 0
     @State private var isStarting = false
 
-    static let size = CGSize(width: 150, height: 270)
+    static let size = CGSize(width: 150, height: 248)
     static let radius: CGFloat = 18
     static let inset: CGFloat = 12
     static let artSize: CGFloat = NewReleaseCard.coverSize
@@ -68,16 +68,14 @@ struct RadioDialTile: View {
 
     @ViewBuilder
     private func content(isCurrent: Bool) -> some View {
-        HStack {
-            if isCurrent && np.isPlaying { OnAirBadge() }
-        }
-        .frame(maxWidth: .infinity, minHeight: 16, alignment: .leading)
-        .padding(.bottom, 6)
-
         AsyncImageView(url: podcast.thumbnailUrl)
             .frame(width: Self.artSize, height: Self.artSize)
             .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
             .coverZoomSource(YTItemRouter.detailRoute(for: .podcast(podcast)))
+            .overlay(alignment: .topLeading) {
+                // Over the cover, so the card keeps the album card's top padding.
+                if isCurrent && np.isPlaying { OnAirBadge().padding(6) }
+            }
             .shadow(color: .black.opacity(0.35), radius: 6, x: 2, y: 4)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.bottom, 8)

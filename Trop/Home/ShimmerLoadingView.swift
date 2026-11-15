@@ -313,8 +313,6 @@ struct ShimmerLoadingView: View {
         return VStack(alignment: .leading, spacing: 0) {
             ShimmerBlock(width: Tile.artSize, height: Tile.artSize, radius: 10)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                // The ON AIR row: 16pt tall plus its 6pt gap.
-                .padding(.top, 22)
                 .padding(.bottom, 8)
             ShimmerBlock(width: 110, height: 14, radius: 4)
             ShimmerBlock(width: 80, height: 12, radius: 4)
