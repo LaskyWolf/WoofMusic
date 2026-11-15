@@ -116,7 +116,7 @@ final class SleepTimer {
         let start = Date()
         endedAt = start
         isCelebrating = true
-        Haptics.impact(.soft)
+        Haptics.soft()
         Task { [weak self] in
             try? await Task.sleep(for: .seconds(Self.celebrationSeconds))
             guard let self, self.endedAt == start else { return }
