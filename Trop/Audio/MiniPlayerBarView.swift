@@ -239,6 +239,9 @@ struct MiniPlayerBarView: View {
                 case .vertical:
                     if value.translation.height < -40 {
                         onExpand()
+                    } else if value.translation.height > 40 {
+                        // Swiping the bar down closes it: the song stops and the queue empties.
+                        Task { await np.stopAndClear() }
                     }
                 case nil:
                     break
