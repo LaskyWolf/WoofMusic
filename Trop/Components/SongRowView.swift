@@ -25,6 +25,30 @@ struct MoreGlyph: View {
     }
 }
 
+/// Tap to like or unlike a song, beside a row's ⋯.
+struct RowHeartButton: View {
+    let song: SongItem
+    @ObservedObject private var likeStore = LikeStore.shared
+    @Environment(SettingsStore.self) private var settings
+
+    var body: some View {
+        let liked = likeStore.isLiked(videoId: song.videoId)
+        Button {
+            if liked { Haptics.impact() } else { Haptics.success() }
+            Task { await likeStore.toggle(song: song) }
+        } label: {
+            Image(systemName: liked ? "heart.fill" : "heart")
+                .font(.body.weight(.semibold))
+                .foregroundStyle(liked ? AnyShapeStyle(settings.accentColor) : AnyShapeStyle(.secondary))
+                .contentTransition(.symbolEffect(.replace))
+                .frame(minWidth: 40, minHeight: 44)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(liked ? "Unlike" : "Like")
+    }
+}
+
 /// Unified song row: artwork + title + artists • duration + overflow menu.
 /// Replaces AlbumSongRow, PlaylistSongRow, PodcastEpisodeRow, DownloadedSongRow
 /// and the song branch of YouTubeListItemView.
@@ -100,6 +124,7 @@ struct SongRowView: View {
                         .frame(minWidth: 44, minHeight: 44)
                         .accessibilityHidden(true)
                 } else if showsMenuButton {
+                    RowHeartButton(song: song)
                     SongActionsMenu(song: song, onNavigate: { onNavigate?($0) },
                                     onSelect: onSelect, onRemove: onRemove) {
                         MoreGlyph()
@@ -133,14 +158,14 @@ extension View {
 
 /// The arrow that marks a song, playlist or album saved on this iPhone.
 struct DownloadedGlyph: View {
-    /// White, for artwork and coloured cards where the accent colour may not show.
-    var onArtwork = false
     @Environment(SettingsStore.self) private var settings
 
     var body: some View {
         Image(systemName: "arrow.down.to.line")
-            .font(.caption.weight(.bold))
-            .foregroundStyle(onArtwork ? Color.white : settings.accentColor)
+            .font(.system(size: 11, weight: .bold))
+            .foregroundStyle(.white)
+            .frame(width: 22, height: 22)
+            .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(settings.accentColor))
             .accessibilityLabel("Downloaded")
     }
 }
@@ -148,16 +173,14 @@ struct DownloadedGlyph: View {
 /// `DownloadedGlyph` for one song, once that song is saved.
 struct DownloadedBadge: View {
     let videoId: String
-    var onArtwork = false
     /// Only this song's answer, like `DownloadCellProgressView`.
     @State private var isDownloaded: Bool
     /// The song `isDownloaded` belongs to: a list can reuse this view for another song.
     @State private var shownVideoId: String
     @State private var finishedDownloads = 0
 
-    init(videoId: String, onArtwork: Bool = false) {
+    init(videoId: String) {
         self.videoId = videoId
-        self.onArtwork = onArtwork
         _shownVideoId = State(initialValue: videoId)
         _isDownloaded = State(initialValue: DownloadManager.shared.downloadedIds.contains(videoId))
     }
@@ -165,7 +188,7 @@ struct DownloadedBadge: View {
     var body: some View {
         // The ZStack stays when empty: it keeps the subscription, at no width.
         ZStack {
-            if isDownloaded { DownloadedGlyph(onArtwork: onArtwork) }
+            if isDownloaded { DownloadedGlyph() }
         }
         .glyphMotion(.downloadDone, trigger: finishedDownloads)
         .onReceive(DownloadManager.shared.$downloadedIds.map { [videoId] in $0.contains(videoId) }.removeDuplicates()) { downloaded in

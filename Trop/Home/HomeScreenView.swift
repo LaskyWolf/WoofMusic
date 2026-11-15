@@ -432,7 +432,7 @@ private struct QuickPickCard: View {
                             .foregroundStyle(.white)
                             .lineLimit(1)
                         Spacer(minLength: 0)
-                        DownloadedBadge(videoId: song.videoId, onArtwork: true)
+                        DownloadedBadge(videoId: song.videoId)
                     }
                     .padding(.horizontal, 8)
                     .padding(.bottom, 6)

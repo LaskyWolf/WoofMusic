@@ -27,16 +27,10 @@ struct NewReleasesSection: View {
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: Self.backdropRadius, style: .continuous)
         VStack(alignment: .leading, spacing: Self.inset) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("New albums and singles")
-                    .font(.title3.bold())
-                Text("Fresh this week")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-            }
-            .padding(.horizontal, Self.inset + 2)
-            .accessibilityElement(children: .combine)
-            .accessibilityAddTraits(.isHeader)
+            Text("New albums and singles")
+                .font(.title3.bold())
+                .padding(.horizontal, Self.inset + 2)
+                .accessibilityAddTraits(.isHeader)
 
             ScrollView(.horizontal, showsIndicators: false) {
                 LazyHStack(spacing: Self.cardSpacing) {
@@ -114,7 +108,7 @@ struct NewReleaseCard: View {
     /// Turns on only once a start has taken longer than `PlayPauseGlyph.spinnerDelay`.
     @State private var showsSpinner = false
 
-    static let size = CGSize(width: 150, height: 255)
+    static let size = CGSize(width: 150, height: 267)
     static let radius: CGFloat = 18
     static let inset: CGFloat = 12
     static let coverSize = DesignTokens.artMedium
@@ -224,7 +218,7 @@ struct NewReleaseCard: View {
                     .lineLimit(1)
                 if isDownloaded {
                     Spacer(minLength: 0)
-                    DownloadedGlyph(onArtwork: true)
+                    DownloadedGlyph()
                 }
             }
             if !artistLine.isEmpty {
@@ -257,7 +251,7 @@ struct NewReleaseCard: View {
 
             Button(action: playTapped) {
                 Self.roundIcon(isPlaying ? "pause.fill" : "play.fill",
-                               fill: SettingsStore.shared.accentColor, foreground: .white, isBusy: showsSpinner)
+                               fill: SettingsStore.shared.accentColor, foreground: .white, isBusy: showsSpinner, size: Self.playSize)
             }
             .disabled(isStarting)
             .task(id: isStarting) {
@@ -271,8 +265,10 @@ struct NewReleaseCard: View {
     }
 
     static let buttonSize: CGFloat = 38
+    /// Play is larger than the buttons beside it, like WoofTube's New Videos card.
+    static let playSize: CGFloat = 50
 
-    static func roundIcon(_ systemImage: String, fill: Color, foreground: Color, isBusy: Bool) -> some View {
+    static func roundIcon(_ systemImage: String, fill: Color, foreground: Color, isBusy: Bool, size: CGFloat = buttonSize) -> some View {
         ZStack {
             if isBusy {
                 ProgressView()
@@ -280,12 +276,12 @@ struct NewReleaseCard: View {
                     .tint(foreground)
             } else {
                 Image(systemName: systemImage)
-                    .font(.system(size: 16, weight: .bold))
+                    .font(.system(size: size * 0.38, weight: .bold))
                     .contentTransition(.symbolEffect(.replace))
             }
         }
         .foregroundStyle(foreground)
-        .frame(width: Self.buttonSize, height: Self.buttonSize)
+        .frame(width: size, height: size)
         .background(Circle().fill(fill))
         .contentShape(Circle())
     }
@@ -415,11 +411,8 @@ struct NewReleasesSkeleton: View {
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: NewReleasesSection.backdropRadius, style: .continuous)
         VStack(alignment: .leading, spacing: NewReleasesSection.inset) {
-            VStack(alignment: .leading, spacing: 6) {
-                ShimmerBlock(width: 200, height: 20, radius: 6)
-                ShimmerBlock(width: 100, height: 12, radius: 4)
-            }
-            .padding(.horizontal, NewReleasesSection.inset + 2)
+            ShimmerBlock(width: 200, height: 20, radius: 6)
+                .padding(.horizontal, NewReleasesSection.inset + 2)
             HStack(spacing: NewReleasesSection.cardSpacing) {
                 ForEach(0..<2, id: \.self) { _ in
                     ShimmerBlock(

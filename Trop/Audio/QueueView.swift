@@ -251,7 +251,7 @@ struct QueueSongRow: View {
 
             Spacer()
 
-            DownloadedBadge(videoId: song.videoId, onArtwork: true)
+            DownloadedBadge(videoId: song.videoId)
 
             Image(systemName: "line.3.horizontal")
                 .font(.system(size: 15, weight: .semibold))

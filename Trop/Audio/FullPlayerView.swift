@@ -531,7 +531,7 @@ struct FullPlayerView: View {
 
             HStack(spacing: 12) {
                 if let videoId = np.videoId {
-                    DownloadedBadge(videoId: videoId, onArtwork: true)
+                    DownloadedBadge(videoId: videoId)
                         .id(videoId)
                 }
                 PlayerLikeButton(isLiked: isLiked, flavor: currentLikeFlavor) {
