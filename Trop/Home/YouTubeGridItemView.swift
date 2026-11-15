@@ -7,6 +7,11 @@
 
 import SwiftUI
 
+private struct TextBlockBounds: PreferenceKey {
+    static var defaultValue: Anchor<CGRect>?
+    static func reduce(value: inout Anchor<CGRect>?, nextValue: () -> Anchor<CGRect>?) { value = nextValue() ?? value }
+}
+
 struct YouTubeGridItemView: View {
     var item: YTItem
     var onTap: () -> Void
@@ -18,6 +23,7 @@ struct YouTubeGridItemView: View {
     static let artworkSize: CGFloat = DesignTokens.artLarge
     /// Fixed so captions of one or two lines keep a carousel's cards aligned.
     static let cardHeight: CGFloat = 220
+    static let heartSize: CGFloat = 30
 
     private var videoId: String? {
         switch item {
@@ -34,6 +40,11 @@ struct YouTubeGridItemView: View {
 
     private var isPlaylist: Bool {
         if case .playlist = item { return true }
+        return false
+    }
+
+    private var isSong: Bool {
+        if case .song = item { return true }
         return false
     }
 
@@ -103,43 +114,46 @@ struct YouTubeGridItemView: View {
                     .coverZoomSource(YTItemRouter.detailRoute(for: item))
                     .opensPageBadge(opensPage)
                     .playlistEdges(isPlaylist)
+                    .overlay(alignment: .bottomTrailing) { ItemDownloadedBadge(item: item).padding(6) }
                     .padding(.top, reservesPlaylistLift ? PlaylistEdgeMetrics.lift : 0)
 
-                Text(item.title)
-                    .font(.caption)
-                    .fontWeight(.medium)
-                    .foregroundColor(.primary)
-                    .lineLimit(2)
-                    .multilineTextAlignment(isArtist ? .center : .leading)
+                VStack(alignment: isArtist ? .center : .leading, spacing: 4) {
+                    Text(item.title)
+                        .font(.caption)
+                        .fontWeight(.medium)
+                        .foregroundColor(.primary)
+                        .lineLimit(2)
+                        .multilineTextAlignment(isArtist ? .center : .leading)
 
-                let subtitle = subtitleText
-                if case .artist(let artist) = item {
-                    ArtistKindLabel(name: artist.name)
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
-                        .lineLimit(1)
-                } else if !subtitle.isEmpty || DownloadedCollections.shared.isComplete(YTItemRouter.detailRoute(for: item)) {
-                    HStack(spacing: 4) {
+                    let subtitle = subtitleText
+                    if case .artist(let artist) = item {
+                        ArtistKindLabel(name: artist.name)
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                            .lineLimit(1)
+                    } else if !subtitle.isEmpty {
                         Text(subtitle)
                             .font(.caption2)
                             .foregroundColor(.secondary)
                             .lineLimit(1)
-                        Spacer(minLength: 0)
-                        ItemDownloadedBadge(item: item)
                     }
                 }
+                // Room for the heart, which sits beside this block.
+                .padding(.trailing, isSong ? Self.heartSize + 6 : 0)
+                .anchorPreference(key: TextBlockBounds.self, value: .bounds) { $0 }
             }
             .frame(width: Self.artworkSize, height: Self.cardHeight + (reservesPlaylistLift ? PlaylistEdgeMetrics.lift : 0), alignment: .top)
             .greyedOut(songItem?.isAvailable == false)
         }
         .buttonStyle(ZoomPressStyle())
         .cardMenu(for: item)
-        // Outside the card's button, so its taps never open the song; at the cover's bottom-right corner.
-        .overlay(alignment: .topLeading) {
-            if case .song(let song) = item {
-                RowHeartButton(song: song, size: 30)
-                    .padding(.leading, Self.artworkSize - 36)
-                    .padding(.top, (reservesPlaylistLift ? PlaylistEdgeMetrics.lift : 0) + Self.artworkSize - 36)
+        // Outside the card's button, so its taps never open the song; centred on the title and artist.
+        .overlayPreferenceValue(TextBlockBounds.self) { anchor in
+            GeometryReader { geo in
+                if case .song(let song) = item, let anchor {
+                    RowHeartButton(song: song, size: Self.heartSize)
+                        .position(x: Self.artworkSize - Self.heartSize / 2, y: geo[anchor].midY)
+                }
             }
         }
     }
