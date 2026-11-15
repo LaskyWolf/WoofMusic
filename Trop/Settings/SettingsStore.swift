@@ -221,6 +221,11 @@ final class SettingsStore {
         didSet { Self.defaults.set(romanizeCurrentTrack, forKey: Keys.romanizeCurrentTrack) }
     }
 
+    /// Shows each lyric line translated into the device language, in the place of the romanized line.
+    var translateLyrics: Bool {
+        didSet { Self.defaults.set(translateLyrics, forKey: Keys.translateLyrics) }
+    }
+
     // MARK: - Playback
 
     var equalizerEnabled: Bool {
@@ -416,6 +421,7 @@ final class SettingsStore {
         static let lyricsOffsetSeconds = "settings.lyricsOffsetSeconds"
         static let showIntervalIndicator = "settings.showIntervalIndicator"
         static let romanizeCurrentTrack = "settings.romanizeCurrentTrack"
+        static let translateLyrics = "settings.translateLyrics"
         static let equalizerEnabled = "settings.equalizerEnabled"
         static let equalizerPresetID = "settings.equalizerPresetID"
         static let equalizerGains = "settings.equalizerGains"
@@ -486,6 +492,7 @@ final class SettingsStore {
         lyricsOffsetSeconds = Self.load(Keys.lyricsOffsetSeconds, default: 0)
         showIntervalIndicator = Self.load(Keys.showIntervalIndicator, default: true)
         romanizeCurrentTrack = Self.load(Keys.romanizeCurrentTrack, default: true)
+        translateLyrics = Self.load(Keys.translateLyrics, default: false)
         equalizerEnabled = Self.load(Keys.equalizerEnabled, default: false)
         equalizerPresetID = Self.loadString(Keys.equalizerPresetID, default: "flat")
         if let saved = d.array(forKey: Keys.equalizerGains) as? [Double], saved.count == equalizerFrequencies.count {

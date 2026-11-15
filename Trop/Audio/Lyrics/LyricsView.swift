@@ -5,7 +5,9 @@
 //  Created by 686udjie on 16/07/2026.
 //
 
+import NaturalLanguage
 import SwiftUI
+import Translation
 
 struct LyricsView: View {
     /// Point size of a lyric line.
@@ -23,6 +25,9 @@ struct LyricsView: View {
     @State private var activeIndex: Int = 0
     @State private var instrumentalGaps: [InstrumentalGap] = []
     @State private var romanizedLines: [String?] = []
+    /// Each line in the device language, when "Translate Lyrics" is on.
+    @State private var translatedLines: [String?] = []
+    @State private var translationConfig: TranslationSession.Configuration?
 
     struct InstrumentalGap {
         let afterIndex: Int
@@ -68,6 +73,10 @@ struct LyricsView: View {
         .onChange(of: settings.lyricsOffsetSeconds) { _, _ in updateActiveLine() }
         .onChange(of: settings.romanizeCurrentTrack) { _, _ in
             Task { await rebuildRomanization() }
+        }
+        .onChange(of: settings.translateLyrics) { _, _ in prepareTranslation() }
+        .translationTask(translationConfig) { session in
+            await translate(with: session)
         }
         .onChange(of: LyricsState.shared.refreshToken) { _, _ in
             Task { await loadLyrics() }
@@ -282,7 +291,7 @@ struct LyricsView: View {
     /// while playback is actually inside the gap.
     private func lyricsLineRow(index: Int, line: LyricLine, fontSize: Double) -> some View {
         let gap = settings.showIntervalIndicator ? instrumentalGaps.last(where: { $0.afterIndex == index }) : nil
-        let romanized = romanization(for: index)
+        let romanized = secondaryText(for: index)
         // From three lines above the current one down, about the visible window.
         let cascadeDelay = Double(min(max(index - activeIndex + 3, 0), 9)) * 0.08
         let wag = index.isMultiple(of: 2) ? 3.0 : -3.0
@@ -368,6 +377,15 @@ struct LyricsView: View {
         return romanizedLines[index]
     }
 
+    /// The line under the lyric: its translation when Translate Lyrics is on
+    /// and one exists, otherwise its romanization.
+    private func secondaryText(for index: Int) -> String? {
+        if settings.translateLyrics, translatedLines.indices.contains(index), let translated = translatedLines[index] {
+            return translated
+        }
+        return romanization(for: index)
+    }
+
     /// Blank / ♪-only timestamped lines declare instrumental spans.
     private static func isInstrumentalMarker(_ line: LyricLine) -> Bool {
         line.text.trimmingCharacters(in: CharacterSet(charactersIn: "♪*· "))
@@ -431,6 +449,53 @@ struct LyricsView: View {
         romanizedLines = romanized
     }
 
+    // MARK: - Translation
+
+    /// Points the translation task at this song: from the language the lines
+    /// are in, to the device language. Nothing to do when they are the same.
+    private func prepareTranslation() {
+        translatedLines = []
+        let sample = lines.prefix(30).map(\.text).joined(separator: "\n")
+        guard settings.translateLyrics,
+              let code = NLLanguageRecognizer.dominantLanguage(for: sample)?.rawValue else {
+            translationConfig = nil
+            return
+        }
+        let source = Locale.Language(identifier: code)
+        let target = Locale.current.language
+        guard source.languageCode != target.languageCode else {
+            translationConfig = nil
+            return
+        }
+        // The same pair again, for the next song: a new value would not run the task.
+        if var config = translationConfig, config.source == source, config.target == target {
+            config.invalidate()
+            translationConfig = config
+        } else {
+            translationConfig = .init(source: source, target: target)
+        }
+    }
+
+    /// Translates every line on the device. The system asks to download the
+    /// language the first time.
+    private func translate(with session: TranslationSession) async {
+        let generation = loadGeneration
+        let sources = lines.map(\.text)
+        let requests = sources.enumerated()
+            .filter { !$0.element.trimmingCharacters(in: .whitespaces).isEmpty }
+            .map { TranslationSession.Request(sourceText: $0.element, clientIdentifier: String($0.offset)) }
+        guard let responses = try? await session.translations(from: requests) else { return }
+        var result = [String?](repeating: nil, count: sources.count)
+        for response in responses {
+            guard let index = response.clientIdentifier.flatMap(Int.init), sources.indices.contains(index),
+                  response.targetText.caseInsensitiveCompare(sources[index]) != .orderedSame else { continue }
+            result[index] = response.targetText
+        }
+        // A newer song may have loaded while this ran.
+        guard generation == loadGeneration else { return }
+        translatedLines = result
+    }
+
     // MARK: - Data
 
     private func loadLyrics() async {
@@ -448,6 +513,7 @@ struct LyricsView: View {
         lines = []
         instrumentalGaps = []
         romanizedLines = []
+        translatedLines = []
         activeIndex = 0
         hasPositionedInitialLyrics = false
         isAutoScrollEnabled = true
@@ -465,6 +531,7 @@ struct LyricsView: View {
             instrumentalGaps = detectGaps(in: result)
             updateActiveLine()
             await rebuildRomanization()
+            prepareTranslation()
         } catch {
             if generation == loadGeneration { LyricsState.shared.hasWordTiming = false }
         }

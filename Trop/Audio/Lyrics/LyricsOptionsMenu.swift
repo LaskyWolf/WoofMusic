@@ -46,6 +46,10 @@ struct LyricsOptionsMenu<MenuLabel: View>: View {
                 Toggle(isOn: $settings.romanizeCurrentTrack) {
                     Label("Romanize Current Track", systemImage: "globe")
                 }
+                Toggle(isOn: $settings.translateLyrics) {
+                    Label("Translate Lyrics", systemImage: "character.bubble")
+                    Text("Replaces the romanized line")
+                }
                 // Stays enabled: turning it on is what looks for word-timed lyrics.
                 Toggle(isOn: $karaokeEnabled) {
                     Label("Karaoke", systemImage: "music.mic")
