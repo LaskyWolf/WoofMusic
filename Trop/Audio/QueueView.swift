@@ -253,6 +253,8 @@ struct QueueSongRow: View {
 
             DownloadedBadge(videoId: song.videoId)
 
+            RowHeartButton(song: song, size: 32)
+
             Image(systemName: "line.3.horizontal")
                 .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(.white.opacity(0.65))

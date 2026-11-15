@@ -134,6 +134,14 @@ struct YouTubeGridItemView: View {
         }
         .buttonStyle(ZoomPressStyle())
         .cardMenu(for: item)
+        // Outside the card's button, so its taps never open the song; at the cover's bottom-right corner.
+        .overlay(alignment: .topLeading) {
+            if case .song(let song) = item {
+                RowHeartButton(song: song, size: 30)
+                    .padding(.leading, Self.artworkSize - 36)
+                    .padding(.top, (reservesPlaylistLift ? PlaylistEdgeMetrics.lift : 0) + Self.artworkSize - 36)
+            }
+        }
     }
 }
 

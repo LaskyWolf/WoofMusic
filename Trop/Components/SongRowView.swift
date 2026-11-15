@@ -25,9 +25,10 @@ struct MoreGlyph: View {
     }
 }
 
-/// Tap to like or unlike a song, beside a row's ⋯.
+/// Round glass button to like or unlike a song: beside a row's ⋯, on a card's cover.
 struct RowHeartButton: View {
     let song: SongItem
+    var size: CGFloat = 34
     @ObservedObject private var likeStore = LikeStore.shared
     @Environment(SettingsStore.self) private var settings
 
@@ -38,11 +39,11 @@ struct RowHeartButton: View {
             Task { await likeStore.toggle(song: song) }
         } label: {
             Image(systemName: liked ? "heart.fill" : "heart")
-                .font(.body.weight(.semibold))
-                .foregroundStyle(liked ? AnyShapeStyle(settings.accentColor) : AnyShapeStyle(.secondary))
+                .font(.system(size: size * 0.45, weight: .semibold))
+                .foregroundStyle(liked ? AnyShapeStyle(settings.accentColor) : AnyShapeStyle(.primary))
                 .contentTransition(.symbolEffect(.replace))
-                .frame(minWidth: 40, minHeight: 44)
-                .contentShape(Rectangle())
+                .frame(width: size, height: size)
+                .glassEffect(.regular.interactive(), in: .circle)
         }
         .buttonStyle(.plain)
         .accessibilityLabel(liked ? "Unlike" : "Like")
