@@ -50,6 +50,14 @@ struct LyricsOptionsMenu<MenuLabel: View>: View {
                     Label("Translate Lyrics", systemImage: "character.bubble")
                     Text("Replaces the romanized line")
                 }
+                Picker(selection: $settings.translateLanguage) {
+                    Text("Device Language").tag("")
+                    ForEach(SettingsStore.translationLanguages, id: \.self) { id in
+                        Text(Locale.current.localizedString(forIdentifier: id) ?? id).tag(id)
+                    }
+                } label: {
+                    Label("Translate To", systemImage: "arrow.left.arrow.right")
+                }
                 // Stays enabled: turning it on is what looks for word-timed lyrics.
                 Toggle(isOn: $karaokeEnabled) {
                     Label("Karaoke", systemImage: "music.mic")

@@ -75,6 +75,7 @@ struct LyricsView: View {
             Task { await rebuildRomanization() }
         }
         .onChange(of: settings.translateLyrics) { _, _ in prepareTranslation() }
+        .onChange(of: settings.translateLanguage) { _, _ in prepareTranslation() }
         .translationTask(translationConfig) { session in
             await translate(with: session)
         }
@@ -452,7 +453,7 @@ struct LyricsView: View {
     // MARK: - Translation
 
     /// Points the translation task at this song: from the language the lines
-    /// are in, to the device language. Nothing to do when they are the same.
+    /// are in, to the chosen language. Nothing to do when they are the same.
     private func prepareTranslation() {
         translatedLines = []
         let sample = lines.prefix(30).map(\.text).joined(separator: "\n")
@@ -462,7 +463,7 @@ struct LyricsView: View {
             return
         }
         let source = Locale.Language(identifier: code)
-        let target = Locale.current.language
+        let target = settings.translationTarget
         guard source.languageCode != target.languageCode else {
             translationConfig = nil
             return
