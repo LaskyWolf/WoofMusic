@@ -78,6 +78,7 @@ It plays without ads and mixes songs like a DJ.
 - **Home Screen quick actions:** Search, Shuffle Liked Songs, Downloads, Resume
 - **Open YouTube and YouTube Music links:** share a song, playlist, album, artist or podcast link to Woof Music from any app
 - **Shazam links:** share a Shazam song link to Woof Music, or paste it in Search, and the song plays from YouTube Music
+- **Spotify and Apple Music links:** ask for an Odesli API key at developers@song.link, then add it in Settings > Integrations > Odesli. The share-sheet shortcut then opens these links too.
 
 ### Look
 - Custom app icons and accent colours
@@ -98,6 +99,7 @@ It plays without ads and mixes songs like a DJ.
 - SponsorBlock receives the ID of each song you play. Turn off the non-music skip in Settings to stop that.
 - Lyrics providers receive the title and artist of songs they look up.
 - Last.fm, ListenBrainz and Discord receive what you play only after you connect them.
+- Odesli receives each Spotify or Apple Music link you open in the app, only after you add your API key.
 - The log file stays on the iPhone until you share it from Settings.
 
 ## Install

@@ -103,7 +103,7 @@ struct TropApp: App {
             AppRouter.shared.collapsePlayer()
             AppRouter.shared.selectedTabIndex = 0
         case "recap": showsRecap = true
-        case "open": MusicLinkOpener.openShowingProblem(MusicLink(openURL: url))
+        case "open": MusicLinkOpener.openShowingProblem(url: MusicLink.wrappedLink(in: url))
         default: break
         }
     }

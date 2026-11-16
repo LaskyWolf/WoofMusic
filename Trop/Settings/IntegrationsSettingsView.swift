@@ -25,6 +25,9 @@ struct IntegrationsSettingsView: View {
                 SettingsNavigationRow("Listen Together", icon: "person.2.wave.2") {
                     ListenTogetherView()
                 }
+                SettingsNavigationRow("Odesli", icon: "link") {
+                    OdesliSettingsView()
+                }
             } footer: {
                 Text("Connect external services to enhance your experience.")
             }
