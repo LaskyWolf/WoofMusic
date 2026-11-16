@@ -86,7 +86,14 @@ enum SignedInnerTube {
 
 /// Answers a redirect with "no", so a reporting address never hands the sign-in to another host.
 private final class NoRedirects: NSObject, URLSessionTaskDelegate {
-    func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse, newRequest request: URLRequest) async -> URLRequest? {
-        nil
+    // The completion-handler form: the async one crashes the compiler's Objective-C bridging.
+    func urlSession(
+        _ session: URLSession,
+        task: URLSessionTask,
+        willPerformHTTPRedirection response: HTTPURLResponse,
+        newRequest request: URLRequest,
+        completionHandler: @escaping (URLRequest?) -> Void
+    ) {
+        completionHandler(nil)
     }
 }
