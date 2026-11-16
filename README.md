@@ -31,66 +31,14 @@ It plays without ads and mixes songs like a DJ.
 
 ## Features
 
-### Home and Explore
-- Your YouTube Music Home feed, which opens on the last saved page while the new one loads
-- Keep Listening card: recent songs, albums and playlists as a fanned stack that spreads with a tap
-- Quick Picks and the sections built from your own library, also offline
-- Your Mixes under Keep Listening: Flow (your favorites, endless), On Repeat (last 30 days), Rewind (earlier plays) and a mix for each of your top two artists
-- New albums and singles in Explore: cards tinted with each cover's colours, with a vinyl that slides out and spins while the album plays
-- Moods and genres as filter chips under the header: a chip swaps in that mood's page, and a genre family such as Pop shows its sub-genres as cards
-- Headers and filter chips of Home, Library and Explore stay pinned while you scroll
-
-### Playback
-- Songs and podcasts from YouTube Music, with no ads
-- AutoMix follows phrases, keys and vocals, and picks a transition style for each pair of songs
-- Equalizer presets with a curve preview
-- Play Next queue, song radio and listening history, which you can search and filter by Local or YouTube Music
-- Landscape layout for the player
-- Comments on the song in the player
-- Haptic feedback on playback, queue actions, downloads and the sleep timer
-- Sleep timer with a Clock-style countdown wheel or the end of the song
-- AirPlay, a system volume bar and lock screen controls
-- Non-music parts skipped with SponsorBlock, which you can turn off
-
-### Library
-- Sync of playlists, albums, artists, podcasts and liked songs with your account
-- Playlist editing: name and cover in one sheet, synced to YouTube Music
-- Downloads with full-size cover art and progress on each row
-- Songs that can't be played shown in grey and left out of queues and download counts
-- Select many songs to play, queue, like, download or add them to a playlist
-- Like button on song rows and cards in Home, Explore and Search
-- Long-press menus on songs, albums, playlists, artists and Home cards
-
-### Listen Together
-- Rooms that work with Metrolist's metroserver: members hear the same song at the same time
-- Members show their YouTube Music picture; Metrolist members see it as a code at the end of the name
-
-### Lyrics
-- Synced lyrics from Musixmatch, Netease, Kugou, LRCLIB and Genius
-- Offset, editing and search
-- Translation of each line into the device language or one you pick, on the device
-
-### Accounts and search
-- Google sign-in inside the app, with several accounts to switch between
-- Search with YouTube Music suggestions, recent searches and sorting
-- Activity inbox from YouTube Music in every tab, with local notifications for new releases (iOS decides when the background check runs)
-- History that merges plays on the iPhone with your YouTube Music history; plays are reported to YouTube Music while you are signed in
-- Incognito mode: searches and plays aren't saved on the iPhone, and songs stay out of your YouTube Music history
-
-### Widgets and integrations
-- **Home Screen widgets:** now playing, Quick Picks and monthly stats
-- **Last.fm** and **ListenBrainz** scrobbling
-- **Discord Rich Presence** (needs the Discord Social SDK, see [below](#discord-social-sdk))
-- **Siri and Shortcuts:** "Shuffle my liked songs in Woof Music", play/pause, next song, search and play a song or artist
-- **Home Screen quick actions:** Search, Shuffle Liked Songs, Downloads, Resume
-- **Open YouTube and YouTube Music links:** share a song, playlist, album, artist or podcast link to Woof Music from any app
-- **Shazam links:** share a Shazam song link to Woof Music, or paste it in Search, and the song plays from YouTube Music
-
-### Look
-- Custom app icons and accent colours; icons follow light, dark and tinted modes
-- Left-handed tab bar option
-- Update check in the App section of the profile
-- VoiceOver support on the player and song rows, and Reduce Motion is respected
+- Your YouTube Music Home, Explore, moods and genres, with Flow, On Repeat, Rewind and artist mixes
+- AutoMix, equalizer, sleep timer, landscape player and song comments
+- Library sync, playlist editing, offline downloads and multi-select
+- Listen Together rooms that work with Metrolist
+- Synced lyrics from five providers, translated on the device
+- Several Google accounts, search, activity inbox and Incognito mode
+- Widgets, Siri and Shortcuts, Last.fm, ListenBrainz and Discord
+- Opens YouTube, YouTube Music and Shazam links from any app
 
 ## Speed
 
@@ -147,10 +95,6 @@ To enable it:
    ```
    The workflow downloads the SDK from there. If it can't, the build continues without it and shows a warning.
 4. For a local build, put `discord_partner_sdk.xcframework` in `build/discord/`.
-
-## Account risk
-
-Google can challenge or restrict an account used in an unofficial app. Test with a second account.
 
 ## Credits
 
