@@ -1,4 +1,5 @@
 #!/bin/bash
+git apply WoofMusic-lyrics-canvas.patch
 set -euo pipefail
 
 cd "$(dirname "$0")"
