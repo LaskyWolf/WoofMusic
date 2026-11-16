@@ -142,6 +142,13 @@ final class ActivityStore {
                 add(ActivityItem(renderer: renderer, seen: seen), to: "Activity")
             }
         }
+        // An empty inbox still has its sections; no sections at all means the answer has another shape.
+        if sections.isEmpty, ActivityJSON.first("multiPageMenuNotificationSectionRenderer", in: json) == nil {
+            let keys = ((json as? [String: Any])?.keys.sorted().joined(separator: ", ")) ?? "none"
+            throw NSError(domain: "Activity", code: 0, userInfo: [
+                NSLocalizedDescriptionKey: "YouTube Music answered without an inbox (\(data.count) bytes, fields: \(keys))."
+            ])
+        }
         return sections
     }
 }

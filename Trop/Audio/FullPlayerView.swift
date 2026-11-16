@@ -32,6 +32,8 @@ struct FullPlayerView: View {
     /// so only the lyrics sit over the player background.
     private var showsKaraoke: Bool { showLyrics && karaokeEnabled && LyricsState.shared.hasWordTiming }
     @State private var showQueue = false
+    @State private var showComments = false
+    private var showsPanel: Bool { showQueue || showLyrics || showComments }
     /// The speed dial under the progress bar, opened from its chip.
     @State private var showsSpeedDial = false
     /// True while an open dial shrinks back into its chip, before the layout closes its room.
@@ -213,7 +215,7 @@ struct FullPlayerView: View {
 
                             // Hidden under an open panel: the glass is see-through.
                             PlayerLyricPreview(lines: syncedLyrics)
-                                .opacity(showQueue || showLyrics ? 0 : 1)
+                                .opacity(showsPanel ? 0 : 1)
                         }
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                         // No bottom padding: the panel covers the lyric line and the
@@ -262,6 +264,7 @@ struct FullPlayerView: View {
             }
             .animation(.easeInOut(duration: reduceMotion ? 0.15 : 0.25), value: showQueue)
             .animation(.easeInOut(duration: reduceMotion ? 0.15 : 0.25), value: showLyrics)
+            .animation(.easeInOut(duration: reduceMotion ? 0.15 : 0.25), value: showComments)
             .animation(.easeInOut(duration: reduceMotion ? 0.15 : 0.25), value: showsKaraoke)
             .animation(reduceMotion ? .easeInOut(duration: 0.15) : .spring(duration: 0.42, bounce: 0.22), value: showsSpeedDial)
             .offset(y: pullDistance)
@@ -285,6 +288,7 @@ struct FullPlayerView: View {
                 }
                 lastTitleQueueIndex = np.queueIndex
                 showLyrics = false
+                showComments = false
                 preloadLyrics()
             }
             .onChange(of: np.queueSongs.count) { _, _ in
@@ -298,11 +302,15 @@ struct FullPlayerView: View {
             .onChange(of: showQueue) { _, newValue in
                 if newValue {
                     showLyrics = false
+                    showComments = false
                     np.preloadNeighborArtwork()
                 }
             }
             .onChange(of: showLyrics) { _, newValue in
-                if newValue { showQueue = false }
+                if newValue { showQueue = false; showComments = false }
+            }
+            .onChange(of: showComments) { _, newValue in
+                if newValue { showQueue = false; showLyrics = false }
             }
             .task { np.preloadNeighborArtwork() }
             .task(id: np.videoId) { await loadCurrentLyrics() }
@@ -311,7 +319,7 @@ struct FullPlayerView: View {
             } message: {
                 Text("The artist page could not be found. Try again when connected.")
             }
-            .interactiveDismissDisabled(showQueue || showLyrics || showsFullscreenCover)
+            .interactiveDismissDisabled(showsPanel || showsFullscreenCover)
             .background(
                 // Artist and album links from the player open over it, as a sheet.
                 Color.clear
@@ -325,6 +333,8 @@ struct FullPlayerView: View {
             showQueue = false
         } else if showLyrics {
             showLyrics = false
+        } else if showComments {
+            showComments = false
         } else {
             onCollapse()
         }
@@ -385,7 +395,8 @@ struct FullPlayerView: View {
         SecondaryActionsRow(
             showQueue: $showQueue,
             isRepeatOn: $np.isRepeatOn,
-            showLyrics: $showLyrics
+            showLyrics: $showLyrics,
+            showComments: $showComments
         )
         .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { secondaryFrame.rect = $0 }
 
@@ -402,14 +413,16 @@ struct FullPlayerView: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(showQueue ? "Close queue" : showLyrics ? "Close lyrics" : "Collapse player")
+        .accessibilityLabel(showQueue ? "Close queue" : showLyrics ? "Close lyrics" : showComments ? "Close comments" : "Collapse player")
     }
 
     @ViewBuilder
     private var playerPanel: some View {
-        if showQueue || showLyrics {
+        if showsPanel {
             Group {
-                if showLyrics {
+                if showComments {
+                    CommentsPanel(showComments: $showComments)
+                } else if showLyrics {
                     LyricsView(showLyrics: $showLyrics)
                 } else {
                     QueueView(
@@ -431,7 +444,7 @@ struct FullPlayerView: View {
     // MARK: - Gestures
 
     private func pullToDismiss(height: CGFloat) -> PlayerDismissGesture {
-        PlayerDismissGesture(isEnabled: !showQueue && !showLyrics && !showsFullscreenCover) { distance in
+        PlayerDismissGesture(isEnabled: !showsPanel && !showsFullscreenCover) { distance in
             pullDistance = max(0, distance)
         } onEnded: { distance, velocity in
             // Far enough (a fifth of the screen) or a quick flick closes it.
@@ -458,7 +471,7 @@ struct FullPlayerView: View {
     /// neighbour's cover slides in from the edge.
     private func playerSwipe(pageWidth: CGFloat) -> PlayerTrackSwipeGesture {
         PlayerTrackSwipeGesture(
-            isEnabled: !showQueue && !showLyrics && settings.artworkSwipeNavigation
+            isEnabled: !showsPanel && settings.artworkSwipeNavigation
         ) { translation in
             guard !isCommittingSwipe else { return }
             // No song on that side: the cover stretches a little and springs back.

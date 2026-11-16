@@ -39,7 +39,7 @@ struct HomeScreenView: View {
             }
             .frame(maxHeight: .infinity, alignment: .top)
             .tabHeader {
-                TabHeaderView(title: "Home", path: $router.homePath, showsActivity: true)
+                TabHeaderView(title: "Home", path: $router.homePath)
                 if viewModel.isLoading {
                     // The chips come with the page: placeholders keep their place.
                     ShimmerChips()

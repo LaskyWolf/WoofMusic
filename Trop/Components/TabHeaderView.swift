@@ -7,7 +7,7 @@
 
 import SwiftUI
 
-/// Shared large-title header with history and account buttons, used by the
+/// Shared large-title header with activity, history and account buttons, used by the
 /// four tabs. `path` is the tab's navigation stack.
 struct TabHeaderView: View {
     @Environment(SettingsStore.self) private var settings
@@ -18,8 +18,6 @@ struct TabHeaderView: View {
     var onAdd: (() -> Void)?
     /// Shows the Incognito button when set (Search).
     var incognito: Binding<Bool>?
-    /// Shows the Activity bell when signed in (Home).
-    var showsActivity = false
     private let activity = ActivityStore.shared
 
     var body: some View {
@@ -56,7 +54,7 @@ struct TabHeaderView: View {
                     .sensoryFeedback(.selection, trigger: incognito.wrappedValue)
                 }
 
-                if showsActivity, account.isLoggedIn {
+                if account.isLoggedIn {
                     Button { path.append(DetailRoute.activity) } label: {
                         Image(systemName: activity.unseen > 0 ? "bell.badge.fill" : "bell")
                             .font(.title3)

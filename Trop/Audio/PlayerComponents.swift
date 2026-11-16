@@ -229,6 +229,7 @@ struct SecondaryActionsRow: View {
     @Binding var showQueue: Bool
     @Binding var isRepeatOn: Bool
     var showLyrics: Binding<Bool>? = nil
+    var showComments: Binding<Bool>? = nil
 
     var body: some View {
         HStack(spacing: 0) {
@@ -245,6 +246,22 @@ struct SecondaryActionsRow: View {
                 }
                 .buttonStyle(IconPressStyle(disc: .white))
                 .accessibilityLabel(showLyrics.wrappedValue ? "Close lyrics" : "Open lyrics")
+                .frame(maxWidth: .infinity)
+            }
+
+            if let showComments {
+                Button {
+                    showComments.wrappedValue.toggle()
+                } label: {
+                    Image(systemName: showComments.wrappedValue ? "text.bubble.fill" : "text.bubble")
+                        .font(.title3)
+                        .foregroundStyle(showComments.wrappedValue ? .white : .white.opacity(0.7))
+                        .glyphMotion(showComments.wrappedValue ? .bubblePop : nil, trigger: showComments.wrappedValue)
+                        .frame(width: 44, height: 44)
+                        .background(showComments.wrappedValue ? Circle().fill(.white.opacity(0.15)) : Circle().fill(.clear))
+                }
+                .buttonStyle(IconPressStyle(disc: .white))
+                .accessibilityLabel(showComments.wrappedValue ? "Close comments" : "Open comments")
                 .frame(maxWidth: .infinity)
             }
 
