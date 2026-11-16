@@ -24,6 +24,7 @@ struct TropApp: App {
         configureNuke()
         ensureDirectories()
         PlayerController.registerRemoteControlSupport()
+        ActivityNotifier.register()
         observePlaybackSettings()
         Task { await InnerTubeClient.tropShared.syncTropLocale() }
         Task { @MainActor in DiscordIntegration.shared.start() }
@@ -85,6 +86,9 @@ struct TropApp: App {
             if phase == .background {
                 QuickAction.updateResumeItem()
                 WidgetSync.shared.syncAll()
+                ActivityNotifier.scheduleRefresh()
+            } else if phase == .active {
+                Task { await ActivityNotifier.checkNow() }
             }
         }
     }

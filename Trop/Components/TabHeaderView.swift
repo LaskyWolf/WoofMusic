@@ -18,6 +18,9 @@ struct TabHeaderView: View {
     var onAdd: (() -> Void)?
     /// Shows the Incognito button when set (Search).
     var incognito: Binding<Bool>?
+    /// Shows the Activity bell when signed in (Home).
+    var showsActivity = false
+    private let activity = ActivityStore.shared
 
     var body: some View {
         HStack(alignment: .center) {
@@ -51,6 +54,19 @@ struct TabHeaderView: View {
                     .buttonStyle(IconPressStyle())
                     .accessibilityLabel(incognito.wrappedValue ? "Turn Off Incognito" : "Turn On Incognito")
                     .sensoryFeedback(.selection, trigger: incognito.wrappedValue)
+                }
+
+                if showsActivity, account.isLoggedIn {
+                    Button { path.append(DetailRoute.activity) } label: {
+                        Image(systemName: activity.unseen > 0 ? "bell.badge.fill" : "bell")
+                            .font(.title3)
+                            .foregroundStyle(activity.unseen > 0 ? AnyShapeStyle(settings.accentColor) : AnyShapeStyle(.secondary))
+                            .frame(width: 36, height: 36)
+                            .tapArea(outset: 4)
+                    }
+                    .buttonStyle(IconPressStyle())
+                    .accessibilityLabel(activity.unseen > 0 ? "Activity, \(activity.unseen) new" : "Activity")
+                    .task { await activity.refreshUnseen() }
                 }
 
                 Button { path.append(DetailRoute.history) } label: {

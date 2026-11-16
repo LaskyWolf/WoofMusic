@@ -19,6 +19,7 @@ enum DetailRoute: Hashable, Identifiable {
         case .podcast(let browseId): return "podcast_\(browseId)"
         case .autoPlaylist(let route): return "autoPlaylist_\(String(describing: route))"
         case .history: return "history"
+        case .activity: return "activity"
         case .settings: return "settings"
         case .downloads: return "downloads"
         }
@@ -30,6 +31,7 @@ enum DetailRoute: Hashable, Identifiable {
     case podcast(browseId: String)
     case autoPlaylist(AutoPlaylistRoute)
     case history
+    case activity
     case settings
     case downloads
 }
@@ -52,6 +54,8 @@ struct DetailRouteDestinationView: View {
             PlaylistDetailView(autoPlaylistRoute: autoRoute)
         case .history:
             HistoryScreenView()
+        case .activity:
+            ActivityView()
         case .settings:
             SettingsView()
         case .downloads:

@@ -8,25 +8,15 @@
 import SwiftUI
 
 struct HistoryScreenView: View {
-    @Environment(SettingsStore.self) private var settings
     @State private var viewModel = HistoryViewModel()
     @State private var isSelecting = false
     @State private var selectedEvents: Set<Event> = []
     @State private var query = ""
 
-    private var displayableSections: [(title: String, entries: [DatabaseService.HistoryEntry])] {
-        // Without a search, skip building a song per entry just to match it.
-        let isSearching = !query.trimmingCharacters(in: .whitespaces).isEmpty
-        return viewModel.groupedEntries.compactMap { section -> (title: String, entries: [DatabaseService.HistoryEntry])? in
-            let entries = isSearching ? section.entries.filter { matches(SongItem(historyEntry: $0)) } : section.entries
-            return entries.isEmpty ? nil : (section.title, entries)
-        }
-    }
-
-    private var remoteSections: [(title: String, songs: [SongItem])] {
-        viewModel.remoteSections.compactMap { section -> (title: String, songs: [SongItem])? in
-            let songs = section.songs.filter(matches)
-            return songs.isEmpty ? nil : (section.title, songs)
+    private var displayableDays: [HistoryDay] {
+        viewModel.days.compactMap { day -> HistoryDay? in
+            let rows = day.rows.filter { matches($0.song) }
+            return rows.isEmpty ? nil : HistoryDay(title: day.title, rows: rows)
         }
     }
 
@@ -38,67 +28,39 @@ struct HistoryScreenView: View {
         return words.allSatisfy { text.localizedStandardContains($0) }
     }
 
+    /// Only plays from this app can be selected and deleted.
     private var allEvents: [Event] {
-        displayableSections.flatMap(\.entries).map(\.event)
+        displayableDays.flatMap(\.rows).compactMap(\.event)
     }
 
     private var allDisplayableSongs: [SongItem] {
-        displayableSections.flatMap(\.entries).map(SongItem.init(historyEntry:))
+        displayableDays.flatMap(\.rows).map(\.song)
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            sourcePicker
-
-            Group {
-                if viewModel.isLoading {
-                    historySkeleton
-                } else if viewModel.source == .local {
-                    localHistoryContent
-                } else {
-                    remoteHistoryContent
-                }
+        Group {
+            if viewModel.isLoading {
+                historySkeleton
+            } else if displayableDays.isEmpty, !query.isEmpty {
+                ContentUnavailableView.search(text: query)
+            } else if displayableDays.isEmpty {
+                ContentUnavailableView(
+                    "No History",
+                    systemImage: "clock.arrow.circlepath",
+                    description: Text("Songs you play will appear here.")
+                )
+            } else {
+                list
             }
-            .frame(maxHeight: .infinity)
         }
+        .frame(maxHeight: .infinity)
         .navigationTitle("History")
         .navigationBarTitleDisplayMode(.inline)
         .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search your history")
         .toolbar {
             toolbarContent
         }
-        .onChange(of: viewModel.source) { _, newSource in
-            if isSelecting {
-                isSelecting = false
-                selectedEvents.removeAll()
-            }
-            if newSource == .remote {
-                Task { await viewModel.loadRemote() }
-            }
-        }
         .task { await viewModel.load() }
-    }
-
-    /// Two wide pills, one per source.
-    private var sourcePicker: some View {
-        HStack(spacing: 10) {
-            ForEach(HistorySource.allCases, id: \.self) { source in
-                let isOn = viewModel.source == source
-                Button { viewModel.source = source } label: {
-                    Text(source.rawValue)
-                        .font(.body.weight(.semibold))
-                        .frame(maxWidth: .infinity, minHeight: 46)
-                        .background(Capsule().fill(isOn ? settings.accentColor : Color(.systemGray5)))
-                        .foregroundStyle(isOn ? Color.white : Color.primary)
-                }
-                .buttonStyle(ZoomPressStyle())
-                .accessibilityAddTraits(isOn ? .isSelected : [])
-            }
-        }
-        .padding(.horizontal, DesignTokens.screenHPadding)
-        .padding(.top, 8)
-        .padding(.bottom, 12)
-        .sensoryFeedback(.selection, trigger: viewModel.source)
     }
 
     /// Day titles and song rows, like the loaded list.
@@ -120,9 +82,9 @@ struct HistoryScreenView: View {
     }
 
     private var selectedSongs: [SongItem] {
-        displayableSections.flatMap(\.entries)
-            .filter { selectedEvents.contains($0.event) }
-            .map(SongItem.init(historyEntry:))
+        displayableDays.flatMap(\.rows)
+            .filter { $0.event.map(selectedEvents.contains) ?? false }
+            .map(\.song)
     }
 
     private func endSelection() {
@@ -133,7 +95,7 @@ struct HistoryScreenView: View {
     /// The playlist page's buttons: Select, then Select All, the songs' actions and Done.
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
-        if viewModel.source == .local && !displayableSections.isEmpty {
+        if !allEvents.isEmpty {
             ToolbarItemGroup(placement: .primaryAction) {
                 if isSelecting {
                     let all = selectedEvents.count == allEvents.count
@@ -158,36 +120,20 @@ struct HistoryScreenView: View {
         }
     }
 
-    // MARK: - Local
+    // MARK: - List
 
-    private var localHistoryContent: some View {
-        Group {
-            if displayableSections.isEmpty, !query.isEmpty {
-                ContentUnavailableView.search(text: query)
-            } else if displayableSections.isEmpty {
-                ContentUnavailableView(
-                    "No History",
-                    systemImage: "clock.arrow.circlepath",
-                    description: Text("Songs you play will appear here.")
-                )
-            } else {
-                localList
-            }
-        }
-    }
-
-    private var localList: some View {
+    private var list: some View {
         List {
             // One section per day, so titles are unique.
-            ForEach(displayableSections, id: \.title) { section in
+            ForEach(displayableDays) { day in
                 Section {
-                    ForEach(section.entries, id: \.event) { entry in
-                        localRow(entry)
+                    ForEach(day.rows) { row in
+                        rowView(row)
                             .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
                             .listRowSeparator(.hidden)
                     }
                 } header: {
-                    Text(section.title)
+                    Text(day.title)
                         .font(.title3)
                         .fontWeight(.bold)
                         .foregroundColor(.primary)
@@ -200,118 +146,56 @@ struct HistoryScreenView: View {
         .miniPlayerTracksScroll()
     }
 
-    private func localRow(_ entry: DatabaseService.HistoryEntry) -> some View {
-        let song = SongItem(historyEntry: entry)
-        let isSelected = selectedEvents.contains(entry.event)
+    @ViewBuilder
+    private func rowView(_ row: HistoryRow) -> some View {
+        if let event = row.event {
+            localRow(row.song, event: event)
+        } else {
+            // From YouTube Music only: it plays, but there is no local play to select or delete.
+            SongRowView(
+                song: row.song,
+                artSize: DesignTokens.artSmall, artRadius: DesignTokens.cardRadius,
+                onTap: { if !isSelecting { play(row.song) } },
+                showsMenuButton: false
+            )
+        }
+    }
+
+    private func localRow(_ song: SongItem, event: Event) -> some View {
+        let isSelected = selectedEvents.contains(event)
         return SongRowView(
             song: song,
             artSize: DesignTokens.artSmall, artRadius: DesignTokens.cardRadius,
             onTap: {
                 if isSelecting {
                     if isSelected {
-                        selectedEvents.remove(entry.event)
+                        selectedEvents.remove(event)
                     } else {
-                        selectedEvents.insert(entry.event)
+                        selectedEvents.insert(event)
                     }
                 } else {
-                    // Built on tap only: computing it per row re-converts the whole history.
-                    PlaybackQueue.play(song, in: allDisplayableSongs, log: Log.historyView, context: "History play")
+                    play(song)
                 }
             },
             isSelecting: isSelecting,
             isSelected: isSelected,
             onSelect: {
                 isSelecting = true
-                selectedEvents = [entry.event]
+                selectedEvents = [event]
             },
             showsMenuButton: false
         )
         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
             Button(role: .destructive) {
-                Task { await viewModel.deleteEvents([entry.event]) }
+                Task { await viewModel.deleteEvents([event]) }
             } label: {
                 Label("Delete", systemImage: "trash")
             }
         }
     }
 
-    // MARK: - Remote
-
-    private var remoteHistoryContent: some View {
-        Group {
-            if viewModel.isRemoteLoading {
-                historySkeleton
-            } else if let error = viewModel.remoteError {
-                RetryStateView(
-                    title: "Couldn't load history",
-                    systemImage: "exclamationmark.circle",
-                    message: error.localizedDescription,
-                    retry: { await viewModel.loadRemote() }
-                )
-            } else if remoteSections.isEmpty, !query.isEmpty {
-                ContentUnavailableView.search(text: query)
-            } else if remoteSections.isEmpty {
-                ContentUnavailableView(
-                    "No History",
-                    systemImage: "clock.arrow.circlepath",
-                    description: Text("Sign in to see your YouTube Music history.")
-                )
-            } else {
-                remoteList
-            }
-        }
-    }
-
-    private var remoteList: some View {
-        List {
-            ForEach(remoteSections.indices, id: \.self) { sectionIndex in
-                let section = remoteSections[sectionIndex]
-                Section {
-                    ForEach(section.songs, id: \.videoId) { song in
-                        SongRowView(
-                            song: song,
-                            artSize: DesignTokens.artSmall, artRadius: DesignTokens.cardRadius,
-                            onTap: {
-                                PlaybackQueue.play(song, in: section.songs, log: Log.historyView, context: "History play")
-                            },
-                            showsMenuButton: false
-                        )
-                        .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
-                        .listRowSeparator(.hidden)
-                    }
-                } header: {
-                    Text(section.title)
-                        .font(.title3)
-                        .fontWeight(.bold)
-                        .foregroundColor(.primary)
-                        .textCase(nil)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-            }
-        }
-        .listStyle(.plain)
-        .miniPlayerTracksScroll()
-    }
-
-}
-
-private extension SongItem {
-    /// The saved song, or a placeholder named after its id when the song row is gone.
-    init(historyEntry entry: DatabaseService.HistoryEntry) {
-        if let entity = entry.song {
-            self.init(entity: entity)
-        } else {
-            self.init(
-                videoId: entry.event.songId,
-                title: entry.event.songId,
-                artists: [],
-                album: nil,
-                albumId: nil,
-                duration: 0,
-                thumbnailUrl: ArtworkURLs.fallback(for: entry.event.songId),
-                isExplicit: false,
-                playlistId: nil
-            )
-        }
+    /// Built on tap only: computing it per row re-converts the whole history.
+    private func play(_ song: SongItem) {
+        PlaybackQueue.play(song, in: allDisplayableSongs, log: Log.historyView, context: "History play")
     }
 }
