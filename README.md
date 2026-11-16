@@ -35,6 +35,7 @@ It plays without ads and mixes songs like a DJ.
 - Your YouTube Music Home feed, which opens on the last saved page while the new one loads
 - Keep Listening card: recent songs, albums and playlists as a fanned stack that spreads with a tap
 - Quick Picks and the sections built from your own library, also offline
+- Your Mixes under Keep Listening: Flow (your favorites, endless), On Repeat (last 30 days), Rewind (earlier plays) and a mix for each of your top two artists
 - New albums and singles in Explore: cards tinted with each cover's colours, with a vinyl that slides out and spins while the album plays
 - Moods and genres as filter chips under the header: a chip swaps in that mood's page, and a genre family such as Pop shows its sub-genres as cards
 - Headers and filter chips of Home, Library and Explore stay pinned while you scroll
@@ -45,6 +46,8 @@ It plays without ads and mixes songs like a DJ.
 - Equalizer presets with a curve preview
 - Play Next queue, song radio and listening history, which you can search and filter by Local or YouTube Music
 - Landscape layout for the player
+- Comments on the song in the player
+- Haptic feedback on playback, queue actions, downloads and the sleep timer
 - Sleep timer with a Clock-style countdown wheel or the end of the song
 - AirPlay, a system volume bar and lock screen controls
 - Non-music parts skipped with SponsorBlock, which you can turn off
@@ -55,6 +58,7 @@ It plays without ads and mixes songs like a DJ.
 - Downloads with full-size cover art and progress on each row
 - Songs that can't be played shown in grey and left out of queues and download counts
 - Select many songs to play, queue, like, download or add them to a playlist
+- Like button on song rows and cards in Home, Explore and Search
 - Long-press menus on songs, albums, playlists, artists and Home cards
 
 ### Listen Together
@@ -64,10 +68,13 @@ It plays without ads and mixes songs like a DJ.
 ### Lyrics
 - Synced lyrics from Musixmatch, Netease, Kugou, LRCLIB and Genius
 - Offset, editing and search
+- Translation of each line into the device language or one you pick, on the device
 
 ### Accounts and search
 - Google sign-in inside the app, with several accounts to switch between
 - Search with YouTube Music suggestions, recent searches and sorting
+- Activity inbox from YouTube Music in every tab, with local notifications for new releases (iOS decides when the background check runs)
+- History that merges plays on the iPhone with your YouTube Music history; plays are reported to YouTube Music while you are signed in
 - Incognito mode: searches and plays aren't saved on the iPhone, and songs stay out of your YouTube Music history
 
 ### Widgets and integrations
@@ -80,7 +87,7 @@ It plays without ads and mixes songs like a DJ.
 - **Shazam links:** share a Shazam song link to Woof Music, or paste it in Search, and the song plays from YouTube Music
 
 ### Look
-- Custom app icons and accent colours
+- Custom app icons and accent colours; icons follow light, dark and tinted modes
 - Left-handed tab bar option
 - Update check in the App section of the profile
 - VoiceOver support on the player and song rows, and Reduce Motion is respected
@@ -97,6 +104,7 @@ It plays without ads and mixes songs like a DJ.
 - The app has no analytics and no server of its own. It talks to YouTube Music directly.
 - SponsorBlock receives the ID of each song you play. Turn off the non-music skip in Settings to stop that.
 - Lyrics providers receive the title and artist of songs they look up.
+- YouTube Music receives each play while you are signed in, so it appears in your history.
 - Last.fm, ListenBrainz and Discord receive what you play only after you connect them.
 - The log file stays on the iPhone until you share it from Settings.
 
