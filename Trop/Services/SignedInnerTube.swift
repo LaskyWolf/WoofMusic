@@ -82,10 +82,11 @@ enum SignedInnerTube {
             request.setValue(visitorData, forHTTPHeaderField: "X-Goog-Visitor-Id")
         }
     }
+}
 
-    private final class NoRedirects: NSObject, URLSessionTaskDelegate {
-        func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse, newRequest request: URLRequest) async -> URLRequest? {
-            nil
-        }
+/// Answers a redirect with "no", so a reporting address never hands the sign-in to another host.
+private final class NoRedirects: NSObject, URLSessionTaskDelegate {
+    func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse, newRequest request: URLRequest) async -> URLRequest? {
+        nil
     }
 }
