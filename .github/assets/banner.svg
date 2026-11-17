@@ -19,7 +19,7 @@
 @media (prefers-reduced-motion:reduce){*{animation:none!important}}
 </style></defs>
 <g clip-path="url(#r)"><rect width="1280" height="560" fill="#0a0a0c"/><rect width="1280" height="560" fill="url(#a)"/>
-<text x="90" y="176" font-size="92" font-weight="800" fill="#fff" letter-spacing="-3">Woof Music</text>
+<text x="90" y="176" font-size="92" font-weight="800" fill="#fff" letter-spacing="-3">Woof Music Plus</text>
 <text x="92" y="240" font-size="32" font-weight="600" fill="#fff">YouTube Music, native on iPhone.</text>
 <text x="92" y="292" font-size="24" fill="#c7c7cc">No ads. Liquid Glass. DJ-style transitions.</text>
 <text x="92" y="328" font-size="24" fill="#c7c7cc">Downloads, synced lyrics and widgets built in.</text>
