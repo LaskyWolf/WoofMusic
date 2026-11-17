@@ -206,6 +206,15 @@ final class SettingsStore {
         didSet { Self.defaults.set(lyricsAlignment.rawValue, forKey: Keys.lyricsAlignment) }
     }
 
+    /// How much disk the artwork, imported clips and translated lyrics may take.
+    var cacheLimitMB: Int = CacheManager.limitMB {
+        didSet {
+            Self.defaults.set(cacheLimitMB, forKey: CacheManager.limitKey)
+            CacheManager.applyLimits()
+            CacheManager.trimCachesToLimit()
+        }
+    }
+
     /// Shifts lyric timing by this many seconds (positive = later, negative = earlier).
     var lyricsOffsetSeconds: Double {
         didSet { Self.defaults.set(lyricsOffsetSeconds, forKey: Keys.lyricsOffsetSeconds) }
@@ -219,6 +228,17 @@ final class SettingsStore {
     /// Displays romanized lyrics for Japanese/Korean/Cyrillic lines when available.
     var romanizeCurrentTrack: Bool {
         didSet { Self.defaults.set(romanizeCurrentTrack, forKey: Keys.romanizeCurrentTrack) }
+    }
+
+    /// Shows the translated line under the original when the source carries one.
+    var showLyricsTranslation: Bool {
+        didSet { Self.defaults.set(showLyricsTranslation, forKey: Keys.showLyricsTranslation) }
+    }
+
+    /// Plays the album's looping clip behind the player. Silent when the track
+    /// has none, so the gradient simply stays.
+    var showCanvas: Bool {
+        didSet { Self.defaults.set(showCanvas, forKey: Keys.showCanvas) }
     }
 
     // MARK: - Playback
@@ -416,6 +436,8 @@ final class SettingsStore {
         static let lyricsOffsetSeconds = "settings.lyricsOffsetSeconds"
         static let showIntervalIndicator = "settings.showIntervalIndicator"
         static let romanizeCurrentTrack = "settings.romanizeCurrentTrack"
+        static let showLyricsTranslation = "settings.showLyricsTranslation"
+        static let showCanvas = "settings.showCanvas"
         static let equalizerEnabled = "settings.equalizerEnabled"
         static let equalizerPresetID = "settings.equalizerPresetID"
         static let equalizerGains = "settings.equalizerGains"
@@ -482,10 +504,12 @@ final class SettingsStore {
         playerStyle = Self.loadEnum(Keys.playerStyle, default: .immersive)
         defaultTab = Self.load(Keys.defaultTab, default: 0)
         libraryLayout = Self.loadEnum(Keys.libraryLayout, default: .grid)
-        lyricsAlignment = Self.loadEnum(Keys.lyricsAlignment, default: .center)
+        lyricsAlignment = Self.loadEnum(Keys.lyricsAlignment, default: .left)
         lyricsOffsetSeconds = Self.load(Keys.lyricsOffsetSeconds, default: 0)
         showIntervalIndicator = Self.load(Keys.showIntervalIndicator, default: true)
         romanizeCurrentTrack = Self.load(Keys.romanizeCurrentTrack, default: true)
+        showLyricsTranslation = Self.load(Keys.showLyricsTranslation, default: true)
+        showCanvas = Self.load(Keys.showCanvas, default: true)
         equalizerEnabled = Self.load(Keys.equalizerEnabled, default: false)
         equalizerPresetID = Self.loadString(Keys.equalizerPresetID, default: "flat")
         if let saved = d.array(forKey: Keys.equalizerGains) as? [Double], saved.count == equalizerFrequencies.count {

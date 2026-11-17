@@ -3,7 +3,6 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 WORKING_LOCATION="$(pwd)"
-git apply WoofMusic-lyrics-canvas.patch
 # FFmpegKit and MPVKit both ship ffmpeg libraries whose framework names differ
 # only by case (Libavcodec.framework vs libavcodec.framework). The iOS installer
 # (and isideload's re-signing pipeline, which extracts the IPA onto a

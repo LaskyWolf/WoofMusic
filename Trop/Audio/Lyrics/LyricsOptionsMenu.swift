@@ -16,6 +16,12 @@ struct LyricsOptionsMenu<MenuLabel: View>: View {
     @AppStorage(LyricsState.karaokeEnabledKey) private var karaokeEnabled = false
     private let np = NowPlaying.shared
 
+    /// This track's own shift, not a global one.
+    private var trackOffset: Double {
+        get { LyricsOffset.effective(for: np.videoId) }
+        nonmutating set { LyricsOffset.set(newValue, for: np.videoId) }
+    }
+
     private enum Sheet: Identifiable {
         case edit, search, offset
         var id: Self { self }
@@ -81,7 +87,7 @@ struct LyricsOptionsMenu<MenuLabel: View>: View {
 
     /// "Off", or a signed value like "+1.5s".
     private var offsetDescription: String {
-        let v = settings.lyricsOffsetSeconds
+        let v = trackOffset
         guard v != 0 else { return "Off" }
         var s = String(format: "%.2f", abs(v))
         while s.hasSuffix("0") { s.removeLast() }
@@ -111,6 +117,12 @@ struct LyricsOffsetSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.settingsStore) private var settings
 
+    /// Saved per video id; other tracks keep their own value.
+    private var trackOffset: Double {
+        get { LyricsOffset.effective(for: NowPlaying.shared.videoId) }
+        nonmutating set { LyricsOffset.set(newValue, for: NowPlaying.shared.videoId) }
+    }
+
     /// Typed values may exceed the slider range, like Metrolist's ±9999ms.
     private let typeLimit: Double = 10
     private let sliderRange: ClosedRange<Double> = -3...3
@@ -139,9 +151,9 @@ struct LyricsOffsetSheet: View {
                         .font(.title3.weight(.medium))
                         .foregroundStyle(.secondary)
 
-                    if settings.lyricsOffsetSeconds != 0 {
+                    if trackOffset != 0 {
                         Button {
-                            settings.lyricsOffsetSeconds = 0
+                            trackOffset = 0
                             textFieldValue = "0"
                         } label: {
                             Image(systemName: "arrow.counterclockwise")
@@ -166,7 +178,7 @@ struct LyricsOffsetSheet: View {
 
                     Slider(
                         value: Binding(
-                            get: { min(sliderRange.upperBound, max(sliderRange.lowerBound, settings.lyricsOffsetSeconds)) },
+                            get: { min(sliderRange.upperBound, max(sliderRange.lowerBound, trackOffset)) },
                             set: { newValue in
                                 apply(newValue)
                             }
@@ -206,7 +218,7 @@ struct LyricsOffsetSheet: View {
         }
         .appSheetChrome([.medium])
         .onAppear {
-            textFieldValue = trimmedDecimalString(settings.lyricsOffsetSeconds)
+            textFieldValue = trimmedDecimalString(trackOffset)
         }
         .onChange(of: textFieldValue) { _, newValue in
             handleTextInput(newValue)
@@ -222,11 +234,11 @@ struct LyricsOffsetSheet: View {
             return
         }
         guard cleaned.isEmpty == false, cleaned != "-", cleaned != "." else {
-            settings.lyricsOffsetSeconds = 0
+            trackOffset = 0
             return
         }
         if let value = Double(cleaned) {
-            settings.lyricsOffsetSeconds = min(typeLimit, max(-typeLimit, value))
+            trackOffset = min(typeLimit, max(-typeLimit, value))
         }
     }
 
@@ -249,12 +261,12 @@ struct LyricsOffsetSheet: View {
     }
 
     private func apply(_ value: Double) {
-        settings.lyricsOffsetSeconds = value
+        trackOffset = value
         textFieldValue = trimmedDecimalString(value)
     }
 
     private func bump(_ delta: Double) {
-        let current = settings.lyricsOffsetSeconds
+        let current = trackOffset
         let target = min(sliderRange.upperBound, max(sliderRange.lowerBound, current + delta))
         apply((target * 100).rounded() / 100)
     }

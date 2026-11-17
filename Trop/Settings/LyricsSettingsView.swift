@@ -9,6 +9,8 @@ import SwiftUI
 
 struct LyricsSettingsView: View {
     @Environment(\.settingsStore) private var settings
+    @State private var betterLyricsKey = LyricsAPIKeys.betterLyrics ?? ""
+    @State private var paxsenixKey = LyricsAPIKeys.paxsenix ?? ""
 
     var body: some View {
         List {
@@ -38,6 +40,55 @@ struct LyricsSettingsView: View {
                 }
             } footer: {
                 Text("Lyrics are searched in this order; turned-off sources are skipped.")
+            }
+
+            Section {
+                Toggle(isOn: Binding(
+                    get: { settings.showLyricsTranslation },
+                    set: { settings.showLyricsTranslation = $0 }
+                )) {
+                    Label("Translations", systemImage: "character.bubble")
+                }
+
+                NavigationLink {
+                    TranslationSettingsView()
+                } label: {
+                    Label("Translation Engine", systemImage: "character.bubble.fill")
+                }
+            } footer: {
+                Text("Shows the translated line under the original. The engine is either Apple's on-device model or a service you key in.")
+            }
+
+            Section {
+                SecureField("API key", text: $betterLyricsKey)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .onChange(of: betterLyricsKey) { _, newValue in
+                        UserDefaults.standard.set(
+                            newValue.trimmingCharacters(in: .whitespacesAndNewlines),
+                            forKey: LyricsAPIKeys.betterLyricsDefaultsKey
+                        )
+                    }
+            } header: {
+                Text("Better Lyrics Key")
+            } footer: {
+                Text("Optional. Without a key Better Lyrics only returns tracks somebody already requested; a free key is on docs.betterlyrics.org.")
+            }
+
+            Section {
+                SecureField("API key", text: $paxsenixKey)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .onChange(of: paxsenixKey) { _, newValue in
+                        UserDefaults.standard.set(
+                            newValue.trimmingCharacters(in: .whitespacesAndNewlines),
+                            forKey: LyricsAPIKeys.paxsenixDefaultsKey
+                        )
+                    }
+            } header: {
+                Text("Paxsenix Key")
+            } footer: {
+                Text("Optional. Paxsenix proxies Apple Music's own word-timed lyrics and needs an account key from api.paxsenix.org; without one the source stays off.")
             }
         }
         .navigationTitle("Lyrics")

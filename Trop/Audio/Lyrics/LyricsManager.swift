@@ -35,6 +35,11 @@ final class LyricsSettings {
 /// Registry of all available providers.
 enum LyricsProviderRegistry {
     static let all: [LyricsProvider] = [
+        UnisonProvider(),
+        BetterLyricsProvider(),
+        LrcRedProvider(),
+        LyricsPlusProvider(),
+        PaxsenixProvider(),
         LRCLIBProvider(),
         MusixmatchProvider(),
         NeteaseProvider(),
@@ -42,7 +47,14 @@ enum LyricsProviderRegistry {
         GeniusProvider()
     ]
 
+    /// Syllable-timed sources first: they are what karaoke and translations
+    /// need, and the chain stops at the first hit.
     static let defaultOrder: [String] = [
+        "unison",
+        "betterlyrics",
+        "lrcred",
+        "lyricsplus",
+        "paxsenix",
         "musixmatch",
         "lrclib",
         "netease",

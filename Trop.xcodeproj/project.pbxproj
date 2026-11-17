@@ -337,6 +337,7 @@
 			hasScannedForEncodings = 0;
 			knownRegions = (
 				en,
+				ru,
 				Base,
 			);
 			mainGroup = 14B576262FF190EF006B3990;
@@ -593,20 +594,20 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Trop/Trop.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				CLANG_WARN_DOCUMENTATION_COMMENTS = NO;
 				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = NO;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Trop/Resources/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = Music;
+				INFOPLIST_KEY_CFBundleDisplayName = "Music+";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.5;
-				PRODUCT_BUNDLE_IDENTIFIER = com.laskywolf.Music;
+				MARKETING_VERSION = 1.1;
+				PRODUCT_BUNDLE_IDENTIFIER = com.dmtr5140.WoofMusicPlus;
 				PRODUCT_NAME = Music;
 				PRODUCT_MODULE_NAME = Trop;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -628,20 +629,20 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Trop/Trop.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				CLANG_WARN_DOCUMENTATION_COMMENTS = NO;
 				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = NO;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Trop/Resources/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = Music;
+				INFOPLIST_KEY_CFBundleDisplayName = "Music+";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.5;
-				PRODUCT_BUNDLE_IDENTIFIER = com.laskywolf.Music;
+				MARKETING_VERSION = 1.1;
+				PRODUCT_BUNDLE_IDENTIFIER = com.dmtr5140.WoofMusicPlus;
 				PRODUCT_NAME = Music;
 				PRODUCT_MODULE_NAME = Trop;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -660,22 +661,22 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = WoofWidgets/WoofWidgets.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = WoofWidgets/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = "Woof Music";
+				INFOPLIST_KEY_CFBundleDisplayName = "Music+";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.5;
+				MARKETING_VERSION = 1.1;
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-Wl,-dead_strip_dylibs",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.laskywolf.Music.WoofWidgets;
+				PRODUCT_BUNDLE_IDENTIFIER = com.dmtr5140.WoofMusicPlus.WoofWidgets;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG WIDGET_EXTENSION $(inherited)";
@@ -692,22 +693,22 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = WoofWidgets/WoofWidgets.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = WoofWidgets/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = "Woof Music";
+				INFOPLIST_KEY_CFBundleDisplayName = "Music+";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.5;
+				MARKETING_VERSION = 1.1;
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-Wl,-dead_strip_dylibs",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.laskywolf.Music.WoofWidgets;
+				PRODUCT_BUNDLE_IDENTIFIER = com.dmtr5140.WoofMusicPlus.WoofWidgets;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "WIDGET_EXTENSION $(inherited)";
@@ -723,18 +724,18 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = WoofShare/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = "Woof Music";
+				INFOPLIST_KEY_CFBundleDisplayName = "Music+";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.5;
-				PRODUCT_BUNDLE_IDENTIFIER = com.laskywolf.Music.WoofShare;
+				MARKETING_VERSION = 1.1;
+				PRODUCT_BUNDLE_IDENTIFIER = com.dmtr5140.WoofMusicPlus.WoofShare;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
@@ -748,18 +749,18 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = WoofShare/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = "Woof Music";
+				INFOPLIST_KEY_CFBundleDisplayName = "Music+";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.5;
-				PRODUCT_BUNDLE_IDENTIFIER = com.laskywolf.Music.WoofShare;
+				MARKETING_VERSION = 1.1;
+				PRODUCT_BUNDLE_IDENTIFIER = com.dmtr5140.WoofMusicPlus.WoofShare;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited)";

@@ -42,6 +42,8 @@ struct SongActionsMenu<MenuLabel: View>: View {
     @State private var confirmRemoveDownload = false
     @State private var confirmRemoveFromPlaylist = false
     @State private var isResolvingArtist = false
+    @State private var showsCanvasPicker = false
+    @State private var showsCoverPicker = false
 
     var body: some View {
         host {
@@ -116,6 +118,18 @@ struct SongActionsMenu<MenuLabel: View>: View {
                 Button("Similar Songs…", systemImage: "sparkles") { sheet = .similar }
                 Button("Song Details…", systemImage: "info.circle") { sheet = .details }
             }
+
+            // Not buried in "Go To": both belong to this one track and are the
+            // two things people look for when a cover or a clip is wrong.
+            Button("Canvas…", systemImage: "play.square.stack") { showsCanvasPicker = true }
+            Button("Canvas Stage", systemImage: "arrow.up.left.and.arrow.down.right") {
+                NotificationCenter.default.post(
+                    name: .canvasStageRequested,
+                    object: song.videoId
+                )
+                AppRouter.shared.expandPlayer()
+            }
+            Button("Cover Art…", systemImage: "photo.on.rectangle.angled") { showsCoverPicker = true }
         }
         .confirmationDialog("Remove this download?", isPresented: $confirmRemoveDownload,
                             titleVisibility: .visible) {
@@ -126,6 +140,22 @@ struct SongActionsMenu<MenuLabel: View>: View {
         .confirmationDialog("Remove this song?", isPresented: $confirmRemoveFromPlaylist,
                             titleVisibility: .visible) {
             Button("Remove", role: .destructive) { onRemove?() }
+        }
+        .sheet(isPresented: $showsCoverPicker) {
+            CoverPickerView(
+                videoId: song.videoId,
+                title: song.title,
+                artist: song.artists.map(\.name).joined(separator: ", "),
+                album: song.album
+            )
+        }
+        .sheet(isPresented: $showsCanvasPicker) {
+            CanvasPickerView(
+                videoId: song.videoId,
+                title: song.title,
+                artist: song.artists.map(\.name).joined(separator: ", "),
+                album: song.album
+            )
         }
         .sheet(item: $sheet) { sheet in
             switch sheet {

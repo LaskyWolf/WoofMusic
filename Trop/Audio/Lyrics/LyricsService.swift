@@ -13,6 +13,11 @@ struct LyricLine: Identifiable, Equatable, Sendable {
     let startTime: TimeInterval?
     /// Word-level timing for karaoke; nil when the source has only line timing.
     var words: [LyricWord]? = nil
+    /// The same line in another language, shown under the original. Apple TTML
+    /// and QQ carry it; most sources do not.
+    var translation: String? = nil
+    /// Backing vocals: shown dimmed under the lead line.
+    var isBackground: Bool = false
 
     static let placeholder = LyricLine(text: "♪", startTime: nil)
 }
@@ -307,7 +312,8 @@ actor LyricsService {
             title: cleaned.title,
             artist: cleaned.artist,
             album: cleaned.album,
-            duration: duration > 0 ? duration : 0
+            duration: duration > 0 ? duration : 0,
+            videoId: videoId
         )
     }
 

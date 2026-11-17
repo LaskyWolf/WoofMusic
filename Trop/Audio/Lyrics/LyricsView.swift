@@ -6,10 +6,11 @@
 //
 
 import SwiftUI
+import Translation
 
 struct LyricsView: View {
     /// Point size of a lyric line.
-    static let lineFontSize: Double = 18
+    static let lineFontSize: Double = 26
     private let np = NowPlaying.shared
     private let player = PlayerController.shared
     @Environment(SettingsStore.self) private var settings
@@ -23,6 +24,11 @@ struct LyricsView: View {
     @State private var activeIndex: Int = 0
     @State private var instrumentalGaps: [InstrumentalGap] = []
     @State private var romanizedLines: [String?] = []
+    /// On-device translations, per line, filled by the 文A button.
+    @State private var aiTranslations: [UUID: String] = [:]
+    @State private var translationConfig: TranslationSession.Configuration?
+    @State private var isTranslating = false
+    @State private var translationFailed = false
 
     struct InstrumentalGap {
         let afterIndex: Int
@@ -48,6 +54,10 @@ struct LyricsView: View {
     @State private var cascadePending = false
     /// The long-pressed line the share card composer opens with.
     @State private var shareCardLine: LyricLine?
+    /// 0 → 1 on every entrance: the visible lines blur in and rise, staggered.
+    @State private var entranceProgress: Double = 0
+    /// Fades the whole list out and back in when the track changes.
+    @State private var trackFade: Double = 1
 
     var body: some View {
         VStack(spacing: 0) {
@@ -55,9 +65,22 @@ struct LyricsView: View {
 
             lyricsBody
                 .layoutPriority(1)
+                .overlay(alignment: .bottom) { translationButtons }
         }
         .background { LyricsTimeTracker(onTimeChange: updateActiveLine) }
-        .onAppear { if isKaraoke { karaokeDidChange() } }
+        .onAppear {
+            if isKaraoke { karaokeDidChange() }
+            runEntrance()
+        }
+        .onChange(of: np.videoId) { _, _ in
+            guard !reduceMotion else { return }
+            withAnimation(.easeOut(duration: 0.16)) { trackFade = 0 }
+            Task {
+                try? await Task.sleep(for: .milliseconds(170))
+                runEntrance()
+                withAnimation(.smooth(duration: 0.42)) { trackFade = 1 }
+            }
+        }
         .onChange(of: isKaraoke) { _, _ in karaokeDidChange() }
         .onChange(of: lines.isEmpty) { _, isEmpty in
             guard !isEmpty, cascadePending else { return }
@@ -65,7 +88,17 @@ struct LyricsView: View {
             cascadeTrigger += 1
         }
         .task(id: np.videoId) { await loadLyrics() }
-        .onChange(of: settings.lyricsOffsetSeconds) { _, _ in updateActiveLine() }
+        .translationTask(translationConfig) { session in
+            await translateAll(with: session)
+        }
+        .onChange(of: lines.count) { _, _ in
+            // A cached translation costs nothing, so show it without a tap.
+            if aiTranslations.isEmpty,
+               let cached = LyricsTranslation.cached(videoId: np.videoId ?? "", lines: lines) {
+                aiTranslations = cached
+            }
+        }
+        .onChange(of: LyricsOffset.effective(for: np.videoId)) { _, _ in updateActiveLine() }
         .onChange(of: settings.romanizeCurrentTrack) { _, _ in
             Task { await rebuildRomanization() }
         }
@@ -90,6 +123,140 @@ struct LyricsView: View {
             cascadePending = true
         } else {
             cascadeTrigger += 1
+        }
+    }
+
+    // MARK: - Translation
+
+    /// Two round buttons, the way Apple Music puts them: a globe that shows or
+    /// hides the translation, and 文A for translating the song on the phone.
+    private var translationButtons: some View {
+        HStack {
+            Button {
+                settings.showLyricsTranslation.toggle()
+            } label: {
+                Image(systemName: "globe")
+                    .font(.system(size: 17, weight: .semibold))
+                    .frame(width: 44, height: 44)
+                    .background(.ultraThinMaterial, in: Circle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Show or hide the translation")
+
+            Spacer()
+
+            Button {
+                startTranslation()
+            } label: {
+                Group {
+                    if isTranslating {
+                        ProgressView().tint(.white)
+                    } else {
+                        Text("文A").font(.system(size: 15, weight: .semibold))
+                    }
+                }
+                .frame(width: 44, height: 44)
+                .background(.ultraThinMaterial, in: Circle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Translate the lyrics")
+        }
+        .foregroundStyle(translationFailed ? Color.orange : Color.white)
+        .padding(.horizontal, 24)
+        .padding(.bottom, 12)
+    }
+
+    private func startTranslation() {
+        guard !lines.isEmpty else { return }
+        settings.showLyricsTranslation = true
+        if let cached = LyricsTranslation.cached(videoId: np.videoId ?? "", lines: lines) {
+            aiTranslations = cached
+            return
+        }
+        // Apple's engine is driven by the Translation framework, which needs a
+        // configuration and a session; every other engine is one HTTP call.
+        if TranslationSettings.engine == .apple {
+            translationConfig = TranslationSession.Configuration(
+                source: nil,
+                target: LyricsTranslation.targetLanguage
+            )
+        } else {
+            Task { await translateWithEngine() }
+        }
+    }
+
+    /// Translates through the engine picked in Settings: OpenAI, OpenRouter,
+    /// Gemini, Claude or an OpenAI-compatible host of the listener's own.
+    @MainActor
+    private func translateWithEngine() async {
+        let videoId = np.videoId ?? ""
+        let texts = lines.map { $0.text }
+        guard texts.contains(where: { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) else { return }
+
+        isTranslating = true
+        translationFailed = false
+        defer { isTranslating = false }
+
+        do {
+            let translated = try await AITranslator.translate(
+                lines: texts,
+                to: TranslationSettings.targetName
+            )
+            var map: [UUID: String] = [:]
+            for (index, text) in translated.enumerated() where lines.indices.contains(index) {
+                let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !trimmed.isEmpty else { continue }
+                map[lines[index].id] = trimmed
+            }
+            guard !map.isEmpty else {
+                translationFailed = true
+                return
+            }
+            aiTranslations = map
+            LyricsTranslation.save(map, videoId: videoId, lines: lines)
+        } catch {
+            translationFailed = true
+        }
+    }
+
+    @MainActor
+    private func translateAll(with session: TranslationSession) async {
+        let videoId = np.videoId ?? ""
+        let pairs = lines.enumerated().compactMap { index, line -> (Int, String)? in
+            let text = line.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !text.isEmpty else { return nil }
+            return (index, text)
+        }
+        guard !pairs.isEmpty else { return }
+
+        if let cached = LyricsTranslation.cached(videoId: videoId, lines: lines) {
+            aiTranslations = cached
+            return
+        }
+
+        isTranslating = true
+        translationFailed = false
+        defer { isTranslating = false }
+
+        let requests = pairs.map {
+            TranslationSession.Request(sourceText: $0.1, clientIdentifier: String($0.0))
+        }
+
+        do {
+            let responses = try await session.translations(from: requests)
+            var map: [UUID: String] = [:]
+            for response in responses {
+                guard let identifier = response.clientIdentifier,
+                      let index = Int(identifier),
+                      lines.indices.contains(index) else { continue }
+                let text = response.targetText.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !text.isEmpty else { continue }
+                map[lines[index].id] = text
+            }
+            aiTranslations = map
+            LyricsTranslation.save(map, videoId: videoId, lines: lines)
+        } catch {
+            translationFailed = true
         }
     }
 
@@ -138,6 +305,7 @@ struct LyricsView: View {
                     .foregroundStyle(.white)
             } else {
                 lyricsContentView
+                    .opacity(trackFade)
             }
         }
     }
@@ -150,7 +318,7 @@ struct LyricsView: View {
             GeometryReader { geo in
                 ScrollViewReader { proxy in
                     ScrollView {
-                        VStack(alignment: settings.lyricsAlignment.textAlignment.horizontal, spacing: 18) {
+                        VStack(alignment: settings.lyricsAlignment.textAlignment.horizontal, spacing: 12) {
                             Spacer().frame(height: 20)
 
                             if !isKaraoke, let provider = LyricsState.shared.providerName {
@@ -171,6 +339,15 @@ struct LyricsView: View {
                         .padding(.vertical, 8)
                     }
                     .scrollIndicators(.hidden)
+                    .mask {
+                        VStack(spacing: 0) {
+                            LinearGradient(colors: [.clear, .white], startPoint: .top, endPoint: .bottom)
+                                .frame(height: 44)
+                            Color.white
+                            LinearGradient(colors: [.white, .clear], startPoint: .top, endPoint: .bottom)
+                                .frame(height: 64)
+                        }
+                    }
                     .onScrollPhaseChange { _, newPhase in
                         if newPhase == .tracking || newPhase == .interacting {
                             pauseAutoScroll()
@@ -262,18 +439,49 @@ struct LyricsView: View {
     private func opacityForDistance(_ distance: Int) -> Double {
         switch distance {
         case 0: return 1
-        case 1: return 0.7
-        case 2: return 0.55
-        default: return 0.4
+        case 1: return 0.55
+        case 2: return 0.32
+        default: return 0.2
         }
     }
 
     private func scaleForDistance(_ distance: Int) -> CGFloat {
         switch distance {
         case 0: return 1
-        case 1: return 0.97
-        default: return 0.94
+        case 1: return 0.98
+        default: return 0.96
         }
+    }
+
+    // MARK: - Entrance & track change
+
+    /// Lines further than this from the active one never blur: they are off
+    /// screen, and a blur layer per row is not free.
+    private static let entranceRadius = 9
+
+    /// Runs the blur-in: rows start out of focus and slightly low, then settle.
+    private func runEntrance() {
+        guard !reduceMotion else {
+            entranceProgress = 1
+            return
+        }
+        entranceProgress = 0
+        withAnimation(.smooth(duration: 0.5)) { entranceProgress = 1 }
+    }
+
+    /// Staggered from the active line outwards, the way rows arrive on screen.
+    private func entranceDelay(for index: Int) -> Double {
+        Double(min(abs(index - activeIndex), Self.entranceRadius)) * 0.03
+    }
+
+    private func entranceBlur(for index: Int) -> CGFloat {
+        guard abs(index - activeIndex) <= Self.entranceRadius else { return 0 }
+        return CGFloat((1 - entranceProgress) * 9)
+    }
+
+    private func entranceRise(for index: Int) -> CGFloat {
+        guard abs(index - activeIndex) <= Self.entranceRadius else { return 0 }
+        return CGFloat((1 - entranceProgress) * 7)
     }
 
     // MARK: - Interval Indicator (instrumental gaps)
@@ -295,9 +503,10 @@ struct LyricsView: View {
                 fontSize: fontSize,
                 lineOpacity: index == activeIndex ? 1 : opacityForDistance(abs(index - activeIndex)),
                 lineScale: index == activeIndex ? 1 : scaleForDistance(abs(index - activeIndex)),
+                translatedText: settings.showLyricsTranslation ? (line.translation ?? aiTranslations[line.id]) : nil,
                 romanizedText: romanized,
                 karaokeWords: isKaraoke && index == activeIndex ? line.words : nil,
-                lyricsOffset: settings.lyricsOffsetSeconds,
+                lyricsOffset: LyricsOffset.effective(for: np.videoId),
                 onTap: {
                     if let t = line.startTime {
                         player.seek(to: t)
@@ -321,7 +530,7 @@ struct LyricsView: View {
             if let gap {
                 InstrumentalGapRing(
                     gap: gap,
-                    offset: settings.lyricsOffsetSeconds,
+                    offset: LyricsOffset.effective(for: np.videoId),
                     color: intervalIndicatorColor
                 )
             }
@@ -350,6 +559,11 @@ struct LyricsView: View {
                 LinearKeyframe(1.0, duration: 0.2)
             }
         }
+        // Blur-in: the visible lines arrive out of focus and settle, staggered
+        // from the active one outwards. Runs on first show and on a new track.
+        .blur(radius: entranceBlur(for: index))
+        .offset(y: entranceRise(for: index))
+        .animation(.smooth(duration: 0.55).delay(entranceDelay(for: index)), value: entranceProgress)
     }
 
     /// Metrolist's expressiveAccent: white on dynamic (album art) backgrounds,
@@ -472,7 +686,7 @@ struct LyricsView: View {
 
     private func updateActiveLine() {
         guard !lines.isEmpty else { return }
-        let t = playbackClock() + settings.lyricsOffsetSeconds
+        let t = playbackClock() + LyricsOffset.effective(for: np.videoId)
         var idx = 0
         for (i, line) in lines.enumerated() {
             guard let start = line.startTime else { continue }
@@ -631,6 +845,8 @@ private struct LyricsLineView: View {
     let fontSize: Double
     var lineOpacity: Double = 1
     var lineScale: CGFloat = 1
+    /// Translation rendered under the main line, when the source has one.
+    var translatedText: String?
     /// Romanized variant rendered under the main line, Metrolist-style.
     var romanizedText: String?
     /// Set only on the active line in karaoke mode.
@@ -650,9 +866,22 @@ private struct LyricsLineView: View {
                         Text(textToDisplay)
                     }
                 }
-                .font(.system(size: fontSize, weight: isActive ? .bold : .semibold))
+                .font(.system(size: fontSize, weight: .bold))
                 .foregroundStyle(.white)
+                .lineSpacing(3)
                 .multilineTextAlignment(alignment.multilineTextAlignment)
+
+                if let translatedText, !translatedText.isEmpty {
+                    Text(translatedText)
+                        .font(.system(size: max(12, fontSize * 0.6), weight: .medium))
+                        .foregroundStyle(Color.white.opacity(0.62))
+                        .multilineTextAlignment(alignment.multilineTextAlignment)
+                        // A language switch swaps the text, so it crossfades
+                        // instead of blinking in place; showing or hiding the
+                        // translation drops it in from just above.
+                        .id(translatedText)
+                        .transition(.opacity.combined(with: .offset(y: -4)))
+                }
 
                 if let romanizedText, !romanizedText.isEmpty {
                     Text(romanizedText)
@@ -664,11 +893,13 @@ private struct LyricsLineView: View {
             .frame(maxWidth: .infinity, alignment: alignment.textAlignment)
             .padding(.horizontal, 24)
             .contentShape(Rectangle())
+            .animation(.easeInOut(duration: 0.3), value: translatedText)
         }
         .buttonStyle(.plain)
         .opacity(lineOpacity)
         .scaleEffect(lineScale, anchor: alignment.textAlignment == .leading ? .leading : alignment.textAlignment == .trailing ? .trailing : .center)
-        .animation(.easeInOut(duration: 0.3), value: isActive)
+        .shadow(color: .white.opacity(isActive ? 0.16 : 0), radius: 10)
+        .animation(.spring(response: 0.42, dampingFraction: 0.82), value: isActive)
     }
 }
 
@@ -681,12 +912,23 @@ private struct KaraokeLineText: View {
     let words: [LyricWord]
     let offset: Double
 
+    /// The line as one Text with letter timing already attached. Built once per
+    /// line, not per frame: the renderer below runs sixty times a second.
+    private let rendered: Text
+
     private let np = NowPlaying.shared
 
+    init(words: [LyricWord], offset: Double) {
+        self.words = words
+        self.offset = offset
+        // Word timing sliced into letters, so the fill runs letter by letter
+        // instead of jumping from one word to the next.
+        self.rendered = Self.text(for: LyricsSyllables.letters(words))
+    }
+
     var body: some View {
-        let text = Self.text(for: words)
         TimelineView(.animation(minimumInterval: 1 / 60, paused: !np.isPlaying)) { _ in
-            text.textRenderer(KaraokeRenderer(time: playbackClock() + offset))
+            rendered.textRenderer(KaraokeRenderer(time: playbackClock() + offset))
         }
     }
 
@@ -744,13 +986,20 @@ private struct KaraokeRenderer: TextRenderer {
                     continue
                 }
                 var upcoming = context
-                upcoming.opacity = 0.35
+                upcoming.opacity = 0.26
                 upcoming.draw(run)
                 guard sungWidth > 0 else { continue }
                 var sung = context
                 // Tall clip so only the horizontal edge cuts glyphs.
                 sung.clip(to: Path(CGRect(x: rect.minX, y: rect.minY - rect.height,
                                           width: sungWidth, height: rect.height * 3)))
+                // The light trail: a blurred copy of the same clipped run blooms
+                // out of the sung edge, so the fill reads as singing rather than
+                // as a stencil sliding under the glyphs.
+                var glow = sung
+                glow.addFilter(.blur(radius: 5))
+                glow.opacity = 0.45
+                glow.draw(run)
                 sung.draw(run)
             }
         }

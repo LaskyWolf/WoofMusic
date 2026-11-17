@@ -9,6 +9,7 @@ import SwiftUI
 
 struct AppearanceSettingsView: View {
     @Environment(SettingsStore.self) private var settings
+    @State private var spotifyCookie = SpotifyCanvasSettings.sessionCookie ?? ""
 
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 14), count: 6)
 
@@ -55,10 +56,32 @@ struct AppearanceSettingsView: View {
             Section {
                 SettingsPickerRow("Player Style", icon: "play.rectangle", selection: $settings.playerStyle)
                 SettingsPickerRow("Player Background", icon: "photo", selection: $settings.playerBackgroundStyle)
+                NavigationLink {
+                    CacheSettingsView()
+                } label: {
+                    LabeledContent("Cache", value: CacheManager.summary())
+                }
+
+                Toggle(isOn: $settings.showCanvas) {
+                    Label("Canvas", systemImage: "play.rectangle.on.rectangle")
+                }
             } header: {
                 Text("Player")
             } footer: {
-                Text("Immersive spreads the cover behind the controls. Card shows it as a square on one colour from the cover.")
+                Text("Immersive spreads the cover behind the controls. Card shows it as a square on one colour from the cover. Canvas plays the album's looping clip behind the player when the track has one.")
+            }
+
+            Section {
+                SecureField("sp_dc cookie", text: $spotifyCookie)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .onChange(of: spotifyCookie) { _, newValue in
+                        SpotifyCanvasSettings.setSessionCookie(newValue)
+                    }
+            } header: {
+                Text("Spotify Canvas")
+            } footer: {
+                Text("Optional. Paste the sp_dc cookie from a signed-in open.spotify.com, and Canvas plays Spotify's own clip for the track; tracks without one fall back to Apple's motion artwork.")
             }
 
             Section {

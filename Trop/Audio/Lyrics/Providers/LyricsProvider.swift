@@ -14,6 +14,10 @@ struct LyricsQuery: Sendable {
     let album: String?
     let duration: TimeInterval
 
+    /// The YouTube id we play. Sources keyed by video id (Unison) hit exactly
+    /// with it; the rest ignore it.
+    var videoId: String? = nil
+
     var durationSeconds: Int { Int(duration) }
 }
 
@@ -25,6 +29,9 @@ protocol LyricsProvider: Sendable {
 }
 
 enum LyricsParsing {
+    /// Prefix of a stored translation line: `[00:12.34]{tr}перевод`.
+    static let translationMarker = "{tr}"
+
     /// One or more leading [..] tags. Compiled once: parsing runs per line.
     private static let leadingTagsRegex = try? NSRegularExpression(pattern: #"^(?:\[(\d{1,2}):(\d{1,2})(?:\.(\d{1,3}))?\])+"#)
     private static let tagRegex = try? NSRegularExpression(pattern: #"\[(\d{1,2}):(\d{1,2})(?:\.(\d{1,3}))?\]"#)
@@ -220,7 +227,7 @@ enum LyricsParsing {
 
     /// Parses stored lyrics text — LRC if timestamped, otherwise plain lines.
     static func parseStoredText(_ raw: String) -> [LyricLine] {
-        let lrc = parseLrc(raw)
+        let lrc = foldingTranslations(parseLrc(raw))
         if !lrc.isEmpty { return lrc }
         return raw
             .split(whereSeparator: \.isNewline)
@@ -234,18 +241,49 @@ enum LyricsParsing {
         let synced = lines.contains { $0.startTime != nil }
         return lines.map { line -> String in
             guard synced, let t = line.startTime else { return line.text }
-            guard let words = line.words else { return "[\(stamp(t))]" + line.text }
+            // A translation rides on its own line with the same stamp behind a
+            // {tr} marker, so a stored copy keeps it and parseStoredText folds
+            // it back under the original.
+            let translation = line.translation.flatMap { text -> String? in
+                let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                return trimmed.isEmpty ? nil : "[\(stamp(t))]" + translationMarker + trimmed
+            }
             // Word timing is stored as Enhanced LRC; an end tag is written only
             // where a word does not end exactly when the next one starts.
             var body = ""
-            for (i, word) in words.enumerated() {
-                body += "<\(stamp(word.startTime))>\(word.text)"
-                let nextStart = i + 1 < words.count ? stamp(words[i + 1].startTime) : nil
-                if let end = word.endTime.map(stamp), end != nextStart { body += "<\(end)>" }
+            if let words = line.words {
+                for (i, word) in words.enumerated() {
+                    body += "<\(stamp(word.startTime))>\(word.text)"
+                    let nextStart = i + 1 < words.count ? stamp(words[i + 1].startTime) : nil
+                    if let end = word.endTime.map(stamp), end != nextStart { body += "<\(end)>" }
+                }
+            } else {
+                body = line.text
             }
-            return "[\(stamp(t))]" + body
+            let serialized = "[\(stamp(t))]" + body
+            return translation.map { serialized + "\n" + $0 } ?? serialized
         }
         .joined(separator: "\n")
+    }
+
+    /// Folds `{tr}` lines back under the line they translate.
+    private static func foldingTranslations(_ lines: [LyricLine]) -> [LyricLine] {
+        guard lines.contains(where: { $0.text.hasPrefix(translationMarker) }) else { return lines }
+        var out: [LyricLine] = []
+        out.reserveCapacity(lines.count)
+        for line in lines {
+            if line.text.hasPrefix(translationMarker) {
+                let translation = String(line.text.dropFirst(translationMarker.count))
+                    .trimmingCharacters(in: .whitespaces)
+                if !translation.isEmpty, var previous = out.popLast() {
+                    previous.translation = translation
+                    out.append(previous)
+                    continue
+                }
+            }
+            out.append(line)
+        }
+        return out
     }
 
     /// `mm:ss.xx`, rounded to the nearest centisecond.

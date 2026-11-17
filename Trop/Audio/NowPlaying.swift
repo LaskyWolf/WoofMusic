@@ -552,9 +552,22 @@ final class NowPlaying {
 
     private var lastLoadedVideoId: String?
 
+    /// Repaints the current track's artwork, dropping the dedupe guard so a
+    /// picked cover or a changed source shows at once.
+    func reloadArtwork() {
+        lastLoadedVideoId = nil
+        guard let videoId else { return }
+        loadThumbnail(videoId: videoId)
+    }
+
     private func loadThumbnail(videoId: String, thumbnailUrl: String? = nil) {
         guard videoId != lastLoadedVideoId else { return }
         lastLoadedVideoId = videoId
+        // A cover the listener picked outranks everything the network offers.
+        if let custom = CustomArtworkStore.image(for: videoId) {
+            publishArtwork(custom, videoId: videoId)
+            return
+        }
         // Safety net: callers that resolve without song metadata pass nil.
         // The queue usually still knows this track's artwork — use it rather
         // than falling back to the low-res ytimg default.
@@ -630,6 +643,11 @@ final class NowPlaying {
         // Best source first: the track's own artwork upgraded to full
         // resolution, then ytimg step-downs, then the guaranteed hqdefault.
         var candidates: [String] = []
+        // "Use the video still" for this track: show the music video's frame.
+        if CustomArtworkStore.prefersVideoStill(videoId),
+           let still = CustomArtworkStore.videoStillURL(for: videoId) {
+            candidates.append(still.absoluteString)
+        }
         if let upgraded = ArtworkURLs.highRes(thumbnailUrl) {
             if let maxRes = ArtworkURLs.maxResVariant(upgraded) {
                 candidates.append(maxRes)

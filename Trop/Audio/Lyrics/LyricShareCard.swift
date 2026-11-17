@@ -170,7 +170,7 @@ struct LyricShareComposer: View {
         }
         lines = shown
         guard selected.isEmpty else { return }
-        let t = NowPlaying.shared.currentTime + SettingsStore.shared.lyricsOffsetSeconds
+        let t = NowPlaying.shared.currentTime + LyricsOffset.effective(for: NowPlaying.shared.videoId)
         if let current = shown.last(where: { ($0.startTime ?? .infinity) <= t }) {
             selected.insert(current.id)
         }

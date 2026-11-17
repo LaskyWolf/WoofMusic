@@ -51,6 +51,8 @@ struct FullPlayerView: View {
     @State private var pullDistance: CGFloat = 0
     /// The hidden full-screen cover, opened by pinching the cover out.
     @State private var showsFullscreenCover = false
+    /// The Canvas alone: no cover, no controls, just the clip.
+    @State private var showsCanvasStage = false
     /// Where the current cover sits on screen, for the full-screen cover to
     /// grow from. A plain box, not state: the swipe and pull move the cover
     /// every frame and must not redraw the player.
@@ -123,6 +125,22 @@ struct FullPlayerView: View {
                 }
                 }
                 .animation(.easeInOut(duration: 0.8), value: playerBackgroundColors)
+
+                // Canvas: the album's looping clip behind the cover and the
+                // lyrics, dimmed so white text keeps its contrast. A track
+                // without a clip leaves the gradient untouched.
+                if settings.showCanvas,
+                   settings.playerBackgroundStyle != .solid,
+                   let videoId = np.videoId {
+                    CanvasBackdrop(
+                        videoId: videoId,
+                        title: np.title,
+                        artist: np.displayArtist,
+                        album: np.albumTitle.isEmpty ? nil : np.albumTitle,
+                        dim: 0.55
+                    )
+                    .ignoresSafeArea()
+                }
 
                 if !showsCardCover, isLandscape {
                     // The cover fills the left column up to the screen's edges and
@@ -244,22 +262,7 @@ struct FullPlayerView: View {
                     .frame(width: sleepOverlaySize.width, height: sleepOverlaySize.height)
                     .offset(y: -artworkTopInset)
             }
-            .overlay {
-                RadioBloomOverlay(
-                    event: np.radioBloom,
-                    cover: { coverFrame.rect },
-                    // The row is symmetric: the play button sits at its centre.
-                    playButton: { controlsFrame.rect },
-                    // The queue button is the last of the row's three equal columns.
-                    queueButton: {
-                        let row = secondaryFrame.rect
-                        return CGRect(x: row.maxX - row.width / 3, y: row.minY, width: row.width / 3, height: row.height)
-                    },
-                    coverCornerRadius: showsCardCover ? Self.cardCoverRadius : 0,
-                    isImmersive: !showsCardCover,
-                    replacesPlayButton: $radioReplacesPlay
-                )
-            }
+            .overlay { radioBloomLayer }
             .animation(.easeInOut(duration: reduceMotion ? 0.15 : 0.25), value: showQueue)
             .animation(.easeInOut(duration: reduceMotion ? 0.15 : 0.25), value: showLyrics)
             .animation(.easeInOut(duration: reduceMotion ? 0.15 : 0.25), value: showsKaraoke)
@@ -267,6 +270,11 @@ struct FullPlayerView: View {
             .offset(y: pullDistance)
             .gesture(pullToDismiss(height: geometry.size.height))
             // Outside the pull offset; it is torn down with the player.
+            .overlay { lyricsScreen }
+            .overlay { canvasStage }
+            .onReceive(NotificationCenter.default.publisher(for: .canvasStageRequested)) { note in
+                handleCanvasStageRequest(note)
+            }
             .overlay {
                 if showsFullscreenCover {
                     FullscreenCoverOverlay(
@@ -279,13 +287,7 @@ struct FullPlayerView: View {
                 }
             }
             .onChange(of: np.videoId) { oldValue, newValue in
-                if oldValue != nil, newValue != nil {
-                    titleChangeDirection = np.queueIndex < lastTitleQueueIndex ? -1 : 1
-                    titleChangeTrigger &+= 1
-                }
-                lastTitleQueueIndex = np.queueIndex
-                showLyrics = false
-                preloadLyrics()
+                handleTrackChange(from: oldValue, to: newValue)
             }
             .onChange(of: np.queueSongs.count) { _, _ in
                 np.preloadNeighborArtwork()
@@ -407,24 +409,106 @@ struct FullPlayerView: View {
 
     @ViewBuilder
     private var playerPanel: some View {
-        if showQueue || showLyrics {
-            Group {
-                if showLyrics {
-                    LyricsView(showLyrics: $showLyrics)
-                } else {
-                    QueueView(
-                        showQueue: $showQueue,
-                        isShuffleOn: $np.isShuffleOn,
-                        isRepeatOn: $np.isRepeatOn
-                    )
-                }
-            }
+        if showQueue {
+            QueueView(
+                showQueue: $showQueue,
+                isShuffleOn: $np.isShuffleOn,
+                isRepeatOn: $np.isRepeatOn
+            )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .clipShape(RoundedRectangle(cornerRadius: 24))
-            .glassEffect(showsKaraoke ? .identity : .regular, in: RoundedRectangle(cornerRadius: 24))
+            .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 24))
             .environment(\.colorScheme, .dark)
             .transition(reduceMotion ? .opacity : .scale(scale: 0.95).combined(with: .opacity))
             .accessibilityAction(.escape) { closePanelOrPlayer() }
+        }
+    }
+
+    /// Lyrics take the whole player, the way Apple Music shows them: no card,
+    /// no border, the record's colours behind the words and nothing else on
+    /// screen — the artwork, the title and the controls all step aside.
+    @ViewBuilder
+    private var lyricsScreen: some View {
+        if showLyrics {
+            ZStack {
+                Rectangle()
+                    .fill(.ultraThinMaterial)
+                    .background(Color.black.opacity(0.35))
+                    .ignoresSafeArea()
+                LyricsView(showLyrics: $showLyrics)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            .environment(\.colorScheme, .dark)
+            .ignoresSafeArea(edges: .bottom)
+            .transition(reduceMotion ? .opacity : .move(edge: .bottom))
+            .accessibilityAction(.escape) { closePanelOrPlayer() }
+        }
+    }
+
+    /// The Canvas on its own. Everything else — the cover, the title row, the
+    /// controls — steps aside, and a tap on the clip brings the player back.
+    @ViewBuilder
+    /// Kept out of the player's modifier chain: inlined it made the whole body
+    /// too complex for the type checker.
+    private var radioBloomLayer: some View {
+        RadioBloomOverlay(
+            event: np.radioBloom,
+            cover: { coverFrame.rect },
+            // The row is symmetric: the play button sits at its centre.
+            playButton: { controlsFrame.rect },
+            // The queue button is the last of the row's three equal columns.
+            queueButton: { queueButtonRect },
+            coverCornerRadius: showsCardCover ? Self.cardCoverRadius : 0,
+            isImmersive: !showsCardCover,
+            replacesPlayButton: $radioReplacesPlay
+        )
+    }
+
+    private var queueButtonRect: CGRect {
+        let row = secondaryFrame.rect
+        return CGRect(x: row.maxX - row.width / 3, y: row.minY, width: row.width / 3, height: row.height)
+    }
+
+    /// Only the track on screen may answer: the menu also exists on rows of the
+    /// queue and of every list.
+    private func handleCanvasStageRequest(_ note: Notification) {
+        guard let id = note.object as? String, id == np.videoId else { return }
+        withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.22)) {
+            showsCanvasStage = true
+        }
+    }
+
+    /// Everything the player does when the track changes. Kept out of the
+    /// view builder: the five statements inlined there pushed type inference
+    /// past its time budget.
+    private func handleTrackChange(from oldValue: String?, to newValue: String?) {
+        if oldValue != nil, newValue != nil {
+            titleChangeDirection = np.queueIndex < lastTitleQueueIndex ? -1 : 1
+            titleChangeTrigger &+= 1
+        }
+        lastTitleQueueIndex = np.queueIndex
+        showLyrics = false
+        preloadLyrics()
+    }
+
+    @ViewBuilder
+    private var canvasStage: some View {
+        if showsCanvasStage {
+            CanvasStage(
+                videoId: np.videoId ?? "",
+                title: np.title,
+                artist: np.displayArtist,
+                album: np.albumTitle.isEmpty ? nil : np.albumTitle,
+                onClose: { showsCanvasStage = false }
+            ) {
+                PlayerLikeButton(isLiked: isLiked, flavor: currentLikeFlavor) {
+                    guard let song = np.queueSongs.indices.contains(np.queueIndex) ? np.queueSongs[np.queueIndex] : nil else { return }
+                    Task { await likeStore.toggle(song: song) }
+                }
+            }
+            .transition(.opacity)
+            .zIndex(20)
+            .onChange(of: np.videoId) { _, _ in showsCanvasStage = false }
         }
     }
 
@@ -530,6 +614,12 @@ struct FullPlayerView: View {
             Spacer()
 
             HStack(spacing: 12) {
+                CanvasStageButton(
+                    videoId: np.videoId,
+                    title: np.title,
+                    artist: np.displayArtist,
+                    album: np.albumTitle.isEmpty ? nil : np.albumTitle
+                ) { showsCanvasStage = true }
                 if let videoId = np.videoId {
                     DownloadedBadge(videoId: videoId, onArtwork: true)
                         .id(videoId)
@@ -703,7 +793,7 @@ private struct PlayerLyricPreview: View {
 
     private var activeLyricText: String? {
         guard let firstLine = lines.first else { return nil }
-        let lyricTime = np.currentTime + settings.lyricsOffsetSeconds
+        let lyricTime = np.currentTime + LyricsOffset.effective(for: np.videoId)
         return lines.last { line in
             guard let startTime = line.startTime else { return false }
             return startTime <= lyricTime

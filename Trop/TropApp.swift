@@ -113,6 +113,7 @@ struct TropApp: App {
         config.imageCache = ImageCache(costLimit: 100 * 1024 * 1024)
 
         ImagePipeline.shared = ImagePipeline(configuration: config)
+        CacheManager.applyLimits()
     }
 
     private func ensureDirectories() {
