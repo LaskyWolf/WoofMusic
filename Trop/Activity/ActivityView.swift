@@ -115,6 +115,23 @@ final class ActivityStore {
 
     func clearUnseen() { unseen = 0 }
 
+    /// Field names and short texts of an answer, to read its shape from an error message.
+    private static func outline(of node: Any, depth: Int = 0) -> String {
+        guard depth < 9 else { return "…" }
+        switch node {
+        case let dict as [String: Any]:
+            let parts = dict.keys.sorted().filter { $0 != "responseContext" && $0 != "trackingParams" }
+                .map { "\($0): \(outline(of: dict[$0] as Any, depth: depth + 1))" }
+            return "{" + parts.joined(separator: ", ") + "}"
+        case let array as [Any]:
+            return "[" + array.prefix(3).map { outline(of: $0, depth: depth + 1) }.joined(separator: ", ") + "]"
+        case let text as String:
+            return "\"" + text.prefix(40) + "\""
+        default:
+            return "\(node)"
+        }
+    }
+
     /// The inbox, grouped under YouTube's own section titles.
     static func fetchInbox() async throws -> [ActivitySection] {
         let data = try await SignedInnerTube.post(
@@ -144,9 +161,8 @@ final class ActivityStore {
         }
         // An empty inbox still has its sections; no sections at all means the answer has another shape.
         if sections.isEmpty, ActivityJSON.first("multiPageMenuNotificationSectionRenderer", in: json) == nil {
-            let keys = ((json as? [String: Any])?.keys.sorted().joined(separator: ", ")) ?? "none"
             throw NSError(domain: "Activity", code: 0, userInfo: [
-                NSLocalizedDescriptionKey: "YouTube Music answered without an inbox (\(data.count) bytes, fields: \(keys))."
+                NSLocalizedDescriptionKey: "YouTube Music answered without an inbox (\(data.count) bytes): \(outline(of: json))"
             ])
         }
         return sections
