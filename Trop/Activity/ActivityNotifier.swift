@@ -42,12 +42,14 @@ enum ActivityNotifier {
         _ = try? await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge])
     }
 
-    /// Notifies for each unread entry not announced before. Does nothing signed out or without permission.
+    /// Loads the notifications, then announces each unread one not announced before.
+    /// Signed out it does nothing; without permission it only loads.
     static func checkNow() async {
+        guard await AccountState.shared.isLoggedIn else { return }
+        await ActivityStore.shared.refresh()
         let center = UNUserNotificationCenter.current()
         guard await center.notificationSettings().authorizationStatus == .authorized,
-              await AccountState.shared.isLoggedIn,
-              let sections = try? await ActivityStore.fetchInbox(includingReleases: false) else { return }
+              let sections = await ActivityStore.shared.sections else { return }
 
         let announced = Set(UserDefaults.standard.stringArray(forKey: announcedKey) ?? [])
         let fresh = sections.flatMap(\.items).filter { !$0.isRead && !announced.contains($0.id) && !$0.message.isEmpty }
@@ -61,6 +63,5 @@ enum ActivityNotifier {
         }
         let updated = Array(announced) + fresh.map(\.id)
         UserDefaults.standard.set(Array(updated.suffix(announcedLimit)), forKey: announcedKey)
-        await ActivityStore.shared.refreshUnseen()
     }
 }

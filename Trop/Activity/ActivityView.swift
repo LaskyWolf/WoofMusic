@@ -5,7 +5,7 @@
 
 import SwiftUI
 
-/// One entry of YouTube Music's Activity inbox: a new release, a new song, a post.
+/// One entry of Notifications: a new release from a followed artist.
 struct ActivityItem: Identifiable {
     let id: String
     let message: String
@@ -13,43 +13,7 @@ struct ActivityItem: Identifiable {
     let thumbnail: String?
     /// The page it opens: an album, artist, playlist or podcast.
     let route: DetailRoute?
-    /// A song it plays when it has no page.
-    let videoId: String?
-    /// YouTube's request that marks the entry as read when it is opened.
-    let clickRequest: String?
     var isRead: Bool
-
-    init(id: String, message: String, time: String?, thumbnail: String?, route: DetailRoute?, isRead: Bool) {
-        self.id = id
-        self.message = message
-        self.time = time
-        self.thumbnail = thumbnail
-        self.route = route
-        videoId = nil
-        clickRequest = nil
-        self.isRead = isRead
-    }
-
-    init(renderer: [String: Any], seen: Set<String>) {
-        id = renderer["notificationId"] as? String ?? UUID().uuidString
-        message = ActivityJSON.text(renderer["shortMessage"]) ?? ""
-        time = ActivityJSON.text(renderer["sentTimeText"])
-        thumbnail = ActivityJSON.lastThumbnail(renderer["videoThumbnail"]) ?? ActivityJSON.lastThumbnail(renderer["thumbnail"])
-        let endpoint = renderer["navigationEndpoint"]
-        videoId = ActivityJSON.first("videoId", in: endpoint) as? String
-        route = (ActivityJSON.first("browseId", in: endpoint) as? String).flatMap(Self.route(forBrowseId:))
-        clickRequest = ActivityJSON.first("serializedInteractionsRequest", in: renderer["recordClickEndpoint"]) as? String
-        isRead = renderer["read"] as? Bool ?? false || seen.contains(id)
-    }
-
-    /// YouTube Music's ids say what they are: MPREb albums, UC artists, MPSP podcasts, VL playlists.
-    private static func route(forBrowseId id: String) -> DetailRoute? {
-        if id.hasPrefix("MPREb") { return .album(browseId: id) }
-        if id.hasPrefix("UC") { return .artist(browseId: id) }
-        if id.hasPrefix("MPSP") { return .podcast(browseId: id) }
-        if id.hasPrefix("VL") { return .playlist(playlistId: String(id.dropFirst(2))) }
-        return nil
-    }
 }
 
 struct ActivitySection: Identifiable {
@@ -94,13 +58,19 @@ enum ActivityJSON {
     }
 }
 
-/// The Activity inbox and its unseen count, shared by the bell and the page.
+/// The notifications, loaded when the app opens and kept for the page and the bell.
 @MainActor
 @Observable
 final class ActivityStore {
     static let shared = ActivityStore()
 
-    private(set) var unseen = 0
+    /// Nil until the first load ends.
+    private(set) var sections: [ActivitySection]?
+    private var loading: Task<Void, Never>?
+
+    var unseen: Int {
+        sections?.reduce(0) { $0 + $1.items.count(where: { !$0.isRead }) } ?? 0
+    }
 
     private static let seenKey = "activity.seen"
     private static let seenLimit = 500
@@ -109,108 +79,44 @@ final class ActivityStore {
         Set(UserDefaults.standard.stringArray(forKey: seenKey) ?? [])
     }
 
-    static func markSeen(_ ids: Set<String>) {
+    /// Fetches the releases again. A call during a load waits for that load.
+    func refresh() async {
+        if let loading { return await loading.value }
+        let task = Task {
+            let items = await ReleaseFeed.items(seen: Self.seenIds)
+            // An empty answer is usually a failed one (offline, signed out): keep what is shown.
+            if !items.isEmpty || sections == nil {
+                sections = items.isEmpty ? [] : [ActivitySection(title: "New releases", items: items)]
+            }
+        }
+        loading = task
+        await task.value
+        loading = nil
+    }
+
+    /// Saves the ids as seen and updates the rows, which clears them from the badge.
+    func markSeen(_ ids: Set<String>) {
         guard !ids.isEmpty else { return }
-        let saved = UserDefaults.standard.stringArray(forKey: seenKey) ?? []
+        let saved = UserDefaults.standard.stringArray(forKey: Self.seenKey) ?? []
         let updated = saved.filter { !ids.contains($0) } + ids
-        UserDefaults.standard.set(Array(updated.suffix(seenLimit)), forKey: seenKey)
-    }
-
-    func refreshUnseen() async {
-        guard AccountState.shared.isLoggedIn,
-              let data = try? await SignedInnerTube.post("notification/get_unseen_count", [:]),
-              let json = try? JSONSerialization.jsonObject(with: data) else { return }
-        let count = ActivityJSON.first("unseenCount", in: json)
-        unseen = count as? Int ?? Int(count as? String ?? "") ?? 0
-    }
-
-    func clearUnseen() { unseen = 0 }
-
-    /// Field names and short texts of an answer, to read its shape from an error message.
-    private static func outline(of node: Any, depth: Int = 0) -> String {
-        guard depth < 9 else { return "…" }
-        switch node {
-        case let dict as [String: Any]:
-            let parts = dict.keys.sorted().filter { $0 != "responseContext" && $0 != "trackingParams" }
-                .map { "\($0): \(outline(of: dict[$0] as Any, depth: depth + 1))" }
-            return "{" + parts.joined(separator: ", ") + "}"
-        case let array as [Any]:
-            return "[" + array.prefix(3).map { outline(of: $0, depth: depth + 1) }.joined(separator: ", ") + "]"
-        case let text as String:
-            return "\"" + text.prefix(40) + "\""
-        default:
-            return "\(node)"
-        }
-    }
-
-    /// The inbox, grouped under YouTube's own section titles.
-    /// The releases of followed artists, then YouTube's own inbox. A failing inbox
-    /// only counts when there are no releases to show either.
-    static func fetchInbox(includingReleases: Bool = true) async throws -> [ActivitySection] {
-        let seen = seenIds
-        async let releases: [ActivityItem] = includingReleases ? ReleaseFeed.items(seen: seen) : []
-        let inbox: Result<[ActivitySection], Error>
-        do { inbox = .success(try await fetchYouTubeInbox()) } catch { inbox = .failure(error) }
-        var sections: [ActivitySection] = []
-        let newReleases = await releases
-        if !newReleases.isEmpty { sections.append(ActivitySection(title: "New releases", items: newReleases)) }
-        switch inbox {
-        case .success(let youtube): sections += youtube
-        case .failure(let error): if sections.isEmpty { throw error }
-        }
-        return sections
-    }
-
-    private static func fetchYouTubeInbox() async throws -> [ActivitySection] {
-        // The music host answers with an empty popup; the inbox is the account's own, served by www.youtube.com.
-        let client = InnerTubeClient(config: .youtube)
-        await client.loadState(from: CookieStore())
-        await client.syncTropLocale()
-        let data = try await SignedInnerTube.post(
-            "notification/get_notification_menu",
-            ["notificationsMenuRequestType": "NOTIFICATIONS_MENU_REQUEST_TYPE_INBOX"],
-            on: client
-        )
-        let json = try JSONSerialization.jsonObject(with: data)
-        let seen = seenIds
-        var sections: [ActivitySection] = []
-        func add(_ item: ActivityItem, to title: String) {
-            if let index = sections.firstIndex(where: { $0.title == title }) {
-                sections[index].items.append(item)
-            } else {
-                sections.append(ActivitySection(title: title, items: [item]))
+        UserDefaults.standard.set(Array(updated.suffix(Self.seenLimit)), forKey: Self.seenKey)
+        guard var sections else { return }
+        for section in sections.indices {
+            for row in sections[section].items.indices where ids.contains(sections[section].items[row].id) {
+                sections[section].items[row].isRead = true
             }
         }
-        for section in ActivityJSON.nodes("multiPageMenuNotificationSectionRenderer", in: json) {
-            let title = ActivityJSON.text(section["notificationSectionTitle"]) ?? ActivityJSON.text(section["title"]) ?? "Activity"
-            for renderer in ActivityJSON.nodes("notificationRenderer", in: section["items"]) {
-                add(ActivityItem(renderer: renderer, seen: seen), to: title)
-            }
-        }
-        if sections.isEmpty {
-            for renderer in ActivityJSON.nodes("notificationRenderer", in: json) {
-                add(ActivityItem(renderer: renderer, seen: seen), to: "Activity")
-            }
-        }
-        // An empty inbox still has its sections; no sections at all means the answer has another shape.
-        if sections.isEmpty, ActivityJSON.first("multiPageMenuNotificationSectionRenderer", in: json) == nil {
-            throw NSError(domain: "Activity", code: 0, userInfo: [
-                NSLocalizedDescriptionKey: "YouTube Music answered without an inbox (\(data.count) bytes): \(outline(of: json))"
-            ])
-        }
-        return sections
+        self.sections = sections
     }
 }
 
 struct ActivityView: View {
-    @State private var sections: [ActivitySection] = []
-    @State private var isLoading = true
-    @State private var errorText: String?
+    private let store = ActivityStore.shared
     @State private var seenOnPage: Set<String> = []
 
     var body: some View {
         List {
-            ForEach(sections) { section in
+            ForEach(store.sections ?? []) { section in
                 Section {
                     ForEach(section.items) { item in
                         ActivityRow(item: item) { open(item) }
@@ -231,76 +137,33 @@ struct ActivityView: View {
         .listStyle(.plain)
         .miniPlayerTracksScroll()
         .overlay {
-            if sections.isEmpty {
-                if isLoading {
-                    ProgressView()
-                } else if let errorText {
-                    RetryStateView(
-                        title: "Couldn't load activity",
-                        systemImage: "exclamationmark.circle",
-                        message: errorText,
-                        retry: { await load() }
-                    )
-                } else {
-                    ContentUnavailableView(
-                        "No Activity",
-                        systemImage: "bell",
-                        description: Text("New releases from artists you follow will appear here.")
-                    )
-                }
+            if store.sections == nil {
+                ProgressView()
+            } else if store.sections?.isEmpty == true {
+                ContentUnavailableView(
+                    "No Notifications",
+                    systemImage: "bell",
+                    description: Text("New releases from artists you follow will appear here.")
+                )
             }
         }
-        .navigationTitle("Activity")
+        .navigationTitle("Notifications")
         .navigationBarTitleDisplayMode(.inline)
         .task {
-            ActivityStore.shared.clearUnseen()
             await ActivityNotifier.askForPermissionOnce()
-            await load()
+            // Loaded when the app opened; only a load still missing starts here.
+            if store.sections == nil { await store.refresh() }
         }
-        .refreshable { await load() }
+        .refreshable { await store.refresh() }
         .onDisappear {
-            ActivityStore.markSeen(seenOnPage)
-            markRead(seenOnPage)
+            store.markSeen(seenOnPage)
             seenOnPage = []
         }
     }
 
-    private func load() async {
-        defer { isLoading = false }
-        do {
-            sections = try await ActivityStore.fetchInbox()
-            errorText = nil
-        } catch {
-            // Leaving the page cancels the request, which says nothing about the inbox.
-            guard !error.isCancellation else { return }
-            errorText = error.localizedDescription
-        }
-    }
-
-    /// By id, because a refresh can replace the list while a row still holds its place.
-    private func markRead(_ ids: Set<String>) {
-        for section in sections.indices {
-            for row in sections[section].items.indices where ids.contains(sections[section].items[row].id) {
-                sections[section].items[row].isRead = true
-            }
-        }
-    }
-
     private func open(_ item: ActivityItem) {
-        markRead([item.id])
-        ActivityStore.markSeen([item.id])
-        if let request = item.clickRequest {
-            Task { _ = try? await SignedInnerTube.post("notification/record_interactions", ["serializedRecordNotificationInteractionsRequests": [request]]) }
-        }
-        if let route = item.route {
-            AppRouter.shared.open(route)
-        } else if let videoId = item.videoId {
-            let song = SongItem(
-                videoId: videoId, title: item.message, artists: [], album: nil, albumId: nil, duration: 0,
-                thumbnailUrl: item.thumbnail ?? ArtworkURLs.fallback(for: videoId), isExplicit: false, playlistId: nil
-            )
-            PlaybackQueue.play([song], log: Log.homeScreenView, context: "Activity \(item.message)")
-        }
+        store.markSeen([item.id])
+        if let route = item.route { AppRouter.shared.open(route) }
     }
 }
 

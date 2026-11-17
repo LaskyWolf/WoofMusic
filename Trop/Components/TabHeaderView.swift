@@ -7,7 +7,7 @@
 
 import SwiftUI
 
-/// Shared large-title header with activity, history and account buttons, used by the
+/// Shared large-title header with notifications, history and account buttons, used by the
 /// four tabs. `path` is the tab's navigation stack.
 struct TabHeaderView: View {
     @Environment(SettingsStore.self) private var settings
@@ -56,15 +56,15 @@ struct TabHeaderView: View {
 
                 if account.isLoggedIn {
                     Button { path.append(DetailRoute.activity) } label: {
-                        Image(systemName: activity.unseen > 0 ? "bell.badge.fill" : "bell")
+                        Image(systemName: "bell")
                             .font(.title3)
-                            .foregroundStyle(activity.unseen > 0 ? AnyShapeStyle(settings.accentColor) : AnyShapeStyle(.secondary))
+                            .foregroundStyle(.secondary)
                             .frame(width: 36, height: 36)
+                            .overlay(alignment: .topTrailing) { unseenBadge }
                             .tapArea(outset: 4)
                     }
                     .buttonStyle(IconPressStyle())
-                    .accessibilityLabel(activity.unseen > 0 ? "Activity, \(activity.unseen) new" : "Activity")
-                    .task { await activity.refreshUnseen() }
+                    .accessibilityLabel(activity.unseen > 0 ? "Notifications, \(activity.unseen) new" : "Notifications")
                 }
 
                 Button { path.append(DetailRoute.history) } label: {
@@ -87,6 +87,21 @@ struct TabHeaderView: View {
         }
         .padding(.horizontal, DesignTokens.screenHPadding)
         .padding(.vertical, 8)
+    }
+
+    @ViewBuilder
+    private var unseenBadge: some View {
+        if activity.unseen > 0 {
+            Text(activity.unseen > 9 ? "9+" : "\(activity.unseen)")
+                .font(.caption2.bold().monospacedDigit())
+                .foregroundStyle(.white)
+                .padding(.horizontal, 4)
+                .frame(minWidth: 16, minHeight: 16)
+                .background(settings.accentColor, in: .capsule)
+                .offset(x: 2, y: -2)
+                .transition(.scale.combined(with: .opacity))
+                .accessibilityHidden(true)
+        }
     }
 }
 
