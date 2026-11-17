@@ -233,10 +233,12 @@ enum RecapService {
     /// out or offline. It covers plays on other devices too.
     static func remoteHistory(in interval: DateInterval, calendar: Calendar, now: Date = Date()) async -> [RemotePlay] {
         guard let json = try? await InnerTubeClient.tropShared.browse(browseId: "FEmusic_history") else { return [] }
-        return HistoryViewModel.parseRemoteHistory(from: json).flatMap { shelf -> [RemotePlay] in
+        let plays = HistoryViewModel.parseRemoteHistory(from: json).flatMap { shelf -> [RemotePlay] in
             guard let date = shelfDate(shelf.title, now: now, calendar: calendar), interval.contains(date) else { return [] }
             return shelf.songs.map { RemotePlay(song: $0, date: date) }
         }
+        let kept = Set(await Shorts.removing(from: plays.map(\.song)).map(\.videoId))
+        return plays.filter { kept.contains($0.song.videoId) }
     }
 
     // ponytail: YouTube dates its history only by shelf ("Today", "Last week",

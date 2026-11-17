@@ -66,7 +66,11 @@ final class HistoryViewModel {
     func loadRemote() async {
         do {
             let json = try await InnerTubeClient.tropShared.browse(browseId: "FEmusic_history")
-            remote = Self.parseRemoteHistory(from: json)
+            var sections = Self.parseRemoteHistory(from: json)
+            for index in sections.indices {
+                sections[index].songs = await Shorts.removing(from: sections[index].songs)
+            }
+            remote = sections.filter { !$0.songs.isEmpty }
             rebuild()
         } catch {
             if error.isCancellation { return }
@@ -93,17 +97,28 @@ final class HistoryViewModel {
             let day = calendar.startOfDay(for: entry.event.timestamp)
             byDay[day, default: []].append(HistoryRow(song: SongItem(historyEntry: entry), event: entry.event))
         }
-        var undated: [HistoryDay] = []
+        // Shelves covering a period ("Last week") have no single day: they keep their
+        // title and sit where that period starts, holding only songs not listed elsewhere.
+        var periods: [(date: Date, day: HistoryDay)] = []
+        var everywhere = Set(local.map(\.event.songId))
         for section in remote {
-            guard let day = Self.day(forTitle: section.title) else {
-                undated.append(HistoryDay(title: section.title, rows: section.songs.map { HistoryRow(song: $0, event: nil) }))
+            if let day = Self.day(forTitle: section.title) {
+                var known = Set(byDay[day, default: []].map(\.song.videoId))
+                let extra = section.songs.filter { known.insert($0.videoId).inserted }.map { HistoryRow(song: $0, event: nil) }
+                byDay[day, default: []].append(contentsOf: extra)
+                everywhere.formUnion(extra.map(\.song.videoId))
                 continue
             }
-            var known = Set(byDay[day, default: []].map(\.song.videoId))
-            let extra = section.songs.filter { known.insert($0.videoId).inserted }.map { HistoryRow(song: $0, event: nil) }
-            byDay[day, default: []].append(contentsOf: extra)
+            let rows = section.songs.filter { everywhere.insert($0.videoId).inserted }.map { HistoryRow(song: $0, event: nil) }
+            guard !rows.isEmpty else { continue }
+            let date = RecapService.shelfDate(section.title, now: Date(), calendar: calendar) ?? .distantPast
+            periods.append((date, HistoryDay(title: section.title, rows: rows)))
         }
-        days = byDay.keys.sorted(by: >).map { HistoryDay(title: Self.title(for: $0), rows: byDay[$0] ?? []) } + undated
+        let dated = byDay.keys.map { (date: $0, day: HistoryDay(title: Self.title(for: $0), rows: byDay[$0] ?? [])) }
+        // Stable order for equal dates: a day before the period that starts on it.
+        days = (dated + periods).enumerated()
+            .sorted { $0.element.date != $1.element.date ? $0.element.date > $1.element.date : $0.offset < $1.offset }
+            .map(\.element.day)
     }
 
     private static func title(for day: Date) -> String {
