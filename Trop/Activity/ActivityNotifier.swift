@@ -47,7 +47,7 @@ enum ActivityNotifier {
         let center = UNUserNotificationCenter.current()
         guard await center.notificationSettings().authorizationStatus == .authorized,
               await AccountState.shared.isLoggedIn,
-              let sections = try? await ActivityStore.fetchInbox() else { return }
+              let sections = try? await ActivityStore.fetchInbox(includingReleases: false) else { return }
 
         let announced = Set(UserDefaults.standard.stringArray(forKey: announcedKey) ?? [])
         let fresh = sections.flatMap(\.items).filter { !$0.isRead && !announced.contains($0.id) && !$0.message.isEmpty }

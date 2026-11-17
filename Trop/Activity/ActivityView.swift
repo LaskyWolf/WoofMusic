@@ -19,6 +19,17 @@ struct ActivityItem: Identifiable {
     let clickRequest: String?
     var isRead: Bool
 
+    init(id: String, message: String, time: String?, thumbnail: String?, route: DetailRoute?, isRead: Bool) {
+        self.id = id
+        self.message = message
+        self.time = time
+        self.thumbnail = thumbnail
+        self.route = route
+        videoId = nil
+        clickRequest = nil
+        self.isRead = isRead
+    }
+
     init(renderer: [String: Any], seen: Set<String>) {
         id = renderer["notificationId"] as? String ?? UUID().uuidString
         message = ActivityJSON.text(renderer["shortMessage"]) ?? ""
@@ -133,7 +144,24 @@ final class ActivityStore {
     }
 
     /// The inbox, grouped under YouTube's own section titles.
-    static func fetchInbox() async throws -> [ActivitySection] {
+    /// The releases of followed artists, then YouTube's own inbox. A failing inbox
+    /// only counts when there are no releases to show either.
+    static func fetchInbox(includingReleases: Bool = true) async throws -> [ActivitySection] {
+        let seen = seenIds
+        async let releases: [ActivityItem] = includingReleases ? ReleaseFeed.items(seen: seen) : []
+        let inbox: Result<[ActivitySection], Error>
+        do { inbox = .success(try await fetchYouTubeInbox()) } catch { inbox = .failure(error) }
+        var sections: [ActivitySection] = []
+        let newReleases = await releases
+        if !newReleases.isEmpty { sections.append(ActivitySection(title: "New releases", items: newReleases)) }
+        switch inbox {
+        case .success(let youtube): sections += youtube
+        case .failure(let error): if sections.isEmpty { throw error }
+        }
+        return sections
+    }
+
+    private static func fetchYouTubeInbox() async throws -> [ActivitySection] {
         // The music host answers with an empty popup; the inbox is the account's own, served by www.youtube.com.
         let client = InnerTubeClient(config: .youtube)
         await client.loadState(from: CookieStore())
