@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src=".github/assets/banner.svg" width="100%" alt="Woof Music: YouTube Music, native on iPhone" />
+<img src=".github/assets/banner.svg" width="100%" alt="Woof Music: YouTube Music, native on iPhone" /> 
 
 P.S.: Currently under active development — bugs may occur, so stay tuned!
 
