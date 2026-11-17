@@ -112,8 +112,22 @@ extension AlbumDetailViewModel {
                           trimmed.contains("track") || trimmed.contains("Track") {
                     let nums = trimmed.components(separatedBy: CharacterSet.decimalDigits.inverted).compactMap(Int.init)
                     if let count = nums.first { songCount = count }
-                } else if trimmed.contains(":") {
-                    duration = DurationFormat.parseClock(trimmed) ?? 0
+                } else if let parsed = DurationFormat.parseClock(trimmed) ?? DurationFormat.parseSpoken(trimmed) {
+                    // "1:14:05" or "1 hour, 14 minutes"
+                    duration = parsed
+                }
+            }
+        }
+
+        // Year fallback from subtitle ("Album • 2013"); the year left secondSubtitle.
+        func applySubtitleYear(_ header: [String: Any]) {
+            guard year == nil,
+                  let subtitle = header["subtitle"] as? [String: Any],
+                  let runs = subtitle["runs"] as? [[String: Any]] else { return }
+            for run in runs {
+                let trimmed = (run["text"] as? String)?.trimmingCharacters(in: .whitespaces) ?? ""
+                if let yearVal = Int(trimmed), trimmed.count == 4, yearVal > 1900, yearVal < 2100 {
+                    year = yearVal
                 }
             }
         }
@@ -138,6 +152,7 @@ extension AlbumDetailViewModel {
             }
 
             applySecondSubtitle(responsiveHeader)
+            applySubtitleYear(responsiveHeader)
 
             thumbnailUrl = InnerTubeJSON.musicThumbnailURL(responsiveHeader)
         }
@@ -156,6 +171,7 @@ extension AlbumDetailViewModel {
                 }
 
                 applySecondSubtitle(detailHeader)
+                applySubtitleYear(detailHeader)
 
                 if thumbnailUrl == nil { thumbnailUrl = InnerTubeJSON.musicThumbnailURL(detailHeader) }
 

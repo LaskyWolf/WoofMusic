@@ -370,21 +370,9 @@ extension PlaylistDetailViewModel {
                         if let count = trimmed.components(separatedBy: CharacterSet.decimalDigits.inverted).compactMap(Int.init).first {
                             songCount = count
                         }
-                    } else if trimmed.contains(":") {
-                        duration = DurationFormat.parseClock(trimmed) ?? 0
-                    } else {
-                        let lower = trimmed.lowercased()
-                        if lower.hasSuffix("min") || lower.hasSuffix("mins") || lower.hasSuffix("minute") || lower.hasSuffix("minutes") {
-                            let nums = trimmed.components(separatedBy: CharacterSet.decimalDigits.inverted).compactMap(Int.init)
-                            if let minutes = nums.first {
-                                duration = minutes * 60
-                            }
-                        } else if lower.hasSuffix("hour") || lower.hasSuffix("hours") || lower.hasSuffix("hr") || lower.hasSuffix("hrs") {
-                            let nums = trimmed.components(separatedBy: CharacterSet.decimalDigits.inverted).compactMap(Int.init)
-                            if let hours = nums.first {
-                                duration = hours * 3600
-                            }
-                        }
+                    } else if let parsed = DurationFormat.parseClock(trimmed) ?? DurationFormat.parseSpoken(trimmed) {
+                        // "1:14:05", "30 minutes" or "1 hour, 14 minutes"
+                        duration = parsed
                     }
                 }
             }

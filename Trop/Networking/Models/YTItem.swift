@@ -325,21 +325,14 @@ struct SongItem: Codable, Hashable {
         let runs = flexTextRuns(flexColumns, index: 1)
         let segments = splitRunsBySeparator(runs)
         let artists: [YTArtist]
-        var album: String?
-        var albumId: String?
 
-        // Try flexColumns[2] first — dedicated album column with navigation endpoint (like Metrolist)
-        if flexColumns.indices.contains(2) {
-            let albumRuns = flexTextRuns(flexColumns, index: 2)
-            if let firstRun = albumRuns.first,
-               let name = firstRun["text"] as? String,
-               let nav = firstRun["navigationEndpoint"] as? [String: Any],
-               let browse = nav["browseEndpoint"] as? [String: Any],
-               let bid = browse["browseId"] as? String {
-                album = name
-                albumId = bid
-            }
-        }
+        // Album = first run in any subtitle column that opens an album page. Position
+        // is unreliable: those slots also hold views, durations and featured artists.
+        let albumRun = flexColumns.indices.dropFirst()
+            .flatMap { flexTextRuns(flexColumns, index: $0) }
+            .first { albumBrowseId($0) != nil }
+        let album = (albumRun?["text"] as? String)?.trimmingCharacters(in: .whitespaces)
+        let albumId = albumRun.flatMap(albumBrowseId)
 
         if !segments.isEmpty {
             let artistSegments = segments.drop { seg in seg.allSatisfy { !ArtistCredits.isArtistName($0) } }
@@ -352,9 +345,6 @@ struct SongItem: Codable, Hashable {
                 artists = segments[0].filter { ArtistCredits.isArtistName($0) }.map {
                     YTArtist(name: ArtistCredits.cleanedName($0), id: creditId(for: $0))
                 }
-                if album == nil && segments.count > 1 {
-                    album = segments[1].first
-                }
             } else {
                 var collected: [YTArtist] = []
                 for seg in artistSegments {
@@ -363,9 +353,6 @@ struct SongItem: Codable, Hashable {
                     })
                 }
                 artists = collected
-                if album == nil {
-                    album = artistSegments.dropFirst().first?.first
-                }
             }
         } else {
             artists = []
@@ -774,6 +761,17 @@ private func flexText(_ flexColumns: [[String: Any]], index: Int) -> String? {
           let first = runs.first,
           let text = first["text"] as? String else { return nil }
     return text
+}
+
+/// Browse id of a run that opens an album page (`MPREb_` id or album page type).
+private func albumBrowseId(_ run: [String: Any]) -> String? {
+    guard let nav = run["navigationEndpoint"] as? [String: Any],
+          let browse = nav["browseEndpoint"] as? [String: Any],
+          let bid = browse["browseId"] as? String else { return nil }
+    let configs = browse["browseEndpointContextSupportedConfigs"] as? [String: Any]
+    let musicConfig = configs?["browseEndpointContextMusicConfig"] as? [String: Any]
+    let pageType = musicConfig?["pageType"] as? String
+    return bid.hasPrefix("MPREb_") || pageType == "MUSIC_PAGE_TYPE_ALBUM" ? bid : nil
 }
 
 private func flexTextRuns(_ flexColumns: [[String: Any]], index: Int) -> [[String: Any]] {
