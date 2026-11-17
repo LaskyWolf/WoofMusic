@@ -8,7 +8,7 @@ P.S.: Currently under active development — bugs may occur, so stay tuned!
 [![SwiftUI](https://img.shields.io/badge/Swift-SwiftUI-F05138?logo=swift&logoColor=white)](Trop)
 [![Player: mpv](https://img.shields.io/badge/player-mpv-691f69)](https://mpv.io)
 [![License: GPLv3](https://img.shields.io/badge/license-GPLv3-blue)](LICENSE.txt)
-[![Release](https://img.shields.io/github/v/release/LaskyWolf/WoofMusic?include_prereleases&label=release)](https://github.com/LaskyWolf/WoofMusic/releases)
+[![Release](https://img.shields.io/github/v/release/dmitrylol/WoofMusicPlus/releases?include_prereleases&label=release)]([https://github.com/LaskyWolf/WoofMusic/releases](https://github.com/dmitrylol/WoofMusicPlus/releases))
 
 **A free, open source YouTube Music client for iPhone, written in SwiftUI. Based on WoofMusic (Trop fork)**
 It plays without ads and mixes songs like a DJ.
