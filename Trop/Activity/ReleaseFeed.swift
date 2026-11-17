@@ -7,19 +7,20 @@ import Foundation
 
 /// New releases from the artists the user follows. YouTube Music's own bell
 /// feed is not served to this client, so the list is read from each artist's
-/// page: its albums and singles, newest first, tagged only with a year.
-/// Deezer's public API supplies the exact day, matched by artist name and title.
+/// page: its albums and singles, tagged only with a year. Deezer's public API
+/// supplies the exact day, matched by artist name and title; a release Deezer
+/// can't date stays out, since a year can't tell January from last week.
 enum ReleaseFeed {
     /// Artists checked per refresh, and releases kept per artist.
     private static let artistLimit = 30
     private static let perArtist = 2
     private static let parallelism = 5
-    /// Dated releases older than this leave the list.
+    /// Releases older than this leave the list.
     private static let windowDays = 60
 
     private struct Release {
         let item: ActivityItem
-        let date: Date?
+        let date: Date
     }
 
     static func items(seen: Set<String>) async -> [ActivityItem] {
@@ -41,9 +42,7 @@ enum ReleaseFeed {
             }
             all += results.sorted { $0.0 < $1.0 }.flatMap(\.1)
         }
-        // Dated releases newest first; the ones Deezer couldn't date follow, in artist order.
-        let dated = all.compactMap { release in release.date.map { (release.item, $0) } }.sorted { $0.1 > $1.1 }.map(\.0)
-        return dated + all.filter { $0.date == nil }.map(\.item)
+        return all.sorted { $0.date > $1.date }.map(\.item)
     }
 
     private static func releases(ofArtist id: String, seen: Set<String>) async -> [Release] {
@@ -59,6 +58,8 @@ enum ReleaseFeed {
         let oldest = Calendar.current.date(byAdding: .day, value: -windowDays, to: Date()) ?? .distantPast
 
         var found: [Release] = []
+        // An album and a single often share a title: list it once.
+        var titles: Set<String> = []
         for shelf in ActivityJSON.nodes("musicCarouselShelfRenderer", in: json) {
             for row in ActivityJSON.nodes("musicTwoRowItemRenderer", in: shelf["contents"]) {
                 guard let album = ActivityJSON.first("browseId", in: row["navigationEndpoint"]) as? String,
@@ -66,16 +67,14 @@ enum ReleaseFeed {
                       let subtitle = ActivityJSON.text(row["subtitle"]),
                       years.contains(where: { subtitle.contains($0) }),
                       let title = ActivityJSON.text(row["title"]) else { continue }
-                let date = dates[DeezerDates.key(title)]
-                if let date, date < oldest { continue }
-                // Without a date only this year's releases count, so last year's never linger.
-                if date == nil, !subtitle.contains(years[0]) { continue }
+                guard let date = dates[DeezerDates.key(title)], date >= oldest,
+                      titles.insert(DeezerDates.key(title)).inserted else { continue }
                 let itemId = "release-\(album)"
                 found.append(Release(
                     item: ActivityItem(
                         id: itemId,
                         message: artist.map { "\($0): \(title)" } ?? title,
-                        time: date.map { $0.formatted(.relative(presentation: .named)) } ?? subtitle,
+                        time: date.formatted(.relative(presentation: .named)),
                         thumbnail: ActivityJSON.lastThumbnail(ActivityJSON.first("thumbnails", in: row["thumbnailRenderer"]).map { ["thumbnails": $0] }),
                         route: .album(browseId: album),
                         isRead: seen.contains(itemId)
@@ -110,7 +109,12 @@ enum ReleaseFeed {
 /// gives no dates, and the release keeps YouTube's year.
 enum DeezerDates {
     private struct Search: Decodable {
-        struct Artist: Decodable { let id: Int; let name: String }
+        struct Artist: Decodable {
+            let id: Int
+            let name: String
+            let fans: Int?
+            enum CodingKeys: String, CodingKey { case id, name, fans = "nb_fan" }
+        }
         let data: [Artist]?
     }
 
@@ -129,9 +133,10 @@ enum DeezerDates {
         search.queryItems = [URLQueryItem(name: "q", value: artist), URLQueryItem(name: "limit", value: "5")]
         guard let searchURL = search.url,
               let found: Search = await fetch(searchURL),
-              // Only the same name: a near match would date another artist's albums.
-              // Compared by `key`, because YouTube pads some names with invisible characters.
-              let match = found.data?.first(where: { key($0.name) == key(artist) }),
+              // Only the same name, compared by `key` because YouTube pads some names with
+              // invisible characters. Several artists can share it: the most followed is
+              // almost always the right one.
+              let match = found.data?.filter({ key($0.name) == key(artist) }).max(by: { ($0.fans ?? 0) < ($1.fans ?? 0) }),
               let albumsURL = URL(string: "https://api.deezer.com/artist/\(match.id)/albums?limit=100"),
               let albums: Albums = await fetch(albumsURL) else { return [:] }
 
