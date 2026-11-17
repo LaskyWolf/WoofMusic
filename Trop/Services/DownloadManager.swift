@@ -550,6 +550,8 @@ extension DownloadManager {
 
             downloads[videoId] = .completed
             lastReportedProgress.removeValue(forKey: videoId)
+            // One tap when the last download of a batch ends, not one per song.
+            if !downloads.values.contains(where: { if case .downloading = $0 { true } else { false } }) { Haptics.success() }
             let totalElapsed = CFAbsoluteTimeGetCurrent() - downloadStart
             Log.downloadManager.debug("DONE \(String(format: "%.1f", totalElapsed))s total: \(artist) - \(song.title)")
         } catch {
@@ -566,6 +568,7 @@ extension DownloadManager {
                 try? fileManager.removeItem(at: fileURL)
             }
             downloads[videoId] = .failed(userFacingDownloadError(error))
+            Haptics.error()
             lastReportedProgress.removeValue(forKey: videoId)
             let reason: String
             if case .invalidAudio(let detail)? = error as? DownloadError {

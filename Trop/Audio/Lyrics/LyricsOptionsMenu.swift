@@ -17,7 +17,7 @@ struct LyricsOptionsMenu<MenuLabel: View>: View {
     private let np = NowPlaying.shared
 
     private enum Sheet: Identifiable {
-        case edit, search, offset
+        case edit, search, offset, translation
         var id: Self { self }
     }
 
@@ -46,6 +46,10 @@ struct LyricsOptionsMenu<MenuLabel: View>: View {
                 Toggle(isOn: $settings.romanizeCurrentTrack) {
                     Label("Romanize Current Track", systemImage: "globe")
                 }
+                Button { sheet = .translation } label: {
+                    Label("Translate Lyrics…", systemImage: "character.bubble")
+                    Text(translationDescription)
+                }
                 // Stays enabled: turning it on is what looks for word-timed lyrics.
                 Toggle(isOn: $karaokeEnabled) {
                     Label("Karaoke", systemImage: "music.mic")
@@ -62,6 +66,8 @@ struct LyricsOptionsMenu<MenuLabel: View>: View {
             switch sheet {
             case .offset:
                 LyricsOffsetSheet()
+            case .translation:
+                LyricsTranslationSheet()
             case .edit:
                 EditLyricsSheet(videoId: np.videoId ?? "", songTitle: np.title)
             case .search:
@@ -77,6 +83,12 @@ struct LyricsOptionsMenu<MenuLabel: View>: View {
             guard isOn, let videoId = np.videoId else { return }
             Task { await LyricsService.shared.requestWordTiming(videoId: videoId) }
         }
+    }
+
+    /// "Off", or the language the lines are translated into.
+    private var translationDescription: String {
+        guard settings.translateLyrics else { return "Off" }
+        return LyricsTranslationSheet.name(of: settings.translateLanguage)
     }
 
     /// "Off", or a signed value like "+1.5s".
@@ -101,6 +113,61 @@ struct LyricsOptionsMenu<MenuLabel: View>: View {
                 UIPasteboard.general.string = text
             }
         }
+    }
+}
+
+/// Turns lyric translation on and picks its language. The translation takes the
+/// place of the romanized line under each lyric.
+struct LyricsTranslationSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.settingsStore) private var settingsStore
+
+    /// The language's own name in the device language; "Device Language" for the empty id.
+    static func name(of id: String) -> String {
+        id.isEmpty ? "Device Language" : (Locale.current.localizedString(forIdentifier: id) ?? id)
+    }
+
+    var body: some View {
+        @Bindable var settings = settingsStore
+
+        NavigationStack {
+            List {
+                Section {
+                    Toggle("Translate Lyrics", isOn: $settings.translateLyrics)
+                } footer: {
+                    Text("Each line is translated on this iPhone and shown in place of the romanized line.")
+                }
+
+                Section("Translate to") {
+                    ForEach([""] + SettingsStore.translationLanguages, id: \.self) { id in
+                        Button {
+                            Haptics.selection()
+                            settings.translateLanguage = id
+                        } label: {
+                            HStack {
+                                Text(Self.name(of: id))
+                                    .foregroundStyle(.primary)
+                                Spacer()
+                                if settings.translateLanguage == id {
+                                    Image(systemName: "checkmark")
+                                        .foregroundStyle(settingsStore.accentColor)
+                                }
+                            }
+                            .contentShape(Rectangle())
+                        }
+                    }
+                }
+                .disabled(!settings.translateLyrics)
+            }
+            .navigationTitle("Translate Lyrics")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Done") { dismiss() }
+                }
+            }
+        }
+        .appSheetChrome([.medium, .large])
     }
 }
 

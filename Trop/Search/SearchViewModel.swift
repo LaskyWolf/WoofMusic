@@ -307,9 +307,9 @@ final class SearchViewModel {
         let query = fieldText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty else { return }
 
-        // A pasted YouTube, YouTube Music or Shazam link opens instead of being searched for.
-        if let url = URL(string: query), let link = MusicLink(link: url) {
-            MusicLinkOpener.openShowingProblem(link)
+        // A pasted YouTube, YouTube Music, Shazam, Spotify or Apple Music link opens instead of being searched for.
+        if let url = URL(string: query), MusicLink(link: url) != nil || MusicLink.isConvertible(url) {
+            MusicLinkOpener.openShowingProblem(url: url)
             return
         }
 

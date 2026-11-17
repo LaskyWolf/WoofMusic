@@ -25,6 +25,8 @@ actor PlaybackStateService {
     private var bankedPlayTimeMs: Int64 = 0
     /// Last song whose row is known to exist; banking runs every 5s.
     private var ensuredSongId: String?
+    /// The song's play as YouTube Music knows it, once it counts as listened.
+    private var youTubeReport: YouTubeHistoryReport?
 
     private init() {}
 
@@ -79,6 +81,7 @@ actor PlaybackStateService {
             hasRecordedPlayback = true
             await recordPlayback(videoId: videoId, playTimeMs: elapsedMs)
         }
+        if let youTubeReport { await youTubeReport.watch(upTo: elapsed) }
     }
 
     func stopTracking() async {
@@ -95,6 +98,7 @@ actor PlaybackStateService {
         let elapsed = self.elapsed
         let delta = Int64(elapsed * 1000) - bankedPlayTimeMs
         let needsHistory = elapsed >= historyDurationThreshold && !hasRecordedPlayback
+        let report = youTubeReport
         reset()
         Log.playbackState.debug("Stopped tracking videoId=\(videoId) totalElapsed=\(String(format: "%.1f", elapsed))s")
 
@@ -102,6 +106,7 @@ actor PlaybackStateService {
         if delta >= 1_000 {
             await addPlayTime(videoId: videoId, deltaMs: delta)
         }
+        if let report { await report.watch(upTo: elapsed, final: true) }
         if needsHistory {
             await recordPlayback(videoId: videoId, playTimeMs: Int64(elapsed * 1000))
         } else if elapsed < historyDurationThreshold {
@@ -177,33 +182,13 @@ actor PlaybackStateService {
             try await db.incrementPlayCount(songId: videoId, year: calendar.component(.year, from: now), month: calendar.component(.month, from: now))
             Log.playbackState.debug("Play count incremented")
 
-            let trackingUrl = await getCachedTrackingUrl(videoId: videoId)
-            if let trackingUrl {
-                Log.playbackState.debug("Sending playback to YTM for tracking")
-                Task {
-                    do {
-                        try await InnerTubeClient.tropShared.registerPlayback(trackingUrl: trackingUrl)
-                    } catch let error as URLError {
-                        // Usually offline; the play is already counted locally.
-                        if error.code != .cancelled { Log.playbackState.notice("YTM playback registration failed: \(error)") }
-                    } catch {
-                        Log.playbackState.error("YTM playback registration failed: \(error)")
-                    }
-                }
-            } else {
-                Log.playbackState.debug("No cached tracking URL for videoId=\(videoId) — skipping YTM registration")
-            }
+            let report = YouTubeHistoryReport(videoId: videoId)
+            // The next song may already be tracking: its reports are not this song's.
+            if currentVideoId == videoId { youTubeReport = report }
+            Task { await report.start(playedSeconds: Double(playTimeMs) / 1000) }
         } catch {
             Log.playbackState.error("Failed to record playback: \(error)")
         }
-    }
-
-    private func getCachedTrackingUrl(videoId: String) async -> String? {
-        if let format = try? await db.fetchOne(FormatEntity.self, key: videoId),
-           let url = format.playbackUrl {
-            return url
-        }
-        return nil
     }
 
     private func reset() {
@@ -213,5 +198,6 @@ actor PlaybackStateService {
         isTracking = false
         hasRecordedPlayback = false
         bankedPlayTimeMs = 0
+        youTubeReport = nil
     }
 }

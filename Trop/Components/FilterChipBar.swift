@@ -22,6 +22,7 @@ struct FilterChipBar<Item, ID: Hashable>: View {
             HStack(spacing: 8) {
                 ForEach(items, id: id) { item in
                     Button {
+                        Haptics.selection()
                         onTap(item)
                     } label: {
                         Text(title(item))

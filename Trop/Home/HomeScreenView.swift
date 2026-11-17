@@ -111,9 +111,12 @@ struct HomeScreenView: View {
                 } else {
                     // Keyed by section id, so a new section fades in instead of popping in.
                     ForEach(viewModel.homeSections) { section in
-                        sectionView(for: section)
-                            .transition(.opacity.combined(with: .offset(y: 24)))
-                            .onAppear { loadMoreWhenNearEnd(section) }
+                        VStack(spacing: 0) {
+                            sectionView(for: section)
+                            if case .keepListening = section { MixesRow() }
+                        }
+                        .transition(.opacity.combined(with: .offset(y: 24)))
+                        .onAppear { loadMoreWhenNearEnd(section) }
                     }
                 }
 
@@ -429,7 +432,7 @@ private struct QuickPickCard: View {
                             .foregroundStyle(.white)
                             .lineLimit(1)
                         Spacer(minLength: 0)
-                        DownloadedBadge(videoId: song.videoId, onArtwork: true)
+                        DownloadedBadge(videoId: song.videoId)
                     }
                     .padding(.horizontal, 8)
                     .padding(.bottom, 6)

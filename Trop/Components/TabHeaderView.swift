@@ -7,7 +7,7 @@
 
 import SwiftUI
 
-/// Shared large-title header with history and account buttons, used by the
+/// Shared large-title header with notifications, history and account buttons, used by the
 /// four tabs. `path` is the tab's navigation stack.
 struct TabHeaderView: View {
     @Environment(SettingsStore.self) private var settings
@@ -18,6 +18,7 @@ struct TabHeaderView: View {
     var onAdd: (() -> Void)?
     /// Shows the Incognito button when set (Search).
     var incognito: Binding<Bool>?
+    private let activity = ActivityStore.shared
 
     var body: some View {
         HStack(alignment: .center) {
@@ -53,6 +54,19 @@ struct TabHeaderView: View {
                     .sensoryFeedback(.selection, trigger: incognito.wrappedValue)
                 }
 
+                if account.isLoggedIn {
+                    Button { path.append(DetailRoute.activity) } label: {
+                        Image(systemName: "bell")
+                            .font(.title3)
+                            .foregroundStyle(.secondary)
+                            .frame(width: 36, height: 36)
+                            .overlay(alignment: .topTrailing) { unseenBadge }
+                            .tapArea(outset: 4)
+                    }
+                    .buttonStyle(IconPressStyle())
+                    .accessibilityLabel(activity.unseen > 0 ? "Notifications, \(activity.unseen) new" : "Notifications")
+                }
+
                 Button { path.append(DetailRoute.history) } label: {
                     Image(systemName: "clock.arrow.circlepath")
                         .font(.title3)
@@ -73,6 +87,21 @@ struct TabHeaderView: View {
         }
         .padding(.horizontal, DesignTokens.screenHPadding)
         .padding(.vertical, 8)
+    }
+
+    @ViewBuilder
+    private var unseenBadge: some View {
+        if activity.unseen > 0 {
+            Text(activity.unseen > 9 ? "9+" : "\(activity.unseen)")
+                .font(.caption2.bold().monospacedDigit())
+                .foregroundStyle(.white)
+                .padding(.horizontal, 4)
+                .frame(minWidth: 16, minHeight: 16)
+                .background(settings.accentColor, in: .capsule)
+                .offset(x: 2, y: -2)
+                .transition(.scale.combined(with: .opacity))
+                .accessibilityHidden(true)
+        }
     }
 }
 

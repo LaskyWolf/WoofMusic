@@ -11,8 +11,7 @@ enum SignedInnerTube {
     enum Failure: Error { case notSignedIn }
 
     @discardableResult
-    static func post(_ endpoint: String, _ payload: [String: Any]) async throws -> Data {
-        let client = InnerTubeClient.tropShared
+    static func post(_ endpoint: String, _ payload: [String: Any], on client: InnerTubeClient = .tropShared) async throws -> Data {
         let config = await client.config
         let auth = await client.currentAuth()
         guard let sapisid = auth.sapisid, !auth.cookies.isEmpty else { throw Failure.notSignedIn }
@@ -31,11 +30,45 @@ enum SignedInnerTube {
         var body = payload
         body["context"] = ["client": clientContext, "user": user]
 
-        let origin = config.service.origin
         var request = URLRequest(url: config.service.baseURL.appendingPathComponent(endpoint))
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("1", forHTTPHeaderField: "X-Goog-Api-Format-Version")
+        sign(&request, config: config, auth: auth, sapisid: sapisid)
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse else { throw InnerTubeError.invalidResponse }
+        guard (200 ... 299).contains(http.statusCode) else {
+            throw InnerTubeError.httpError(statusCode: http.statusCode, data: data)
+        }
+        return data
+    }
+
+    /// Opens one of the addresses YouTube gives for reporting playback, as the signed-in user.
+    /// They carry the sign-in, so they only go to YouTube itself and never follow a redirect.
+    static func ping(_ address: String, _ values: [String: String]) async throws {
+        let client = InnerTubeClient.tropShared
+        let config = await client.config
+        let auth = await client.currentAuth()
+        guard let sapisid = auth.sapisid, !auth.cookies.isEmpty else { throw Failure.notSignedIn }
+        guard var components = URLComponents(string: address), components.scheme == "https",
+              let host = components.host, host == "youtube.com" || host.hasSuffix(".youtube.com") else {
+            throw URLError(.badURL)
+        }
+        let added = values.merging(["ver": "2", "c": config.defaultClient.clientName]) { first, _ in first }
+        components.queryItems = (components.queryItems ?? []).filter { added[$0.name] == nil }
+            + added.map { URLQueryItem(name: $0.key, value: $0.value) }
+        guard let url = components.url else { throw URLError(.badURL) }
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 15
+        sign(&request, config: config, auth: auth, sapisid: sapisid)
+        _ = try await URLSession.shared.data(for: request, delegate: NoRedirects())
+    }
+
+    private static func sign(_ request: inout URLRequest, config: SwiftyTubeConfig, auth: AuthState, sapisid: String) {
+        let web = config.defaultClient
+        let origin = config.service.origin
         request.setValue("\(web.clientId)", forHTTPHeaderField: "X-YouTube-Client-Name")
         request.setValue(web.clientVersion, forHTTPHeaderField: "X-YouTube-Client-Version")
         request.setValue(origin, forHTTPHeaderField: "X-Origin")
@@ -47,13 +80,19 @@ enum SignedInnerTube {
         if let visitorData = auth.visitorData {
             request.setValue(visitorData, forHTTPHeaderField: "X-Goog-Visitor-Id")
         }
-        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+    }
+}
 
-        let (data, response) = try await URLSession.shared.data(for: request)
-        guard let http = response as? HTTPURLResponse else { throw InnerTubeError.invalidResponse }
-        guard (200 ... 299).contains(http.statusCode) else {
-            throw InnerTubeError.httpError(statusCode: http.statusCode, data: data)
-        }
-        return data
+/// Answers a redirect with "no", so a reporting address never hands the sign-in to another host.
+private final class NoRedirects: NSObject, URLSessionTaskDelegate {
+    // The completion-handler form: the async one crashes the compiler's Objective-C bridging.
+    func urlSession(
+        _ session: URLSession,
+        task: URLSessionTask,
+        willPerformHTTPRedirection response: HTTPURLResponse,
+        newRequest request: URLRequest,
+        completionHandler: @escaping (URLRequest?) -> Void
+    ) {
+        completionHandler(nil)
     }
 }

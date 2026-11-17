@@ -80,9 +80,17 @@ final class AccountState {
         }
     }
 
+    /// Signed in, once the session saved on the iPhone has been read back. At
+    /// launch `isLoggedIn` is still false while that happens.
+    func isSignedInAfterRestore() async -> Bool {
+        await loginModel.waitForRestore()
+        return loginModel.isLoggedIn
+    }
+
     private func startAccountWork() {
         isLoginSheetPresented = false
         hasAttemptedTokenRefresh = false
+        Task { await ActivityNotifier.checkNow() }
         Task { await fetchAccountInfo() }
         // Here and not in a tab, so the library syncs whichever tab opens first.
         Task { await SyncBridge.checkAndSyncIfStale() }
@@ -279,8 +287,10 @@ final class AccountState {
         SearchViewModel.forgetRecency()
         LastFMTokenStore.shared.reloadForActiveProfile()
         ListenBrainz.shared.reloadForActiveProfile()
+        Odesli.shared.reloadForActiveProfile()
         DiscordRpcManager.shared.reloadForActiveProfile()
         AppRouter.shared.closeAllPages()
+        ActivityStore.shared.reset()
         generation += 1
         WidgetSync.shared.clearProfileData()
         WidgetSync.shared.syncAll()

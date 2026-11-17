@@ -50,6 +50,7 @@ struct ProgressBar: View {
                         // Tell the parent once per drag, then just move the bar.
                         if !didStartEditing {
                             didStartEditing = true
+                            Haptics.selection()
                             onEditingChanged(true)
                         }
                         let percent = width > 0 ? max(0, min(1, value.location.x / width)) : 0
@@ -57,6 +58,7 @@ struct ProgressBar: View {
                     }
                     .onEnded { _ in
                         didStartEditing = false
+                        Haptics.selection()
                         onEditingChanged(false)
                     }
             )
@@ -176,6 +178,7 @@ struct PlaybackControlsRow: View {
         HStack(spacing: 24) {
             Button {
                 previousAnimation &+= 1
+                Haptics.impact()
                 onPrevious()
             } label: {
                 AnimatedSkipLabel(backwards: true, trigger: previousAnimation)
@@ -186,7 +189,7 @@ struct PlaybackControlsRow: View {
             .opacity(hasPrevious ? 1 : 0.3)
             .accessibilityLabel("Previous")
 
-            PlayerPlayPauseButton(isPlaying: isPlaying, action: onPlayPause)
+            PlayerPlayPauseButton(isPlaying: isPlaying, action: { Haptics.impact(); onPlayPause() })
                 // Turns edge-on, like a coin, while the stand-in turns face-up in its place.
                 .rotation3DEffect(.degrees(hidesPlayPause ? -90 : 0), axis: (x: 0, y: 1, z: 0), perspective: 0.5)
                 .opacity(hidesPlayPause ? 0 : 1)
@@ -194,6 +197,7 @@ struct PlaybackControlsRow: View {
 
             Button {
                 nextAnimation &+= 1
+                Haptics.impact()
                 onNext()
             } label: {
                 AnimatedSkipLabel(backwards: false, trigger: nextAnimation)
@@ -225,6 +229,7 @@ struct SecondaryActionsRow: View {
     @Binding var showQueue: Bool
     @Binding var isRepeatOn: Bool
     var showLyrics: Binding<Bool>? = nil
+    var showComments: Binding<Bool>? = nil
 
     var body: some View {
         HStack(spacing: 0) {
@@ -241,6 +246,22 @@ struct SecondaryActionsRow: View {
                 }
                 .buttonStyle(IconPressStyle(disc: .white))
                 .accessibilityLabel(showLyrics.wrappedValue ? "Close lyrics" : "Open lyrics")
+                .frame(maxWidth: .infinity)
+            }
+
+            if let showComments {
+                Button {
+                    showComments.wrappedValue.toggle()
+                } label: {
+                    Image(systemName: showComments.wrappedValue ? "text.bubble.fill" : "text.bubble")
+                        .font(.title3)
+                        .foregroundStyle(showComments.wrappedValue ? .white : .white.opacity(0.7))
+                        .glyphMotion(showComments.wrappedValue ? .bubblePop : nil, trigger: showComments.wrappedValue)
+                        .frame(width: 44, height: 44)
+                        .background(showComments.wrappedValue ? Circle().fill(.white.opacity(0.15)) : Circle().fill(.clear))
+                }
+                .buttonStyle(IconPressStyle(disc: .white))
+                .accessibilityLabel(showComments.wrappedValue ? "Close comments" : "Open comments")
                 .frame(maxWidth: .infinity)
             }
 

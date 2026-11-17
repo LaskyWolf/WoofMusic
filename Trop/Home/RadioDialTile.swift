@@ -20,10 +20,10 @@ struct RadioDialTile: View {
     @State private var savedProgress: Double = 0
     @State private var isStarting = false
 
-    static let size = CGSize(width: 170, height: 258)
+    static let size = CGSize(width: 150, height: 248)
     static let radius: CGFloat = 18
     static let inset: CGFloat = 12
-    static let artSize: CGFloat = 120
+    static let artSize: CGFloat = NewReleaseCard.coverSize
     static let podcastEpisodeType = "MUSIC_VIDEO_TYPE_PODCAST_EPISODE"
 
     init(podcast: PodcastItem, onOpen: @escaping () -> Void) {
@@ -43,7 +43,7 @@ struct RadioDialTile: View {
         let current = isCurrent
 
         Button(action: onOpen) {
-            DialCard(colors: colors, size: Self.size, progress: current ? nil : savedProgress) {
+            DialCard(colors: colors, size: Self.size, progress: current ? nil : savedProgress, playSize: NewReleaseCard.playSize) {
                 content(isCurrent: current)
             }
         }
@@ -51,7 +51,7 @@ struct RadioDialTile: View {
         .cardMenu(for: .podcast(podcast))
         // On top of the card rather than inside its button, so its taps never open the page.
         .overlay(alignment: .bottomTrailing) {
-            DialPlayButton(isCurrent: current, isStarting: isStarting, action: playTapped)
+            DialPlayButton(isCurrent: current, isStarting: isStarting, size: NewReleaseCard.playSize, action: playTapped)
                 .padding(Self.inset)
         }
         // The fixed card height holds the text up to this size.
@@ -68,18 +68,16 @@ struct RadioDialTile: View {
 
     @ViewBuilder
     private func content(isCurrent: Bool) -> some View {
-        HStack {
-            if isCurrent && np.isPlaying { OnAirBadge() }
-        }
-        .frame(maxWidth: .infinity, minHeight: 16, alignment: .leading)
-        .padding(.bottom, 6)
-
         AsyncImageView(url: podcast.thumbnailUrl)
             .frame(width: Self.artSize, height: Self.artSize)
             .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
             .coverZoomSource(YTItemRouter.detailRoute(for: .podcast(podcast)))
+            .overlay(alignment: .topLeading) {
+                // Over the cover, so the card keeps the album card's top padding.
+                if isCurrent && np.isPlaying { OnAirBadge().padding(6) }
+            }
             .shadow(color: .black.opacity(0.35), radius: 6, x: 2, y: 4)
-            .frame(maxWidth: .infinity)
+            .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.bottom, 8)
 
         Text(podcast.title)
@@ -156,6 +154,8 @@ struct DialCard<Content: View>: View {
     var size: CGSize?
     /// Needle position; nil follows the playing episode live.
     let progress: Double?
+    /// Room kept for the play button.
+    var playSize = NewReleaseCard.buttonSize
     @ViewBuilder let content: () -> Content
 
     var body: some View {
@@ -170,7 +170,7 @@ struct DialCard<Content: View>: View {
                 TuningScale(progress: progress)
                 // Room for the play button, which sits on top of the card.
                 Color.clear
-                    .frame(width: NewReleaseCard.buttonSize, height: NewReleaseCard.buttonSize)
+                    .frame(width: playSize, height: playSize)
             }
         }
         .padding(RadioDialTile.inset)
@@ -189,13 +189,15 @@ struct DialPlayButton: View {
     let isCurrent: Bool
     /// The tile is loading what it will play; shows a spinner after `PlayPauseGlyph.spinnerDelay`.
     let isStarting: Bool
+    let size: CGFloat
     let action: () -> Void
 
     @State private var showsSpinner = false
 
-    init(isCurrent: Bool, isStarting: Bool = false, action: @escaping () -> Void) {
+    init(isCurrent: Bool, isStarting: Bool = false, size: CGFloat = NewReleaseCard.buttonSize, action: @escaping () -> Void) {
         self.isCurrent = isCurrent
         self.isStarting = isStarting
+        self.size = size
         self.action = action
     }
 
@@ -204,12 +206,12 @@ struct DialPlayButton: View {
 
         Button(action: action) {
             if isCurrent {
-                PlayPauseGlyph(isPlaying: np.isPlaying, size: 16, color: .white)
-                    .frame(width: NewReleaseCard.buttonSize, height: NewReleaseCard.buttonSize)
+                PlayPauseGlyph(isPlaying: np.isPlaying, size: size * 0.42, color: .white)
+                    .frame(width: size, height: size)
                     .background(Circle().fill(SettingsStore.shared.accentColor))
                     .contentShape(Circle())
             } else {
-                NewReleaseCard.roundIcon("play.fill", fill: SettingsStore.shared.accentColor, foreground: .white, isBusy: showsSpinner)
+                NewReleaseCard.roundIcon("play.fill", fill: SettingsStore.shared.accentColor, foreground: .white, isBusy: showsSpinner, size: size)
             }
         }
         .buttonStyle(ZoomPressStyle(scale: 0.92))

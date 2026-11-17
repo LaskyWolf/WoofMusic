@@ -36,9 +36,10 @@ It plays without ads and mixes songs like a DJ.
 - Library sync, playlist editing, offline downloads and multi-select
 - Listen Together rooms that work with Metrolist
 - Synced lyrics from five providers, translated on the device
-- Several Google accounts, search, activity inbox and Incognito mode
+- Several Google accounts, search and Incognito mode
+- Notifications for new releases from the artists you follow
 - Widgets, Siri and Shortcuts, Last.fm, ListenBrainz and Discord
-- Opens YouTube, YouTube Music and Shazam links from any app
+- Opens YouTube, YouTube Music and Shazam links from any app, and Spotify and Apple Music links with an Odesli API key
 
 ## Speed
 
@@ -53,6 +54,9 @@ It plays without ads and mixes songs like a DJ.
 - SponsorBlock receives the ID of each song you play. Turn off the non-music skip in Settings to stop that.
 - Lyrics providers receive the title and artist of songs they look up.
 - YouTube Music receives each play while you are signed in, so it appears in your history.
+- Deezer receives the names of the artists you follow, to date their new releases.
+- Odesli receives the Spotify and Apple Music links you open, only after you add an API key.
+- To check whether a user video is a YouTube Short, youtube.com receives its ID.
 - Last.fm, ListenBrainz and Discord receive what you play only after you connect them.
 - The log file stays on the iPhone until you share it from Settings.
 

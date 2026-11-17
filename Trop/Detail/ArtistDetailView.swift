@@ -124,6 +124,13 @@ extension ArtistDetailViewModel {
                     }
                 }
 
+                // musicDescriptionShelfRenderer is the "About" shelf; it beats the microformat text.
+                if let shelf = sectionDict["musicDescriptionShelfRenderer"] as? [String: Any],
+                   let about = InnerTubeJSON.runsText(shelf["description"] as? [String: Any]),
+                   !about.isEmpty {
+                    descriptionText = about
+                }
+
                 // musicCarouselShelfRenderer holds albums, singles, videos,
                 // playlists and related artists — classified per shelf below.
                 if let carousel = sectionDict["musicCarouselShelfRenderer"] as? [String: Any],

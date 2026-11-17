@@ -24,15 +24,30 @@ enum MusicLinkOpener {
         case .podcast(let browseId): router.open(.podcast(browseId: browseId))
         case .shazam(let url): return await playShazam(url)
         case nil:
-            return MusicLinkProblem(message: "Woof Music opens YouTube and YouTube Music links to songs, playlists, albums, artists and podcasts, and Shazam links to songs.")
+            return MusicLinkProblem(message: """
+                Woof Music opens YouTube and YouTube Music links to songs, playlists, albums, artists and podcasts, \
+                Shazam links to songs, and Spotify and Apple Music links through Odesli.
+                """)
         }
         return nil
     }
 
+    /// Like `open(_:)`, but Spotify and Apple Music links go through Odesli first.
+    static func open(url: URL?) async -> MusicLinkProblem? {
+        guard let url else { return await open(nil) }
+        if let link = MusicLink(link: url) { return await open(link) }
+        guard MusicLink.isConvertible(url) else { return await open(nil) }
+        do {
+            return await open(try await Odesli.shared.convert(url))
+        } catch {
+            return MusicLinkProblem(message: error.localizedDescription)
+        }
+    }
+
     /// For woofmusic:// links, where nothing else can show the problem.
-    static func openShowingProblem(_ link: MusicLink?) {
+    static func openShowingProblem(url: URL?) {
         Task {
-            guard let problem = await open(link) else { return }
+            guard let problem = await open(url: url) else { return }
             let alert = UIAlertController(title: "Couldn't open this link", message: problem.message, preferredStyle: .alert)
             alert.addAction(UIAlertAction(title: "OK", style: .cancel))
             topViewController()?.present(alert, animated: true)

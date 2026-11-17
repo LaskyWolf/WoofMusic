@@ -232,10 +232,29 @@ enum RecapService {
     /// The account's YouTube Music history inside `interval`; empty when signed
     /// out or offline. It covers plays on other devices too.
     static func remoteHistory(in interval: DateInterval, calendar: Calendar, now: Date = Date()) async -> [RemotePlay] {
-        guard let json = try? await InnerTubeClient.tropShared.browse(browseId: "FEmusic_history") else { return [] }
-        return HistoryViewModel.parseRemoteHistory(from: json).flatMap { shelf -> [RemotePlay] in
+        await remoteShelves.value().flatMap { shelf -> [RemotePlay] in
             guard let date = shelfDate(shelf.title, now: now, calendar: calendar), interval.contains(date) else { return [] }
             return shelf.songs.map { RemotePlay(song: $0, date: date) }
+        }
+    }
+
+    private static let remoteShelves = RemoteShelves()
+
+    /// YouTube Music's history without Shorts, kept 15 minutes: the stats widget
+    /// asks on every song change, and the history changes far less often.
+    private actor RemoteShelves {
+        private var cached: (at: Date, shelves: [(title: String, songs: [SongItem])])?
+        private static let lifetime: TimeInterval = 15 * 60
+
+        func value() async -> [(title: String, songs: [SongItem])] {
+            if let cached, Date().timeIntervalSince(cached.at) < Self.lifetime { return cached.shelves }
+            guard let json = try? await InnerTubeClient.tropShared.browse(browseId: "FEmusic_history") else { return [] }
+            var shelves = HistoryViewModel.parseRemoteHistory(from: json)
+            for index in shelves.indices {
+                shelves[index].songs = await Shorts.removing(from: shelves[index].songs)
+            }
+            cached = (Date(), shelves)
+            return shelves
         }
     }
 

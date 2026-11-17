@@ -62,6 +62,9 @@ import Combine
             }
         }
 
+        /// Waits for `restoreSessionIfPresent` to finish.
+        func waitForRestore() async { await loadTask?.value }
+
         func restoreSessionIfPresent() {
             loadTask?.cancel()
             loadTask = Task { [weak self] in

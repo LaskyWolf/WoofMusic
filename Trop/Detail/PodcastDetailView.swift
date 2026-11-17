@@ -679,7 +679,7 @@ private struct CurrentEpisodeCard: View {
                     HStack(spacing: 4) {
                         EpisodeStatusTag(isCurrent: isCurrent, saved: saved)
                         Spacer(minLength: 0)
-                        DownloadedBadge(videoId: episode.videoId, onArtwork: true)
+                        DownloadedBadge(videoId: episode.videoId)
                             .id(episode.videoId)
                     }
                     Text(episode.title)
@@ -778,7 +778,7 @@ private struct EpisodeDialTile: View {
         HStack(spacing: 4) {
             EpisodeStatusTag(isCurrent: isCurrent, saved: saved)
             Spacer(minLength: 0)
-            DownloadedBadge(videoId: episode.videoId, onArtwork: true)
+            DownloadedBadge(videoId: episode.videoId)
             if episode.duration > 0 {
                 Text(episode.duration.formattedDuration)
                     .font(.caption2.weight(.semibold))

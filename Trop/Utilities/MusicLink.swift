@@ -5,6 +5,14 @@
 
 import Foundation
 
+private struct OdesliResponse: Decodable {
+    struct Platform: Decodable {
+        let url: String
+    }
+
+    let linksByPlatform: [String: Platform]
+}
+
 /// A YouTube or YouTube Music link, read from its text alone, with no network call.
 enum MusicLink: Equatable {
     case song(videoId: String)
@@ -17,10 +25,35 @@ enum MusicLink: Equatable {
 
     /// Reads woofmusic://open?url=<encoded link>.
     init?(openURL: URL) {
-        guard let items = URLComponents(url: openURL, resolvingAgainstBaseURL: false)?.queryItems,
-              let value = items.first(where: { $0.name == "url" })?.value,
-              let link = URL(string: value) else { return nil }
+        guard let link = Self.wrappedLink(in: openURL) else { return nil }
         self.init(link: link)
+    }
+
+    /// The link inside woofmusic://open?url=<encoded link>.
+    static func wrappedLink(in openURL: URL) -> URL? {
+        URLComponents(url: openURL, resolvingAgainstBaseURL: false)?.queryItems?
+            .first { $0.name == "url" }?.value
+            .flatMap(URL.init(string:))
+    }
+
+    /// True for Spotify and Apple Music links. Only these may go to Odesli, so
+    /// other links the user shares stay on the iPhone.
+    static func isConvertible(_ link: URL) -> Bool {
+        guard let parts = URLComponents(url: link, resolvingAgainstBaseURL: false),
+              ["http", "https"].contains(parts.scheme?.lowercased()) else { return false }
+        return ["open.spotify.com", "music.apple.com", "geo.music.apple.com"].contains(parts.host?.lowercased())
+    }
+
+    /// The YouTube link in an Odesli reply, preferring YouTube Music.
+    init?(odesliResponse: Data) {
+        guard let links = try? JSONDecoder().decode(OdesliResponse.self, from: odesliResponse).linksByPlatform else { return nil }
+        for platform in ["youtubeMusic", "youtube"] {
+            if let url = links[platform].flatMap({ URL(string: $0.url) }), let link = MusicLink(link: url) {
+                self = link
+                return
+            }
+        }
+        return nil
     }
 
     init?(link: URL) {
