@@ -11,8 +11,7 @@ enum SignedInnerTube {
     enum Failure: Error { case notSignedIn }
 
     @discardableResult
-    static func post(_ endpoint: String, _ payload: [String: Any]) async throws -> Data {
-        let client = InnerTubeClient.tropShared
+    static func post(_ endpoint: String, _ payload: [String: Any], on client: InnerTubeClient = .tropShared) async throws -> Data {
         let config = await client.config
         let auth = await client.currentAuth()
         guard let sapisid = auth.sapisid, !auth.cookies.isEmpty else { throw Failure.notSignedIn }

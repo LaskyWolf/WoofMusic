@@ -134,9 +134,14 @@ final class ActivityStore {
 
     /// The inbox, grouped under YouTube's own section titles.
     static func fetchInbox() async throws -> [ActivitySection] {
+        // The music host answers with an empty popup; the inbox is the account's own, served by www.youtube.com.
+        let client = InnerTubeClient(config: .youtube)
+        await client.loadState(from: CookieStore())
+        await client.syncTropLocale()
         let data = try await SignedInnerTube.post(
             "notification/get_notification_menu",
-            ["notificationsMenuRequestType": "NOTIFICATIONS_MENU_REQUEST_TYPE_INBOX"]
+            ["notificationsMenuRequestType": "NOTIFICATIONS_MENU_REQUEST_TYPE_INBOX"],
+            on: client
         )
         let json = try JSONSerialization.jsonObject(with: data)
         let seen = seenIds
