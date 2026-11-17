@@ -2,13 +2,15 @@
 
 <img src=".github/assets/banner.svg" width="100%" alt="Woof Music: YouTube Music, native on iPhone" />
 
+P.S.: Currently under active development — bugs may occur, so stay tuned!
+
 [![iOS 26+](https://img.shields.io/badge/iOS-26%2B-black?logo=apple)](#install)
 [![SwiftUI](https://img.shields.io/badge/Swift-SwiftUI-F05138?logo=swift&logoColor=white)](Trop)
 [![Player: mpv](https://img.shields.io/badge/player-mpv-691f69)](https://mpv.io)
 [![License: GPLv3](https://img.shields.io/badge/license-GPLv3-blue)](LICENSE.txt)
 [![Release](https://img.shields.io/github/v/release/LaskyWolf/WoofMusic?include_prereleases&label=release)](https://github.com/LaskyWolf/WoofMusic/releases)
 
-**A free, open source YouTube Music client for iPhone, written in SwiftUI.**
+**A free, open source YouTube Music client for iPhone, written in SwiftUI. Based on WoofMusic (Trop fork)**
 It plays without ads and mixes songs like a DJ.
 
 <img src=".github/assets/1.png" width="31%" alt="Home" />&nbsp;
@@ -51,6 +53,8 @@ It plays without ads and mixes songs like a DJ.
 - Sleep timer with a Clock-style countdown wheel or the end of the song
 - AirPlay, a system volume bar and lock screen controls
 - Non-music parts skipped with SponsorBlock, which you can turn off
+- Improved text design, AI-powered translator (requires a token! – coming soon)
+- Support for many LRC services (BetterLyrics, lrc.red, etc.)
 
 ### Library
 - Sync of playlists, albums, artists, podcasts and liked songs with your account
