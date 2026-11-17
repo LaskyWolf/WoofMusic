@@ -2,6 +2,10 @@ name: iPhone Build
 
 on:
   workflow_dispatch:
+    inputs:
+      runner:
+        description: macOS runner label (Intel ones help when arm64 runners are busy)
+        default: macos-latest
 
 permissions:
   contents: read
@@ -16,8 +20,8 @@ env:
 jobs:
   build-ios:
     name: Build iOS IPA
-    # macos-latest: macos-26 jobs went unassigned for lack of runners. setup-xcode below picks the newest stable Xcode.
-    runs-on: macos-latest
+    # setup-xcode below picks the newest stable Xcode on whichever runner is chosen.
+    runs-on: ${{ inputs.runner || 'macos-latest' }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6.0.2

@@ -55,8 +55,9 @@ extension TropLibraryStore {
     }
 
     func applyPlaylistSync(items: [ParsedPlaylist]) async throws -> Set<String> {
+        // SwiftyTube hands over only the first 25; see `LibraryPages`.
         // Dropping "Episodes for Later" here also clears a copy saved by an older sync.
-        let items = items.filter { !PlaylistEntity.hiddenIds.contains($0.browseId) }
+        let items = await LibraryPages.allPlaylists(firstPage: items).filter { !PlaylistEntity.hiddenIds.contains($0.browseId) }
         let remoteIds = Set(items.map(\.browseId))
         try await db.write { db in
             for item in items {
@@ -93,6 +94,7 @@ extension TropLibraryStore {
     }
 
     func applyAlbumSync(items: [ParsedAlbum]) async throws -> Set<String> {
+        let items = await LibraryPages.allAlbums(firstPage: items)
         let remoteIds = Set(items.map(\.browseId))
         try await db.write { db in
             for item in items {
