@@ -26,6 +26,8 @@ struct TropLibraryStore: LibrarySyncStore {
 
 extension TropLibraryStore {
     func applyArtistSync(items: [ParsedArtist]) async throws -> Set<String> {
+        // SwiftyTube hands over only the first 25; see `LibraryPages`.
+        let items = await LibraryPages.allArtists(firstPage: items)
         let remoteIds = Set(items.map(\.browseId))
         try await db.write { db in
             for item in items {

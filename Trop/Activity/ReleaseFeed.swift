@@ -11,8 +11,8 @@ import Foundation
 /// supplies the exact day, matched by artist name and title; a release Deezer
 /// can't date stays out, since a year can't tell January from last week.
 enum ReleaseFeed {
-    /// Artists checked per refresh, and releases kept per artist.
-    private static let artistLimit = 30
+    /// A guard against an endless list, far above what anyone follows; releases kept per artist.
+    private static let artistLimit = 500
     private static let perArtist = 2
     private static let parallelism = 5
     /// Releases older than this leave the list.
@@ -24,12 +24,11 @@ enum ReleaseFeed {
     }
 
     static func items(seen: Set<String>) async -> [ActivityItem] {
-        guard let data = try? await SignedInnerTube.post("browse", ["browseId": "FEmusic_library_corpus_artists"]),
-              let json = try? JSONSerialization.jsonObject(with: data) else { return [] }
-        let artistIds = Array(browseIds(in: json, prefix: "UC").prefix(artistLimit))
+        let artistIds = await followedArtists()
 
         var all: [Release] = []
-        // A few artists at a time, so the phone doesn't open 30 connections at once.
+        // A few artists at a time, so the phone doesn't open dozens of connections at once
+        // and Deezer's limit (about 50 requests every 5 seconds) holds.
         for start in stride(from: 0, to: artistIds.count, by: parallelism) {
             let chunk = Array(artistIds[start ..< min(start + parallelism, artistIds.count)])
             let results = await withTaskGroup(of: (Int, [Release]).self) { group in
@@ -87,26 +86,14 @@ enum ReleaseFeed {
         return found
     }
 
-    /// Distinct ids with `prefix`, in the order the page lists them.
-    private static func browseIds(in node: Any, prefix: String) -> [String] {
-        var ids: [String] = []
-        func walk(_ node: Any) {
-            if let dict = node as? [String: Any] {
-                if let id = (dict["browseEndpoint"] as? [String: Any])?["browseId"] as? String,
-                   id.hasPrefix(prefix), !ids.contains(id) { ids.append(id) }
-                dict.values.forEach(walk)
-            } else if let array = node as? [Any] {
-                array.forEach(walk)
-            }
-        }
-        walk(node)
-        return ids
+    private static func followedArtists() async -> [String] {
+        Array(await LibraryPages.allArtists().map(\.browseId).prefix(artistLimit))
     }
 }
 
 /// Release days from Deezer's public API, which needs no key. Only the artist's
 /// name leaves the iPhone. Any failure (no exact name match, rate limit, offline)
-/// gives no dates, and the release keeps YouTube's year.
+/// gives no dates, and those releases stay out of the list.
 enum DeezerDates {
     private struct Search: Decodable {
         struct Artist: Decodable {
@@ -157,7 +144,23 @@ enum DeezerDates {
         String(title.lowercased().filter { $0.isLetter || $0.isNumber })
     }
 
+    private static let gate = Gate()
+
+    /// Spaces requests to stay under Deezer's limit of about 50 every 5 seconds;
+    /// past it Deezer answers with an error and that artist would get no dates.
+    private actor Gate {
+        private var next = Date.distantPast
+
+        func wait() async {
+            let now = Date()
+            let turn = max(now, next)
+            next = turn.addingTimeInterval(0.12)
+            if turn > now { try? await Task.sleep(for: .seconds(turn.timeIntervalSince(now))) }
+        }
+    }
+
     private static func fetch<T: Decodable>(_ url: URL) async -> T? {
+        await gate.wait()
         var request = URLRequest(url: url)
         request.timeoutInterval = 10
         guard let (data, response) = try? await URLSession.shared.data(for: request),
