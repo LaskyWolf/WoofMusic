@@ -16,8 +16,8 @@ env:
 jobs:
   build-ios:
     name: Build iOS IPA
-    # macos-26 has Xcode 26 preinstalled; setup-xcode below picks the latest stable.
-    runs-on: macos-26
+    # macos-latest: macos-26 jobs went unassigned for lack of runners. setup-xcode below picks the newest stable Xcode.
+    runs-on: macos-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6.0.2
