@@ -1,36 +1,37 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 560" width="1280" height="560" font-family="-apple-system,'SF Pro Display','Segoe UI',Roboto,Helvetica,Arial,sans-serif">
-<defs><radialGradient id="a" cx=".82" cy=".1" r=".9"><stop offset="0" stop-color="#0a7bff" stop-opacity=".6"/><stop offset=".55" stop-color="#0a7bff" stop-opacity=".08"/><stop offset="1" stop-color="#0a7bff" stop-opacity="0"/></radialGradient>
-<linearGradient id="c1" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ef8a5a"/><stop offset="1" stop-color="#5d1f3c"/></linearGradient>
-<linearGradient id="c2" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#6f6df0"/><stop offset="1" stop-color="#16132a"/></linearGradient>
-<linearGradient id="c3" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#3cc4b4"/><stop offset="1" stop-color="#0e3a3f"/></linearGradient>
+<defs>
+<radialGradient id="gl"><stop offset="0" stop-color="#22c55e" stop-opacity=".55"/><stop offset=".45" stop-color="#15803d" stop-opacity=".18"/><stop offset="1" stop-color="#15803d" stop-opacity="0"/></radialGradient>
+<radialGradient id="rd"><stop offset="0" stop-color="#ef4444" stop-opacity=".5"/><stop offset=".45" stop-color="#b91c1c" stop-opacity=".16"/><stop offset="1" stop-color="#b91c1c" stop-opacity="0"/></radialGradient>
+<linearGradient id="titleGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#5ef08a"/><stop offset="1" stop-color="#16a34a"/></linearGradient>
+<linearGradient id="barG" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ff6b5e"/><stop offset="1" stop-color="#b91c1c"/></linearGradient>
+<linearGradient id="ar1" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ff8a5c"/><stop offset="1" stop-color="#7a1f3d"/></linearGradient>
+<linearGradient id="ar2" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#7b7bf5"/><stop offset="1" stop-color="#1a1733"/></linearGradient>
+<linearGradient id="ar3" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#45d6c0"/><stop offset="1" stop-color="#0d3b40"/></linearGradient>
 <clipPath id="r"><rect width="1280" height="560" rx="28"/></clipPath>
 <style>
-.f{animation:f 7s ease-in-out infinite}.f2{animation:f 7s ease-in-out -2.4s infinite}.f3{animation:f 7s ease-in-out -4.6s infinite}
-@keyframes f{50%{transform:translateY(-12px)}}
-.i0,.i1,.i2,.i3,.i4{transform-box:fill-box;transform-origin:center;animation-duration:6s;animation-iteration-count:infinite}
-.i0{animation-name:pl}@keyframes pl{0%,6%,24%,100%{transform:none}11%{transform:translateX(5px) scale(1.18)}17%{transform:scale(.94)}}
-.i1{animation-name:ht}@keyframes ht{0%,26%,44%,100%{transform:none}32%{transform:scale(1.32)}38%{transform:scale(.92)}}
-.i2{animation-name:dl}@keyframes dl{0%,46%,64%,100%{transform:none}52%{transform:translateY(-7px)}58%{transform:translateY(3px) scale(1.08,.9)}}
-.i3{animation-name:rp}@keyframes rp{0%,66%{transform:none}84%,100%{transform:rotate(360deg)}}
-.i4{animation-name:mn}@keyframes mn{0%,84%,100%{transform:none}90%{transform:rotate(-16deg) scale(1.1)}96%{transform:rotate(8deg)}}
-.eq{transform-box:fill-box;transform-origin:bottom;animation:eq 1.1s ease-in-out infinite alternate}
-.eq2{animation-delay:-.4s}.eq3{animation-delay:-.8s}
-@keyframes eq{to{transform:scaleY(.45)}}
+.g1{animation:pulse 9s ease-in-out infinite alternate}
+.g2{animation:pulse 9s ease-in-out -4.5s infinite alternate}
+@keyframes pulse{to{opacity:.5}}
+.eq{transform-box:fill-box;transform-origin:bottom;animation:eq 1.15s ease-in-out infinite alternate}
+.eq2{animation-delay:-.38s}.eq3{animation-delay:-.76s}
+@keyframes eq{to{transform:scaleY(.4)}}
+.pg{transform-box:fill-box;transform-origin:left center;animation:pg 16s linear infinite}
+@keyframes pg{from{transform:scaleX(.25)}to{transform:scaleX(1)}}
 @media (prefers-reduced-motion:reduce){*{animation:none!important}}
-</style></defs>
-<g clip-path="url(#r)"><rect width="1280" height="560" fill="#0a0a0c"/><rect width="1280" height="560" fill="url(#a)"/>
-<text x="90" y="176" font-size="92" font-weight="800" fill="#fff" letter-spacing="-3">Woof Music Plus</text>
-<text x="92" y="240" font-size="32" font-weight="600" fill="#fff">YouTube Music, native on iPhone.</text>
-<text x="92" y="292" font-size="24" fill="#c7c7cc">No ads. Liquid Glass. DJ-style transitions.</text>
-<text x="92" y="328" font-size="24" fill="#c7c7cc">Downloads, synced lyrics and widgets built in.</text>
-<g fill="none" stroke="#4da3ff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
-<g transform="translate(92 406)"><circle cx="30" cy="30" r="30" fill="#ffffff14" stroke="#ffffff26" stroke-width="1"/><g transform="translate(12 12) scale(1.5)"><path class="i0" d="M8 5l11 7-11 7z"/></g></g>
-<g transform="translate(176 406)"><circle cx="30" cy="30" r="30" fill="#ffffff14" stroke="#ffffff26" stroke-width="1"/><g transform="translate(12 12) scale(1.5)"><path class="i1" d="M12 20s-7.5-4.6-7.5-10A4.3 4.3 0 0 1 12 7.4 4.3 4.3 0 0 1 19.500 10c0 5.400-7.500 10-7.500 10z"/></g></g>
-<g transform="translate(260 406)"><circle cx="30" cy="30" r="30" fill="#ffffff14" stroke="#ffffff26" stroke-width="1"/><g transform="translate(12 12) scale(1.5)"><path class="i2" d="M12 4v11M7.500 11l4.500 4.500 4.500-4.500M5 20h14"/></g></g>
-<g transform="translate(344 406)"><circle cx="30" cy="30" r="30" fill="#ffffff14" stroke="#ffffff26" stroke-width="1"/><g transform="translate(12 12) scale(1.5)"><path class="i3" d="M17 3l3 3-3 3M20 6H8a4 4 0 0 0-4 4v1M7 21l-3-3 3-3M4 18h12a4 4 0 0 0 4-4v-1"/></g></g>
-<g transform="translate(428 406)"><circle cx="30" cy="30" r="30" fill="#ffffff14" stroke="#ffffff26" stroke-width="1"/><g transform="translate(12 12) scale(1.5)"><path class="i4" d="M20 14.500A8.500 8.500 0 1 1 9.500 4a7 7 0 0 0 10.500 10.500z"/></g></g>
-</g>
-<g class="f"><g transform="translate(800 62) rotate(-5)"><rect width="360" height="112" rx="24" fill="#1c1c1e" stroke="#ffffff1c"/><rect x="12" y="12" width="88" height="88" rx="14" fill="url(#c1)"/><text x="116" y="48" font-size="19" font-weight="700" fill="#fff">Slow Harbour</text><text x="116" y="74" font-size="15" fill="#c7c7cc">Mira Vale</text><g fill="#fff"><rect class="eq" x="312" y="42" width="5" height="28" rx="2.500"/><rect class="eq eq2" x="321" y="42" width="5" height="28" rx="2.500"/><rect class="eq eq3" x="330" y="42" width="5" height="28" rx="2.500"/></g></g></g>
-<g class="f2"><g transform="translate(850 208) rotate(3)"><rect width="360" height="112" rx="24" fill="#3d3ba0" stroke="#ffffff1c"/><rect x="12" y="12" width="88" height="88" rx="14" fill="url(#c2)"/><text x="116" y="48" font-size="19" font-weight="700" fill="#fff">Night Bus Home</text><text x="116" y="74" font-size="15" fill="#d9d8f5">The Paper Lanterns</text></g></g>
-<g class="f3"><g transform="translate(790 356) rotate(-2)"><rect width="360" height="112" rx="24" fill="#12656b" stroke="#ffffff1c"/><rect x="12" y="12" width="88" height="88" rx="14" fill="url(#c3)"/><text x="116" y="48" font-size="19" font-weight="700" fill="#fff">Saltwater</text><text x="116" y="74" font-size="15" fill="#cdeeea">Juno Ash</text></g></g>
+</style>
+</defs>
+<g clip-path="url(#r)"><rect width="1280" height="560" fill="#08090a"/>
+<ellipse class="g1" cx="40" cy="510" rx="580" ry="430" fill="url(#gl)"/>
+<ellipse class="g2" cx="1250" cy="30" rx="580" ry="440" fill="url(#rd)"/>
+<g transform="translate(90 56)"><rect width="266" height="44" rx="22" fill="#ffffff10" stroke="#ffffff20"/><circle cx="26" cy="22" r="4.5" fill="#4ade80"/><text x="44" y="29" font-size="16.5" font-weight="600" fill="#dcdce2" letter-spacing="1.1">FORK OF WOOFMUSIC</text></g>
+<text x="90" y="186" font-size="82" font-weight="800" fill="#fff" letter-spacing="-3">WoofMusic <tspan fill="url(#titleGrad)">Plus</tspan></text>
+<text x="92" y="244" font-size="31" font-weight="600" fill="#fff">YouTube Music, native on iPhone.</text>
+<text x="92" y="292" font-size="22" fill="#a3a3ab">Built on WoofMusic, with lyrics, karaoke and Canvas.</text>
+<g transform="translate(90 340)"><rect width="107" height="46" rx="23" fill="#ffffff0d" stroke="#ffffff1a"/><circle cx="22" cy="23" r="4" fill="#4ade80"/><text x="38" y="29" font-size="16" font-weight="500" fill="#e8e8ec">No ads</text></g>
+<g transform="translate(209 340)"><rect width="158" height="46" rx="23" fill="#ffffff0d" stroke="#ffffff1a"/><circle cx="22" cy="23" r="4" fill="#4ade80"/><text x="38" y="29" font-size="16" font-weight="500" fill="#e8e8ec">Liquid Glass</text></g>
+<g transform="translate(90 398)"><rect width="175" height="46" rx="23" fill="#ffffff0d" stroke="#ffffff1a"/><circle cx="22" cy="23" r="4" fill="#4ade80"/><text x="38" y="29" font-size="16" font-weight="500" fill="#e8e8ec">DJ transitions</text></g>
+<g transform="translate(277 398)"><rect width="116" height="46" rx="23" fill="#ffffff0d" stroke="#ffffff1a"/><circle cx="22" cy="23" r="4" fill="#4ade80"/><text x="38" y="29" font-size="16" font-weight="500" fill="#e8e8ec">Widgets</text></g>
+<g transform="translate(740 64)"><rect width="450" height="116" rx="22" fill="#17181c" stroke="#ffffff1a"/><rect x="0" y="26" width="4" height="64" rx="2" fill="url(#barG)"/><rect x="24" y="22" width="72" height="72" rx="16" fill="url(#ar1)"/><text x="114" y="54" font-size="19" font-weight="700" fill="#fff">Neon Rain</text><text x="114" y="80" font-size="14" fill="#a3a3ab">Halcyon Drive</text><rect x="114" y="96" width="250" height="3" rx="1.5" fill="#ffffff12"/><rect class="pg" x="114" y="96" width="250" height="3" rx="1.5" fill="#ff5a4e"/><g fill="#ff5a4e"><rect class="eq" x="382" y="44" width="5" height="32" rx="2.5"/><rect class="eq eq2" x="391" y="44" width="5" height="32" rx="2.5"/><rect class="eq eq3" x="400" y="44" width="5" height="32" rx="2.5"/></g></g>
+<g transform="translate(740 196)"><rect width="450" height="116" rx="22" fill="#141518" stroke="#ffffff14"/><rect x="0" y="26" width="4" height="64" rx="2" fill="#3a3a40"/><rect x="24" y="22" width="72" height="72" rx="16" fill="url(#ar2)"/><text x="114" y="54" font-size="19" font-weight="700" fill="#f0f0f2">Paper Moons</text><text x="114" y="80" font-size="14" fill="#a3a3ab">Aiko Rey</text><text x="428" y="54" font-size="14" fill="#75757d" text-anchor="end">4:07</text><rect x="114" y="96" width="250" height="3" rx="1.5" fill="#ffffff12"/></g>
+<g transform="translate(740 328)"><rect width="450" height="116" rx="22" fill="#141518" stroke="#ffffff14"/><rect x="0" y="26" width="4" height="64" rx="2" fill="#3a3a40"/><rect x="24" y="22" width="72" height="72" rx="16" fill="url(#ar3)"/><text x="114" y="54" font-size="19" font-weight="700" fill="#f0f0f2">Halo Static</text><text x="114" y="80" font-size="14" fill="#a3a3ab">The Quiet Hours</text><text x="428" y="54" font-size="14" fill="#75757d" text-anchor="end">2:58</text><rect x="114" y="96" width="250" height="3" rx="1.5" fill="#ffffff12"/></g>
 </g></svg>
