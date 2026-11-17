@@ -24,7 +24,10 @@ enum MusicLinkOpener {
         case .podcast(let browseId): router.open(.podcast(browseId: browseId))
         case .shazam(let url): return await playShazam(url)
         case nil:
-            return MusicLinkProblem(message: "Woof Music opens YouTube and YouTube Music links to songs, playlists, albums, artists and podcasts, Shazam links to songs, and Spotify and Apple Music links through Odesli.")
+            return MusicLinkProblem(message: """
+                Woof Music opens YouTube and YouTube Music links to songs, playlists, albums, artists and podcasts, \
+                Shazam links to songs, and Spotify and Apple Music links through Odesli.
+                """)
         }
         return nil
     }
