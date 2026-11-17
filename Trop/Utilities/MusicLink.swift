@@ -55,7 +55,6 @@ enum MusicLink: Equatable {
         }
         return nil
     }
-    }
 
     init?(link: URL) {
         guard let parts = URLComponents(url: link, resolvingAgainstBaseURL: false),
