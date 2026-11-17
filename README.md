@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src=".github/assets/banner.svg" width="100%" alt="Woof Music: YouTube Music, native on iPhone" /> 
+<img src=".github/assets/banner.svg" width="100%" alt="Woof Music Plus: Better YouTube Music, native on iPhone" /> 
 
 P.S.: Currently under active development — bugs may occur, so stay tuned!
 
@@ -8,10 +8,10 @@ P.S.: Currently under active development — bugs may occur, so stay tuned!
 [![SwiftUI](https://img.shields.io/badge/Swift-SwiftUI-F05138?logo=swift&logoColor=white)](Trop)
 [![Player: mpv](https://img.shields.io/badge/player-mpv-691f69)](https://mpv.io)
 [![License: GPLv3](https://img.shields.io/badge/license-GPLv3-blue)](LICENSE.txt)
-[![Release](https://img.shields.io/github/v/release/dmitrylol/WoofMusicPlus/releases?include_prereleases&label=release)]([https://github.com/LaskyWolf/WoofMusic/releases](https://github.com/dmitrylol/WoofMusicPlus/releases))
+[![Release](https://img.shields.io/github/v/release/dmitrylol/WoofMusicPlus/releases?include_prereleases&label=release)](https://github.com/dmitrylol/WoofMusicPlus/releases)
 
-**A free, open source YouTube Music client for iPhone, written in SwiftUI. Based on WoofMusic (Trop fork)**
-It plays without ads and mixes songs like a DJ.
+**Make your YT Music experience significantly better. Based on WoofMusic (a Trop fork).**
+It plays your favorite music ad-free and mixes tracks like a DJ.
 
 <img src=".github/assets/1.png" width="31%" alt="Home" />&nbsp;
 <img src=".github/assets/2.png" width="31%" alt="Player" />&nbsp;
@@ -27,6 +27,8 @@ It plays without ads and mixes songs like a DJ.
 | --- | --- |
 | 🎧 **AutoMix** | Beat-matched transitions: the two songs share a tempo and the bass swaps on the bar. |
 | 🌊 **Smart Crossfade** | Fades into the next song where the current one winds down. |
+| 🎤 **Apple-style lyrics** | Syllable timing, letter-by-letter karaoke, translations under each line, ten sources. |
+| 📺 **Canvas** | The track's looping video behind the player: Spotify's own Canvas, or Apple's motion artwork. |
 | ⬇️ **Real downloads** | Songs, albums and playlists play offline, and a badge marks what is saved across the app. |
 | 👤 **Separate accounts** | Each Google account keeps its own library, downloads, history, Recap and linked services. |
 | 🧊 **Native iOS 26** | Liquid Glass controls, system menus and zoom transitions, with icons that move when you use them. |
@@ -45,6 +47,7 @@ It plays without ads and mixes songs like a DJ.
 ### Playback
 - Songs and podcasts from YouTube Music, with no ads
 - AutoMix follows phrases, keys and vocals, and picks a transition style for each pair of songs
+- Canvas: the track's looping video behind the player. Paste an `sp_dc` cookie from a signed-in open.spotify.com in Settings and it plays Spotify's own Canvas; without a cookie it falls back to Apple's motion artwork
 - Equalizer presets with a curve preview
 - Play Next queue, song radio and listening history, which you can search and filter by Local or YouTube Music
 - Landscape layout for the player
@@ -53,8 +56,6 @@ It plays without ads and mixes songs like a DJ.
 - Sleep timer with a Clock-style countdown wheel or the end of the song
 - AirPlay, a system volume bar and lock screen controls
 - Non-music parts skipped with SponsorBlock, which you can turn off
-- Improved text design, AI-powered translator (requires a token! – coming soon)
-- Support for many LRC services (BetterLyrics, lrc.red, etc.)
 
 ### Library
 - Sync of playlists, albums, artists, podcasts and liked songs with your account
@@ -70,9 +71,14 @@ It plays without ads and mixes songs like a DJ.
 - Members show their YouTube Music picture; Metrolist members see it as a code at the end of the name
 
 ### Lyrics
-- Synced lyrics from Musixmatch, Netease, Kugou, LRCLIB and Genius
+- Ten sources, in this order by default: Unison, Better Lyrics, lrc.red (the Binimum backend), LyricsPlus and Paxsenix, then Musixmatch, Netease, Kugou, LRCLIB and Genius. Each one can be switched off, and the order is editable
+- Word- and syllable-level timing, parsed from Apple's TTML, so a line lights up syllable by syllable, the way Apple Music does it
+- Letter-by-letter karaoke: a word without syllable timing is split by letter, with vowels holding longer than consonants. Scripts that change letter shapes when separated (Arabic, CJK, Hebrew, Thai) stay whole
+- Translations that come with the lyrics, shown under the original line, with a switch in Settings
+- Background vocals dimmed and set apart from the lead line
+- Full-screen lyrics over the cover's colours: a large single-size type, dimmed neighbouring lines, a fade at both edges and a spring on every line change
 - Offset, editing and search
-- Translation of each line into the device language or one you pick, on the device
+- Optional API keys for Better Lyrics and Paxsenix, entered in Settings → Lyrics
 
 ### Accounts and search
 - Google sign-in inside the app, with several accounts to switch between
@@ -108,6 +114,7 @@ It plays without ads and mixes songs like a DJ.
 - The app has no analytics and no server of its own. It talks to YouTube Music directly.
 - SponsorBlock receives the ID of each song you play. Turn off the non-music skip in Settings to stop that.
 - Lyrics providers receive the title and artist of songs they look up.
+- Spotify receives the IDs of the tracks it is asked about only after you paste an `sp_dc` cookie for Canvas. The cookie stays on the iPhone and is never sent anywhere but Spotify.
 - YouTube Music receives each play while you are signed in, so it appears in your history.
 - Last.fm, ListenBrainz and Discord receive what you play only after you connect them.
 - The log file stays on the iPhone until you share it from Settings.
