@@ -27,7 +27,10 @@ struct TropLibraryStore: LibrarySyncStore {
 extension TropLibraryStore {
     func applyArtistSync(items: [ParsedArtist]) async throws -> Set<String> {
         // SwiftyTube hands over only the first 25; see `LibraryPages`.
-        let items = await LibraryPages.allArtists(firstPage: items)
+        let all = await LibraryPages.allArtists(firstPage: items)
+        // An incomplete list adds and updates, but removes nothing.
+        let complete = all != nil
+        let items = all ?? items
         let remoteIds = Set(items.map(\.browseId))
         try await db.write { db in
             for item in items {
@@ -42,7 +45,7 @@ extension TropLibraryStore {
                     """, arguments: [item.browseId, item.name, item.thumbnailUrl,
                                      Date(), false, item.channelId])
             }
-            if !remoteIds.isEmpty {
+            if complete, !remoteIds.isEmpty {
                 let placeholders = DatabaseService.placeholders(count: remoteIds.count)
                 try db.execute(
                     sql: "UPDATE artist SET bookmarked_at = NULL WHERE bookmarked_at IS NOT NULL AND id NOT IN (\(placeholders))",
@@ -57,7 +60,10 @@ extension TropLibraryStore {
     func applyPlaylistSync(items: [ParsedPlaylist]) async throws -> Set<String> {
         // SwiftyTube hands over only the first 25; see `LibraryPages`.
         // Dropping "Episodes for Later" here also clears a copy saved by an older sync.
-        let items = await LibraryPages.allPlaylists(firstPage: items).filter { !PlaylistEntity.hiddenIds.contains($0.browseId) }
+        let all = await LibraryPages.allPlaylists(firstPage: items)
+        // An incomplete list adds and updates, but removes nothing.
+        let complete = all != nil
+        let items = (all ?? items).filter { !PlaylistEntity.hiddenIds.contains($0.browseId) }
         let remoteIds = Set(items.map(\.browseId))
         try await db.write { db in
             for item in items {
@@ -76,7 +82,7 @@ extension TropLibraryStore {
                 )
                 try entity.save(db)
             }
-            if !remoteIds.isEmpty {
+            if complete, !remoteIds.isEmpty {
                 try db.execute(sql: """
                     DELETE FROM playlist_song_map WHERE playlist_id IN (
                         SELECT id FROM playlist WHERE is_auto_sync = 1 AND browse_id IS NOT NULL
@@ -94,7 +100,10 @@ extension TropLibraryStore {
     }
 
     func applyAlbumSync(items: [ParsedAlbum]) async throws -> Set<String> {
-        let items = await LibraryPages.allAlbums(firstPage: items)
+        let all = await LibraryPages.allAlbums(firstPage: items)
+        // An incomplete list adds and updates, but removes nothing.
+        let complete = all != nil
+        let items = all ?? items
         let remoteIds = Set(items.map(\.browseId))
         try await db.write { db in
             for item in items {
@@ -111,7 +120,7 @@ extension TropLibraryStore {
                 )
                 try entity.save(db)
             }
-            if !remoteIds.isEmpty {
+            if complete, !remoteIds.isEmpty {
                 let placeholders = DatabaseService.placeholders(count: remoteIds.count)
                 try db.execute(
                     sql: "UPDATE album SET bookmarked_at = NULL WHERE bookmarked_at IS NOT NULL AND id NOT IN (\(placeholders))",

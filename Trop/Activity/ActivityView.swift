@@ -67,6 +67,9 @@ final class ActivityStore {
     /// Nil until the first load ends.
     private(set) var sections: [ActivitySection]?
     private var loading: Task<Void, Never>?
+    private var loadedAt: Date?
+    /// App launches and returns to the app within this reuse the last load; pull to refresh doesn't.
+    private static let freshFor: TimeInterval = 60 * 60
 
     var unseen: Int {
         sections?.reduce(0) { $0 + $1.items.count(where: { !$0.isRead }) } ?? 0
@@ -84,14 +87,36 @@ final class ActivityStore {
         if let loading { return await loading.value }
         let task = Task {
             let items = await ReleaseFeed.items(seen: Self.seenIds)
-            // An empty answer is usually a failed one (offline, signed out): keep what is shown.
-            if !items.isEmpty || sections == nil {
-                sections = items.isEmpty ? [] : [ActivitySection(title: "New releases", items: items)]
+            // A cancelled load is partial: keep what is shown.
+            guard !Task.isCancelled else { return }
+            guard let items else {
+                // Failed (offline, signed out): keep what is shown, and the next check tries again.
+                if sections == nil { sections = [] }
+                return
             }
+            sections = items.isEmpty ? [] : [ActivitySection(title: "New releases", items: items)]
+            loadedAt = Date()
         }
         loading = task
         await task.value
         loading = nil
+    }
+
+    /// `refresh`, unless the last load is under an hour old.
+    func refreshIfStale() async {
+        if let loadedAt, Date().timeIntervalSince(loadedAt) < Self.freshFor { return }
+        await refresh()
+    }
+
+    /// Stops a running load, for a background task iOS is ending.
+    func cancelLoading() { loading?.cancel() }
+
+    /// Forgets the list, for an account switch.
+    func reset() {
+        loading?.cancel()
+        loading = nil
+        sections = nil
+        loadedAt = nil
     }
 
     /// Saves the ids as seen and updates the rows, which clears them from the badge.

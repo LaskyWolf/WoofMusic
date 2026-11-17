@@ -75,6 +75,8 @@ actor CommentsService {
         do {
             return try await call(music)
         } catch {
+            // After a timeout the request may have arrived: retrying could post a comment twice.
+            if (error as? URLError)?.code == .timedOut { throw error }
             await sync(youtube)
             return try await call(youtube)
         }

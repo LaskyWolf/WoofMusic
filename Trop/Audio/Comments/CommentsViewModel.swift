@@ -46,6 +46,12 @@ final class CommentsViewModel {
         items = []
         replies = [:]
         sort = .top
+        // Left over, they would post to the previous song or load its comments.
+        createParams = nil
+        canPost = false
+        sortTokens = [:]
+        nextToken = nil
+        totalCountText = nil
         do {
             apply(try await service.loadInitial(videoId: videoId))
         } catch CommentsError.disabled {

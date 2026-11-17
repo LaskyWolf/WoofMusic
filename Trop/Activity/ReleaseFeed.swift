@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import GRDB
 
 /// New releases from the artists the user follows. YouTube Music's own bell
 /// feed is not served to this client, so the list is read from each artist's
@@ -23,71 +24,92 @@ enum ReleaseFeed {
         let date: Date
     }
 
-    static func items(seen: Set<String>) async -> [ActivityItem] {
+    /// Nil when nothing could be read (offline, signed out), as opposed to no new releases.
+    static func items(seen: Set<String>) async -> [ActivityItem]? {
         let artistIds = await followedArtists()
+        guard !artistIds.isEmpty else { return nil }
 
         var all: [Release] = []
+        var anyRead = false
         // A few artists at a time, so the phone doesn't open dozens of connections at once
         // and Deezer's limit (about 50 requests every 5 seconds) holds.
         for start in stride(from: 0, to: artistIds.count, by: parallelism) {
+            if Task.isCancelled { break }
             let chunk = Array(artistIds[start ..< min(start + parallelism, artistIds.count)])
-            let results = await withTaskGroup(of: (Int, [Release]).self) { group in
+            let results = await withTaskGroup(of: (Int, [Release]?).self) { group in
                 for (index, id) in chunk.enumerated() {
                     group.addTask { (index, await releases(ofArtist: id, seen: seen)) }
                 }
-                var collected: [(Int, [Release])] = []
+                var collected: [(Int, [Release]?)] = []
                 for await result in group { collected.append(result) }
                 return collected
             }
-            all += results.sorted { $0.0 < $1.0 }.flatMap(\.1)
+            anyRead = anyRead || results.contains { $0.1 != nil }
+            all += results.sorted { $0.0 < $1.0 }.flatMap { $0.1 ?? [] }
         }
-        return all.sorted { $0.date > $1.date }.map(\.item)
+        guard anyRead else { return nil }
+        // A collaboration shows on each artist's page: list it once.
+        var ids: Set<String> = []
+        return all.sorted { $0.date > $1.date }.map(\.item).filter { ids.insert($0.id).inserted }
     }
 
-    private static func releases(ofArtist id: String, seen: Set<String>) async -> [Release] {
+    /// Nil when the artist's page couldn't be read.
+    private static func releases(ofArtist id: String, seen: Set<String>) async -> [Release]? {
         guard let data = try? await SignedInnerTube.post("browse", ["browseId": id]),
-              let json = try? JSONSerialization.jsonObject(with: data) else { return [] }
+              let json = try? JSONSerialization.jsonObject(with: data) else { return nil }
         let header = ActivityJSON.nodes("musicImmersiveHeaderRenderer", in: json).first ?? ActivityJSON.nodes("musicVisualHeaderRenderer", in: json).first
         let artist = ActivityJSON.text(header?["title"])
         let thisYear = Calendar.current.component(.year, from: Date())
         // Last year too: a December release is still new in January.
         let years = [String(thisYear), String(thisYear - 1)]
-        var dates: [String: Date] = [:]
-        if let artist { dates = await DeezerDates.releaseDates(artist: artist) }
+
+        // This year's and last year's albums and singles, in page order.
+        let candidates = ActivityJSON.nodes("musicCarouselShelfRenderer", in: json).flatMap { shelf in
+            ActivityJSON.nodes("musicTwoRowItemRenderer", in: shelf["contents"]).compactMap { row -> (album: String, title: String, row: [String: Any])? in
+                guard let album = ActivityJSON.first("browseId", in: row["navigationEndpoint"]) as? String,
+                      album.hasPrefix("MPREb"),
+                      let subtitle = ActivityJSON.text(row["subtitle"]),
+                      years.contains(where: { subtitle.contains($0) }),
+                      let title = ActivityJSON.text(row["title"]) else { return nil }
+                return (album, title, row)
+            }
+        }
+        // Most artists have nothing recent: Deezer is asked only when there is something to date.
+        guard !candidates.isEmpty, let artist else { return [] }
+        let dates = await DeezerDates.releaseDates(artist: artist)
         let oldest = Calendar.current.date(byAdding: .day, value: -windowDays, to: Date()) ?? .distantPast
 
         var found: [Release] = []
         // An album and a single often share a title: list it once.
         var titles: Set<String> = []
-        for shelf in ActivityJSON.nodes("musicCarouselShelfRenderer", in: json) {
-            for row in ActivityJSON.nodes("musicTwoRowItemRenderer", in: shelf["contents"]) {
-                guard let album = ActivityJSON.first("browseId", in: row["navigationEndpoint"]) as? String,
-                      album.hasPrefix("MPREb"),
-                      let subtitle = ActivityJSON.text(row["subtitle"]),
-                      years.contains(where: { subtitle.contains($0) }),
-                      let title = ActivityJSON.text(row["title"]) else { continue }
-                guard let date = dates[DeezerDates.key(title)], date >= oldest,
-                      titles.insert(DeezerDates.key(title)).inserted else { continue }
-                let itemId = "release-\(album)"
-                found.append(Release(
-                    item: ActivityItem(
-                        id: itemId,
-                        message: artist.map { "\($0): \(title)" } ?? title,
-                        time: date.formatted(.relative(presentation: .named)),
-                        thumbnail: ActivityJSON.lastThumbnail(ActivityJSON.first("thumbnails", in: row["thumbnailRenderer"]).map { ["thumbnails": $0] }),
-                        route: .album(browseId: album),
-                        isRead: seen.contains(itemId)
-                    ),
-                    date: date
-                ))
-                if found.count == perArtist { return found }
-            }
+        for (album, title, row) in candidates {
+            guard let date = dates[DeezerDates.key(title)], date >= oldest,
+                  titles.insert(DeezerDates.key(title)).inserted else { continue }
+            let itemId = "release-\(album)"
+            found.append(Release(
+                item: ActivityItem(
+                    id: itemId,
+                    message: "\(artist): \(title)",
+                    time: date.formatted(.relative(presentation: .named)),
+                    thumbnail: ActivityJSON.lastThumbnail(ActivityJSON.first("thumbnails", in: row["thumbnailRenderer"]).map { ["thumbnails": $0] }),
+                    route: .album(browseId: album),
+                    isRead: seen.contains(itemId)
+                ),
+                date: date
+            ))
+            if found.count == perArtist { break }
         }
         return found
     }
 
+    /// The followed artists the library sync saved; the account's list when the
+    /// database has none yet (first launch, sync not run).
     private static func followedArtists() async -> [String] {
-        Array(await LibraryPages.allArtists().map(\.browseId).prefix(artistLimit))
+        let saved = (try? await DatabaseService.shared.read { db in
+            try String.fetchAll(db, sql: "SELECT id FROM artist WHERE bookmarked_at IS NOT NULL AND is_podcast_channel = 0")
+        }) ?? []
+        let ids = saved.isEmpty ? (await LibraryPages.allArtists() ?? []).map(\.browseId) : saved
+        return Array(ids.prefix(artistLimit))
     }
 }
 

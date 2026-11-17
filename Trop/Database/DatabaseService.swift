@@ -371,12 +371,13 @@ extension DatabaseService {
             try SongEntity.fetchAll(db, sql: """
                 SELECT song.* FROM song
                 JOIN (
-                    SELECT song_id FROM event
+                    SELECT song_id, SUM(play_time) AS played FROM event
                     WHERE timestamp > ? AND timestamp <= ?
                     GROUP BY song_id
-                    ORDER BY SUM(play_time) DESC
+                    ORDER BY played DESC
                     LIMIT ?
                 ) AS top ON song.id = top.song_id
+                ORDER BY top.played DESC
             """, arguments: [from, to, limit])
         }
     }

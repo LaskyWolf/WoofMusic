@@ -109,11 +109,8 @@ struct TropApp: App {
     }
 
     private func configureNuke() {
-        let dataCache = try? DataCache(name: "com.trop.nuke")
-        dataCache?.sizeLimit = 2 * 1024 * 1024 * 1024
-
-        var config = ImagePipeline.Configuration()
-        config.dataCache = dataCache
+        // withDataCache also turns off URLCache, which would store every image a second time.
+        var config = ImagePipeline.Configuration.withDataCache(name: "com.trop.nuke", sizeLimit: 2 * 1024 * 1024 * 1024)
         config.imageCache = ImageCache(costLimit: 100 * 1024 * 1024)
 
         ImagePipeline.shared = ImagePipeline(configuration: config)

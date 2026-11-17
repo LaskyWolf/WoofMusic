@@ -46,6 +46,9 @@ jobs:
       - name: Check app version comparison
         run: python3 scripts/check_app_version.py
 
+      - name: Check parsers
+        run: python3 scripts/check_parsers.py
+
       - name: Check player transition in Simulator
         run: python3 scripts/check_player_surface.py
 

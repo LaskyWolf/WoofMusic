@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import GRDB
 
 /// One song in the merged history: a play from this app (it has an `event`,
 /// so it can be deleted) or one only YouTube Music knows about.
@@ -79,9 +80,8 @@ final class HistoryViewModel {
     }
 
     func deleteEvents(_ events: [Event]) async {
-        for event in events {
-            _ = try? await db.delete(event)
-        }
+        let ids = events.compactMap(\.id)
+        try? await db.write { db in _ = try Event.deleteAll(db, keys: ids) }
         await loadLocal()
     }
 

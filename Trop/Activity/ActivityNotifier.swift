@@ -23,9 +23,13 @@ enum ActivityNotifier {
             scheduleRefresh()
             let work = Task {
                 await checkNow()
-                task.setTaskCompleted(success: true)
+                task.setTaskCompleted(success: !Task.isCancelled)
             }
-            task.expirationHandler = { work.cancel() }
+            // The load runs in its own task, which cancelling `work` doesn't reach.
+            task.expirationHandler = {
+                work.cancel()
+                Task { @MainActor in ActivityStore.shared.cancelLoading() }
+            }
         }
     }
 
@@ -45,8 +49,8 @@ enum ActivityNotifier {
     /// Loads the notifications, then announces each unread one not announced before.
     /// Signed out it does nothing; without permission it only loads.
     static func checkNow() async {
-        guard await AccountState.shared.isLoggedIn else { return }
-        await ActivityStore.shared.refresh()
+        guard await AccountState.shared.isSignedInAfterRestore() else { return }
+        await ActivityStore.shared.refreshIfStale()
         let center = UNUserNotificationCenter.current()
         guard await center.notificationSettings().authorizationStatus == .authorized,
               let sections = await ActivityStore.shared.sections else { return }

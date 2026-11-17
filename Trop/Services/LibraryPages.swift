@@ -12,38 +12,40 @@ enum LibraryPages {
     /// A guard against a token that never ends.
     private static let maxPages = 40
 
-    static func allArtists(firstPage: [ParsedArtist] = []) async -> [ParsedArtist] {
+    /// Nil when a page failed: the list would be incomplete.
+    static func allArtists(firstPage: [ParsedArtist] = []) async -> [ParsedArtist]? {
         await all("FEmusic_library_corpus_artists", firstPage: firstPage, parse: LibraryBrowseParser.parseArtists, id: \.browseId)
     }
 
-    static func allAlbums(firstPage: [ParsedAlbum]) async -> [ParsedAlbum] {
+    static func allAlbums(firstPage: [ParsedAlbum]) async -> [ParsedAlbum]? {
         await all("FEmusic_liked_albums", firstPage: firstPage, parse: LibraryBrowseParser.parseAlbums, id: \.browseId)
     }
 
-    static func allPlaylists(firstPage: [ParsedPlaylist]) async -> [ParsedPlaylist] {
+    static func allPlaylists(firstPage: [ParsedPlaylist]) async -> [ParsedPlaylist]? {
         await all("FEmusic_liked_playlists", firstPage: firstPage, parse: LibraryBrowseParser.parsePlaylists, id: \.browseId)
     }
 
-    /// The whole list, or `firstPage` when fetching the rest fails: a short list
-    /// would remove the missing entries from the database.
+    /// The whole list, or nil when a page fails. Callers then keep `firstPage` but
+    /// remove nothing from the database: a partial list would drop every entry it misses.
     private static func all<T>(
         _ browseId: String,
         firstPage: [T],
         parse: ([String: Any]) -> [T],
         id: KeyPath<T, String>
-    ) async -> [T] {
+    ) async -> [T]? {
         var items: [T] = []
         var seen: Set<String> = []
         var request: [String: Any] = ["browseId": browseId]
         for _ in 0 ..< maxPages {
             guard let data = try? await SignedInnerTube.post("browse", request),
-                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return firstPage }
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
             let page = parse(json).filter { seen.insert($0[keyPath: id]).inserted }
             items += page
             guard !page.isEmpty, let token = nextPageToken(in: json) else { break }
             request = ["continuation": token]
         }
-        return items.count >= firstPage.count ? items : firstPage
+        // Fewer than SwiftyTube's own first page means something was missed.
+        return items.count >= firstPage.count ? items : nil
     }
 
     static func nextPageToken(in json: Any) -> String? {
