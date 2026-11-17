@@ -141,6 +141,14 @@ struct HistoryScreenView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
+            // Older plays load when this comes on screen. YouTube Music's own history
+            // has no next page: it sends one shelf of about 40 songs.
+            if viewModel.hasMoreLocal {
+                ProgressView()
+                    .frame(maxWidth: .infinity)
+                    .listRowSeparator(.hidden)
+                    .task { await viewModel.loadMoreLocal() }
+            }
         }
         .listStyle(.plain)
         .miniPlayerTracksScroll()

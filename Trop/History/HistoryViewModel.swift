@@ -29,6 +29,11 @@ final class HistoryViewModel {
 
     private let db = DatabaseService.shared
     private var local: [DatabaseService.HistoryEntry] = []
+    /// Plays read from the database; scrolling to the end raises it by `pageSize`.
+    private var localLimit = HistoryViewModel.pageSize
+    private static let pageSize = 100
+    /// The last read filled the limit, so older plays may be waiting.
+    private(set) var hasMoreLocal = false
     private var remote: [(title: String, songs: [SongItem])] = []
 
     func load() async {
@@ -40,12 +45,21 @@ final class HistoryViewModel {
 
     func loadLocal() async {
         do {
-            local = try await db.fetchHistory(limit: 100)
+            local = try await db.fetchHistory(limit: localLimit)
+            hasMoreLocal = local.count == localLimit
             rebuild()
         } catch {
             if error.isCancellation { return }
             Log.historyView.error("Failed to load local history: \(error)")
         }
+    }
+
+    /// The next `pageSize` older plays, asked for when the list's end comes on screen.
+    func loadMoreLocal() async {
+        guard hasMoreLocal else { return }
+        hasMoreLocal = false
+        localLimit += Self.pageSize
+        await loadLocal()
     }
 
     /// YouTube Music's history joins the list when it arrives; signed out or offline, the list stays local.
