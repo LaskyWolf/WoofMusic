@@ -165,7 +165,7 @@ Google can challenge or restrict an account used in an unofficial app. Test with
 
 ## Credits
 
-Woof Music is a fork of [Trop](https://github.com/686udjie/Trop) by 686udjie.
+Woof Music Plus is a fork of [Woof Music](https://github.com/LaskyWolf/WoofMusic), the fork of [Trop](https://github.com/686udjie/Trop) by 686udjie.
 
 - [SwiftyTube](https://github.com/686udjie/SwiftyTube): Swift InnerTube client for YouTube Music requests, sign-in and session renewal
 - [InnerTubeX](https://github.com/MetrolistGroup/innertubex): extended InnerTube API library for Kotlin
